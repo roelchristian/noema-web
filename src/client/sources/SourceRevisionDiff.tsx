@@ -5,7 +5,7 @@ import {SourceReaderText} from './SourceReaderText';
 import './source-revision-diff.css';
 
 type Decision=SourceEditorialPatch['decision'];
-type Props={revision:SourceReprocessingRevision;disabled:boolean;patches?:SourceEditorialPatch[];onDecision:(patch:SourceEditorialPatch,decision:Decision)=>Promise<void>;onEdit?:(patch:SourceEditorialPatch)=>void;onLocate?:(patch:SourceEditorialPatch)=>void;onCompare?:(page:number)=>void};
+type Props={revision:SourceReprocessingRevision;disabled:boolean;patches?:SourceEditorialPatch[];onDecision:(patch:SourceEditorialPatch,decision:Decision)=>Promise<void>;onDecisions?:(patches:SourceEditorialPatch[],decision:'accepted'|'rejected')=>Promise<void>;onEdit?:(patch:SourceEditorialPatch)=>void;onLocate?:(patch:SourceEditorialPatch)=>void;onCompare?:(page:number)=>void};
 export type RevisionDiffLine={kind:'context'|'removed'|'added';text:string;oldLine:number|null;newLine:number|null};
 
 /** A filter must never split an atomic group (for example a note and its reference). */
@@ -123,7 +123,7 @@ export function buildRevisionDiffSections(text:string,all:SourceEditorialPatch[]
   for(const patch of [...included].reverse())after=after.slice(0,patch.range.startOffset-from)+(patch.userReplacement??patch.replacement)+after.slice(patch.range.endOffset-from);
   const line=text.slice(0,from).split('\n').length;
   const delta=ordered.filter(patch=>patch.range.endOffset<=from&&!included.includes(patch)).reduce((sum,patch)=>sum+((patch.userReplacement??patch.replacement).match(/\n/g)?.length??0)-(text.slice(patch.range.startOffset,patch.range.endOffset).match(/\n/g)?.length??0),0);
-  return {from,to,before,after,line,newLine:line+delta,patches:requested.filter(patch=>included.some(item=>item.id===patch.id))};
+  return {from,to,before,after,line,newLine:line+delta,hunkPatches:buildRevisionDiffGroups(all,included).flat(),patches:requested.filter(patch=>included.some(item=>item.id===patch.id))};
  });
 }
 
@@ -183,8 +183,15 @@ export function SourceRevisionDiff(props:Props){
   {sections.map(section=>{
    const rows=displayRows(revisionDiffLines(section.before,section.after,section.line,section.newLine),split,rendered),controls=new Map<number,SourceEditorialPatch[]>();
    for(const patch of section.patches){const line=revision.original.text.slice(0,patch.range.startOffset).split('\n').length;const index=rows.findIndex(row=>row.left.some(item=>item.oldLine===line));const at=index<0?0:index;controls.set(at,[...(controls.get(at)??[]),patch]);}
+   const pending=section.hunkPatches.filter(patch=>patch.decision==='pending');
    return <div className="revision-diff-section" key={section.from}>
-    <div className="revision-diff-location">@@ −{section.line},{section.before?section.before.split('\n').length:0} +{section.newLine},{section.after?section.after.split('\n').length:0} @@</div>
+    <div className="revision-diff-hunk-heading">
+     <div className="revision-diff-location">@@ −{section.line},{section.before?section.before.split('\n').length:0} +{section.newLine},{section.after?section.after.split('\n').length:0} @@</div>
+     {props.onDecisions&&<div className="revision-diff-hunk-actions" role="group" aria-label={uiText('Changes near line {value0}',{value0:section.line})}>
+      <button type="button" className="reprocessing-quiet-action" disabled={props.disabled||!pending.length} title={uiText('Apply pending changes in this section, including linked changes')} onClick={()=>void props.onDecisions!(pending,'accepted')}>{uiText('Apply changes ({value0})',{value0:pending.length})}</button>
+      <button type="button" className="reprocessing-quiet-action" disabled={props.disabled||!pending.length} title={uiText('Keep originals for pending changes in this section, including linked changes')} onClick={()=>void props.onDecisions!(pending,'rejected')}>{uiText('Keep originals')}</button>
+     </div>}
+    </div>
     <div className="revision-diff-lines" role="table" aria-label={uiText('Original → Suggested revision')}>
      {rows.map(({left,right},index)=>{
       const row=left[0]!;

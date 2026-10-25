@@ -132,8 +132,8 @@ test('decided changes remain inspectable and reversible',async t=>{
 });
 
 test('active processing disables diff mutation controls',async t=>{
- await mount(t,{revision:fixture(),disabled:true,onDecision:async()=>assert.fail('Cannot mutate an active revision'),onEdit:()=>assert.fail('Cannot edit an active revision')});
- const controls=[...document.querySelectorAll('.revision-diff-change button')];assert.ok(controls.length>0);
+ await mount(t,{revision:fixture(),disabled:true,onDecisions:async()=>assert.fail('Cannot apply an active revision'),onDecision:async()=>assert.fail('Cannot mutate an active revision'),onEdit:()=>assert.fail('Cannot edit an active revision')});
+ const controls=[...document.querySelectorAll('.revision-diff-change button,.revision-diff-hunk-actions button')];assert.ok(controls.length>0);
  assert.ok(controls.every(button=>button.disabled));
 });
 
@@ -166,4 +166,24 @@ test('rendered view formats body text and footnotes in either layout and source 
  const reference=document.querySelector('.source-reader-footnote-reference a');assert.ok(reference);assert.ok(document.getElementById(reference.getAttribute('href').slice(1)));
  await click(button('Side by side'));assert.ok(document.querySelector('.is-split.is-rendered'));assert.ok(document.querySelector('.revision-diff-side.is-added strong'));
  await click(button('Source'));assert.equal(document.querySelector('.is-rendered'),null);assert.match(document.querySelector('.revision-diff-lines').textContent,/\*\*claim\*\*\[\^1\]/);
+});
+
+test('hunk decisions include linked changes outside the visible hunk and skip settled independent edits',async t=>{
+ const revision=fixture(),base=revision.patches[0];
+ const text='Reference1.\n'+Array.from({length:16},(_,i)=>`Context line ${i}`).join('\n')+'\n1 Note body.\n\nIndependent passage.';
+ revision.original.text=text;
+ const patch=(id,original,replacement,group,decision='pending')=>{const startOffset=text.indexOf(original);return {...base,id,original,replacement,patchGroupId:group,decision,range:{...base.range,startOffset,endOffset:startOffset+original.length,startLine:text.slice(0,startOffset).split('\n').length}};};
+ revision.patches=[patch('ref','Reference1.','Reference[^1].','note'),patch('definition','1 Note body.','[^1]: Note body.','note'),patch('settled','Independent passage.','An approved passage.',undefined,'accepted')];
+ const calls=[],click=await mount(t,{revision,disabled:false,onDecision:async()=>{},onDecisions:async(patches,decision)=>calls.push({ids:patches.map(patch=>patch.id),decision})});
+ const sections=[...document.querySelectorAll('.revision-diff-section')];assert.equal(sections.length,2);
+ await click([...sections[0].querySelectorAll('button')].find(button=>button.textContent==='Apply changes (2)'));
+ assert.deepEqual(calls,[{ids:['ref','definition'],decision:'accepted'}]);
+ await click([...sections[1].querySelectorAll('button')].find(button=>button.textContent==='Keep originals'));
+ assert.deepEqual(calls[1],{ids:['ref','definition'],decision:'rejected'});
+});
+
+test('hunk actions are disabled while mutations are unavailable or no pending changes remain',async t=>{
+ const revision=fixture();revision.patches=revision.patches.map(patch=>({...patch,decision:'accepted'}));
+ await mount(t,{revision,disabled:false,onDecision:async()=>{},onDecisions:async()=>assert.fail('No pending changes')});
+ assert.ok([...document.querySelectorAll('.revision-diff-hunk-actions button')].every(button=>button.disabled));
 });

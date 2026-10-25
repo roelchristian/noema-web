@@ -201,4 +201,4 @@
 .reprocessing-view-switch>button:focus-visible{outline:2px solid var(--text);outline-offset:2px}
 .reprocessing-diff-heading{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12px}
 .reprocessing-diff-heading>span{color:var(--text-muted)}
-.reprocessing-diff-heading>.reprocessing-quiet-action{margin-inline-start:auto;font-size:12px}
+.reprocessing-diff-heading>.reprocessing-quiet-action:last-child{margin-inline-start:auto;font-size:12px}

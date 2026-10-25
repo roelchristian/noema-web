@@ -383,8 +383,9 @@ for(const [stage,title] of Object.entries({reconstructing:'Reconstructing excerp
   r.report.chunksCompleted=0;r.report.chunksTotal=3;r.report.stage=stage;r.report.stageProgress={completed:2,total:3};
   await mount(t,{initial:r});const presentation=document.querySelector('[data-reprocessing-stage]');
   assert.equal(presentation.dataset.reprocessingStage,stage);assert.match(document.querySelector('[id^="reprocessing-progress-"] [aria-live]').textContent,new RegExp(title));assert.match(presentation.textContent,new RegExp(title));assert.match(presentation.textContent,/2 \/ 3/);
-  const progress=document.querySelector('[aria-label="Completed excerpt coverage"]');
-  assert.equal(progress.value,0);assert.equal(progress.max,3);
+  const progress=document.querySelector('[aria-label="Overall revision progress"]');
+  const stageIndex=['reconstructing','understanding','verifying','auditing'].indexOf(stage);
+  assert.ok(Math.abs(progress.value-(stageIndex+2/3)*25)<0.001);assert.equal(progress.max,100);
   assert.match(document.querySelector('.reprocessing-stage-summary').textContent,/plus document synthesis/);
  });
 }
@@ -402,17 +403,17 @@ test('first pass shows activity before its first result and advances from polled
  r.report.stage='reconstructing';r.report.stageProgress={completed:0,total:3};r.report.sessionStartedAt=new Date(Date.now()-65000).toISOString();
  r.report.excerpts=[{index:0,status:'running',attempts:1,startPage:1,endPage:2,activePass:1,lastAttemptAt:r.report.sessionStartedAt,durationMs:0}];
  await mount(t,{initial:r});
- const progress=()=>document.querySelector('[aria-label="Completed excerpt coverage"]');
+ const progress=()=>document.querySelector('[aria-label="Overall revision progress"]');
  assert.equal(progress().value,0);
  assert.match(document.querySelector('.reprocessing-active-excerpts').textContent,/Excerpt 1.*Pass 1/);
  assert.match(document.querySelector('.reprocessing-monitor-details .reprocessing-hint:nth-of-type(2)').textContent,/Elapsed: 1 minutes.*Progress updates when each model request finishes/);
  r.updatedAt='2026-10-25T00:00:01Z';r.report.stageProgress.completed=1;
  await act(async()=>{for(const callback of [...scheduled])await callback();});
- assert.equal(progress().value,0);assert.equal(progress().max,3);
+ assert.ok(Math.abs(progress().value-100/12)<0.001);assert.equal(progress().max,100);
  assert.match(document.querySelector('[data-reprocessing-stage]').textContent,/1 \/ 3 items processed in this stage/);assert.match(document.querySelector('[id^="reprocessing-progress-"]').textContent,/0 of 3 excerpts completed/);
  r.updatedAt='2026-10-25T00:00:02Z';r.report.stage='understanding';r.report.stageProgress={completed:0,total:1};
  await act(async()=>{for(const callback of [...scheduled])await callback();});
- assert.equal(progress().value,0);
+ assert.equal(progress().value,25);
  assert.match(document.querySelector('[id^="reprocessing-progress-"] [aria-live]').textContent,/Understanding document/);
  assert.equal(document.querySelector('.reprocessing-active-excerpts'),null);
 });
@@ -613,4 +614,22 @@ test('source view restores changes applied, diff and reading version after remou
   assert.equal(!!document.querySelector('.source-revision-diff'),mode==='Diff');
  }
  assert.equal(storage.has('noema:source-reading:v:f'),false,'Remembering the current view does not change the preferred version');
+});
+
+for(const details of [false,true])test(`accept all pending works in ${details?'detailed':'diff'} review without changing prior decisions`,async t=>{
+ const r=fixture();r.fileId='f';r.status='completed';r.report.chunksCompleted=r.report.chunksTotal;
+ r.patches=[...r.patches.map(patch=>({...patch,patchGroupId:'linked'})),{...r.patches[0],id:'rejected',patchGroupId:undefined,decision:'rejected'},{...r.patches[1],id:'applied',patchGroupId:undefined,decision:'accepted'}];
+ const env=await mount(t,{initial:r,legacyDetails:details,post:async(entry,current)=>({...current,updatedAt:'2026-10-26T00:00:01Z',patches:current.patches.map(patch=>({...patch,decision:entry.body.decisions.find(item=>item.patchId===patch.id)?.decision??patch.decision}))})});
+ await env.click(env.button('Review changes (2)'));
+ const accept=env.button('Apply all pending (2)');assert.ok(accept);await env.click(accept);
+ const posts=env.requests.filter(entry=>entry.method==='POST');assert.equal(posts.length,1);
+ assert.equal(posts[0].body.updatedAt,r.updatedAt);assert.deepEqual(posts[0].body.decisions,[{patchId:'patch-0',decision:'accepted'},{patchId:'patch-1',decision:'accepted'}]);
+ assert.equal(env.button('Apply all pending (0)').disabled,true);
+});
+
+test('hunk approval submits all pending hunk changes in one revision-checked request',async t=>{
+ const r=fixture();r.fileId='f';r.status='completed';r.report.chunksCompleted=r.report.chunksTotal;r.patches=r.patches.map(patch=>({...patch,patchGroupId:'linked'}));
+ const env=await mount(t,{initial:r,legacyDetails:false,post:async(entry,current)=>({...current,updatedAt:'2026-10-26T00:00:01Z',patches:current.patches.map(patch=>({...patch,decision:'accepted'}))})});
+ await env.click(env.button('Review changes (2)'));await env.click(env.button('Apply changes (2)'));
+ const posts=env.requests.filter(entry=>entry.method==='POST');assert.equal(posts.length,1);assert.equal(posts[0].body.updatedAt,r.updatedAt);assert.deepEqual(posts[0].body.decisions,[{patchId:'patch-0',decision:'accepted'},{patchId:'patch-1',decision:'accepted'}]);
 });

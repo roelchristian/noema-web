@@ -256,11 +256,26 @@ export function SourceReprocessing({sourceId,vaultId,fileId,visible,onShow,onOri
     try{const value=await request<SourceReprocessingRevision>(`${route}/${encodeURIComponent(revision.id)}/${action}`,'POST',{},vaultId);if(!mounted.current)return;if(latestRevisionId.current===value.id)setRevision(value);setReload(n=>n+1);}
     catch(cause){if(mounted.current)setError(cause instanceof Error?cause.message:String(cause));}finally{finishAction();}
   }
-  async function decideSelected(decision:'accepted'|'rejected'){
-    if(!revision||!selected.length||!beginAction())return;
-    try{const value=await request<SourceReprocessingRevision>(`${route}/${encodeURIComponent(revision.id)}/review`,'POST',{updatedAt:revision.updatedAt,decisions:revision.patches.filter(patch=>selected.includes(patch.id)||!!patch.patchGroupId&&revision.patches.some(item=>item.patchGroupId===patch.patchGroupId&&selected.includes(item.id))).map(patch=>({patchId:patch.id,decision}))},vaultId);if(!mounted.current)return;if(latestRevisionId.current===value.id)setRevision(value);setSelected([]);setReload(n=>n+1);}
-    catch(cause){if(mounted.current)setError(cause instanceof Error?cause.message:String(cause));}finally{finishAction();}
+  async function decideMany(patches:SourceEditorialPatch[],decision:'accepted'|'rejected'){
+    if(!revision||!patches.length||!beginAction())return;
+    const ids=new Set(patches.map(patch=>patch.id)),groups=new Set(patches.map(patch=>patch.patchGroupId).filter(Boolean));
+    const targets=revision.patches.filter(patch=>ids.has(patch.id)||!!patch.patchGroupId&&groups.has(patch.patchGroupId));
+    const decisions=targets.map(patch=>{
+      const replacement=editorialDraft(patchDraftKey(patch),patchBaseline(patch));
+      return {patchId:patch.id,decision,...(decision==='accepted'&&replacement!==undefined?{replacement}:{})};
+    });
+    try{
+      const value=await request<SourceReprocessingRevision>(`${route}/${encodeURIComponent(revision.id)}/review`,'POST',{updatedAt:revision.updatedAt,decisions},vaultId);
+      if(!mounted.current)return;
+      targets.forEach(patch=>clearEditorialDraft(patchDraftKey(patch)));
+      if(latestRevisionId.current===value.id)setRevision(value);
+      setSelected(current=>current.filter(id=>!targets.some(patch=>patch.id===id)));setReload(n=>n+1);
+    }catch(cause){if(mounted.current)setError(cause instanceof Error?cause.message:String(cause));}finally{finishAction();}
   }
+  async function decideSelected(decision:'accepted'|'rejected'){
+    await decideMany(revision?.patches.filter(patch=>selected.includes(patch.id))??[],decision);
+  }
+  function acceptAllPending(){return decideMany(revision?.patches.filter(patch=>patch.decision==='pending')??[],'accepted');}
   const automaticallyApplied=(patch:SourceEditorialPatch)=>patch.decision==='accepted'&&(patch.decisionHistory?.at(-1)?.actor??(patch.autoAcceptance?'automatic':'user'))==='automatic';
   const matches=(patch:SourceEditorialPatch,value:typeof filter)=>value==='all'||(value==='automatic'?automaticallyApplied(patch):value==='accepted'?patch.decision==='accepted'&&!automaticallyApplied(patch):patch.decision===value);
   const shownPatches=revision?.patches.filter(patch=>matches(patch,filter)&&(!passagePatchIds.length||passagePatchIds.includes(patch.id)))??[];
@@ -319,8 +334,8 @@ export function SourceReprocessing({sourceId,vaultId,fileId,visible,onShow,onOri
         </SourceReprocessingProgress>
         {brokenFootnotes.length>0&&<InlineNotice tone="warning" title={uiText("This revision has broken footnote links")} description={<>{uiText("Some note definitions are missing or ambiguous. Compare the original source and repair the affected changes before relying on this reading version.")}<ul>{brokenFootnotes.slice(0,5).map((message,index)=><li key={index}>{message}</li>)}</ul></>}/>}
         {tab==='read'?null:renderReview(reviewStyle==='diff'?<aside ref={reviewPane} tabIndex={-1} id={`source-review-${fileId}`} className="reprocessing-reviews reprocessing-diff-review" aria-label={uiText('Revision diff')} onKeyDown={event=>{if(event.key==='Escape'){event.stopPropagation();closeReview();}}}>
-          <div className="reprocessing-diff-heading"><strong>{uiText('Changes')}</strong><span>{revision.patches.filter(patch=>patch.decision==='accepted').length} {uiText('accepted')} · {pending} {uiText('pending')}</span><button type="button" className="reprocessing-quiet-action" onClick={()=>{setReviewStyle('drawer');setFilter(pending>0?'pending':'all');}}>{uiText('Detailed review')}</button></div>
-          <SourceRevisionDiff revision={revision} disabled={busy||!!stale||active(revision.status)} onDecision={decide} onEdit={patch=>{setReviewStyle('drawer');setPassagePatchIds([]);setFilter('all');setActivePatchId(patch.id);}} onLocate={showPatchSource} onCompare={onCompare?page=>{if(contextReading.current===null)contextReading.current=readingChoice;setEvidenceSurface('pdf');onCompare(page);}:undefined}/>
+          <div className="reprocessing-diff-heading"><strong>{uiText('Changes')}</strong><span>{revision.patches.filter(patch=>patch.decision==='accepted').length} {uiText('accepted')} · {pending} {uiText('pending')}</span><button type="button" className="reprocessing-quiet-action" disabled={!pending||busy||!!stale||active(revision.status)} onClick={()=>void acceptAllPending()}>{uiText('Apply all pending ({value0})',{value0:pending})}</button><button type="button" className="reprocessing-quiet-action" onClick={()=>{setReviewStyle('drawer');setFilter(pending>0?'pending':'all');}}>{uiText('Detailed review')}</button></div>
+          <SourceRevisionDiff revision={revision} onDecisions={decideMany} disabled={busy||!!stale||active(revision.status)} onDecision={decide} onEdit={patch=>{setReviewStyle('drawer');setPassagePatchIds([]);setFilter('all');setActivePatchId(patch.id);}} onLocate={showPatchSource} onCompare={onCompare?page=>{if(contextReading.current===null)contextReading.current=readingChoice;setEvidenceSurface('pdf');onCompare(page);}:undefined}/>
         </aside>:<aside ref={reviewPane} tabIndex={-1} id={`source-review-${fileId}`} className="reprocessing-reviews" aria-label={uiText("Review corrections")} onKeyDown={event=>{if(event.key==='Escape'){event.stopPropagation();closeReview();}}}>
           <div className="reprocessing-review-heading"><h2>{uiText("Review corrections")}</h2><button type="button" className="button small" onClick={closeReview}>{uiText("Close corrections")}</button></div>
       {revisionOptions.length>0&&<label className="reprocessing-revision-picker">{uiText("Examining revision") + " "}<Select aria-label={uiText("Examining revision")} disabled={busy} value={revisionId} onChange={e=>{returnToCorrection();setPassagePatchIds([]);setActivePatchId('');setRevisionId(e.target.value);}}>{revisionOptions.map(item=><option key={item.id} value={item.id}>{versionLabels.get(item.id)} · {new Date(item.createdAt).toLocaleString(getLocale())} · {uiText(partial(item)?"Partial revision":item.status)}</option>)}</Select></label>}
@@ -331,6 +346,7 @@ export function SourceReprocessing({sourceId,vaultId,fileId,visible,onShow,onOri
           </div>
           <div className="reprocessing-actions reprocessing-review-toolbar">
             <label className="reprocessing-layout-picker">{uiText("Comparison") + " "}<Select aria-label={uiText("Comparison layout")} value={comparisonLayout} onChange={event=>setComparisonLayout(event.target.value as ComparisonLayout)}><option value="auto">{uiText("Auto (unified on narrow screens)")}</option><option value="split">{uiText("Side by side")}</option><option value="unified">{uiText("Unified")}</option></Select></label>
+            <button type="button" className="reprocessing-quiet-action" disabled={!pending||busy||!!stale||active(revision.status)} onClick={()=>void acceptAllPending()}>{uiText('Apply all pending ({value0})',{value0:pending})}</button>
             <button type="button" className="reprocessing-quiet-action" aria-pressed={bulk} onClick={()=>{setBulk(value=>!value);setSelected([]);}}>{uiText(bulk?"Exit bulk review":"Bulk review")}</button>
             {bulk&&<><button className="button small" disabled={!selected.length||busy||!!stale||active(revision.status)} onClick={()=>void decideSelected('accepted')}>{uiText("Accept selected (")}{selected.length})</button><button className="button small" disabled={!selected.length||busy||!!stale||active(revision.status)} onClick={()=>void decideSelected('rejected')}>{uiText("Keep original for selected")}</button></>}
           </div>

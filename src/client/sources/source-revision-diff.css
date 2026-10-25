@@ -2,6 +2,10 @@
 .revision-diff-file-heading{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--line);font:12px/1.5 var(--font-ui)}
 .revision-diff-file-heading>span:last-child{color:var(--text-muted)}
 .revision-diff-location{padding:8px 0;font:11px/1.5 var(--font-ui);color:var(--text-muted)}
+.revision-diff-hunk-heading{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding-block:4px}
+.revision-diff-hunk-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px;font:11px/1.5 var(--font-ui)}
+.revision-diff-hunk-actions .reprocessing-quiet-action{font:inherit;color:var(--text-muted);padding:2px 0}
+.revision-diff-hunk-actions .reprocessing-quiet-action:hover:not(:disabled){color:var(--text)}
 .revision-diff-lines{font:12px/1.6 var(--font-mono);letter-spacing:normal}
 .revision-diff-line{display:grid;grid-template-columns:30px 30px 20px minmax(0,1fr) 168px;min-height:24px;align-items:start}
 .revision-diff-number{height:100%;font:11px/24px var(--font-ui);font-variant-numeric:tabular-nums;text-align:right;padding-right:5px;user-select:none;color:var(--text-muted)}

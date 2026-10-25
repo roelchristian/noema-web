@@ -95,8 +95,8 @@
       "tools": [],
       "tool_choice": "none"
     },
-    "promptDigest": "858db89e3758982fc451a79a014609594d344ddc0946664a5a1af93fc291acbf",
-    "bytes": 3352
+    "promptDigest": "cf2274f35a31bf786becca09cc33fd907d69540bcdd8e6d54700fd3d44feb121",
+    "bytes": 3546
   },
   "reading explanation": {
     "policy": {
@@ -109,8 +109,8 @@
       "tools": [],
       "tool_choice": "none"
     },
-    "promptDigest": "a6bb70b36e77a80ac6717e7d9e63133100903794b53473ca0106b09538d8a4de",
-    "bytes": 3269
+    "promptDigest": "e0d93155cfa0552e98598d362761536146637c6e633cfe21934d7b1e3164df65",
+    "bytes": 3463
   },
   "review": {
     "policy": {
@@ -123,8 +123,8 @@
       "tools": [],
       "tool_choice": "none"
     },
-    "promptDigest": "84a3e64835fbbe68af511f6df90c8a51a374903d191a92b4216cc95ff689a93a",
-    "bytes": 3244
+    "promptDigest": "e0b4fbe0de80e7085c9cb2ce5a4129f0f937fe1ded51eb7ec8584db69140e3ee",
+    "bytes": 3949
   },
   "source page": {
     "policy": {
@@ -138,8 +138,8 @@
       "tool_choice": "none",
       "stream": true
     },
-    "promptDigest": "daab09e61f24230822c360fff748c8d05057b495910c97c2d21d561c4126543e",
-    "bytes": 15078
+    "promptDigest": "122e463e3076308aa59ad7cb4d702c61348c101d62277ea1a4d1adab8fe1468c",
+    "bytes": 15734
   },
   "source math": {
     "policy": {
@@ -281,5 +281,19 @@
     },
     "promptDigest": "96b68882ac132456617726351238a6e05bf27e3c67f5589579cd5adf4fd89fc9",
     "bytes": 76
+  },
+  "persona preview": {
+    "policy": {
+      "model": "gpt-6-luna",
+      "store": false,
+      "max_output_tokens": 4096,
+      "reasoning": {
+        "effort": "none"
+      },
+      "tools": [],
+      "tool_choice": "none"
+    },
+    "promptDigest": "d4ed80b4ed20d0ed4fca377cbf967b1a6cb1b3ff071b7f0102053d6a28e9688b",
+    "bytes": 2692
   }
 }

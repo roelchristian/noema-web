@@ -1,5 +1,5 @@
 import {useEffect,useState} from 'react';
-import {aiPersonas,defaultPersonaId,personaMetadata,personaIdentityName,type PersonaIdentity} from '../../shared/ai-personas';
+import {aiPersonas,defaultPersonaId,personaMetadata,personaIdentityName,type PersonaExpression,type PersonaIdentity} from '../../shared/ai-personas';
 import {api} from '../api';
 import {Select} from './Select';
 export function useDefaultPersona() {
@@ -10,4 +10,8 @@ export function useDefaultPersona() {
 export function PersonaSelect({value,onChange,disabled=false,original}:{original?:PersonaIdentity;value:string;onChange:(id:string)=>void;disabled?:boolean}) {
   const inherited=useDefaultPersona();
   return <label className="persona-select" title={value?"Applies to this request only; your default is unchanged.":original?"Uses the original draft’s persona and version.":"Inherits your global default persona."}>Persona:<Select aria-label="Persona" value={value} disabled={disabled} onChange={event=>onChange(event.target.value)}><option value="">{original?`Original · ${personaIdentityName(original)} · v${original.version}`:`${personaMetadata(inherited).name} (default)`}</option>{aiPersonas.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</Select></label>;
+}
+
+export function PersonaExpressionSelect({value,onChange,disabled=false,original}:{value:PersonaExpression|'';onChange:(value:PersonaExpression|'')=>void;disabled?:boolean;original?:PersonaIdentity}) {
+  return <label className="persona-select">Expression:<Select aria-label="Persona expression" value={original?.version===1?'':value} disabled={disabled||original?.version===1} onChange={event=>onChange(event.target.value as PersonaExpression|'')}><option value="">{original?original.version===1?'Original · v1 (legacy)':`Original · ${original.expression??'expressive'}`:'Default expression'}</option><option value="subtle">Subtle</option><option value="expressive">Expressive</option><option value="immersive">Immersive</option></Select></label>;
 }

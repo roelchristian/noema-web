@@ -1,7 +1,8 @@
+import type {PersonaExpression} from '../../shared/ai-personas';
 import {t as uiText} from '../i18n';
 import {useEffect,useLayoutEffect,useRef,useState,type FormEvent,type RefObject} from 'react';
 import type {Page} from '../../shared/domain';
-import {PersonaSelect} from '../components/PersonaSelect';
+import {PersonaSelect,PersonaExpressionSelect} from '../components/PersonaSelect';
 import {highlightColors,readingNoteMaxWords,readingNoteWordCount,readingExplanationFamiliarities,type ReadingExplanationOptions,type HighlightColor,type SourceHighlight,type SourceSelection} from '../../shared/source-reading';
 import {sourcePageLanguages} from '../../shared/source-page';
 import {Select} from '../components/Select';
@@ -161,6 +162,7 @@ function ReadingNotePopover({selection,revisionId,vaultId,onCreated,onClose,expl
   const [text,setText]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
   const [requestId,setRequestId]=useState(randomUUID);
   const [personaId,setPersonaId]=useState('');
+  const [personaExpression,setPersonaExpression]=useState<PersonaExpression|''>('');
   const [language,setLanguage]=useState(''),[familiarity,setFamiliarity]=useState<ReadingExplanationOptions['familiarity']>('familiar');
   const inFlight=useRef<AbortController|null>(null),mounted=useRef(true);
   useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;inFlight.current?.abort();};},[]);
@@ -171,7 +173,7 @@ function ReadingNotePopover({selection,revisionId,vaultId,onCreated,onClose,expl
     const timeout=setTimeout(()=>controller.abort(),explain?60000:15000);
     let saved:Page|undefined;
     try {
-      saved=await request<Page>(`source-files/${encodeURIComponent(selection.fileId)}/reading-notes${explain?'/explain':''}`,'POST',{...selection,...(revisionId?{revisionId}:{}),...(explain?{language,familiarity,...(personaId?{personaId}:{})}:{text:text.trim()}),requestId},vaultId,controller.signal);
+      saved=await request<Page>(`source-files/${encodeURIComponent(selection.fileId)}/reading-notes${explain?'/explain':''}`,'POST',{...selection,...(revisionId?{revisionId}:{}),...(explain?{language,familiarity,...(personaId?{personaId}:{}),...(personaExpression?{personaExpression}:{})}:{text:text.trim()}),requestId},vaultId,controller.signal);
     }catch(cause){
       if(mounted.current)setError(controller.signal.aborted?'Couldn’t confirm the save. Please try again.':cause instanceof Error?cause.message:String(cause));
     }finally{clearTimeout(timeout);inFlight.current=null;if(mounted.current)setBusy(false);}
@@ -187,7 +189,7 @@ function ReadingNotePopover({selection,revisionId,vaultId,onCreated,onClose,expl
     {explain?<div className="reading-explanation-options">
       <label>{uiText("Language")}<Select autoFocus value={language} disabled={busy} onChange={event=>{setLanguage(event.target.value);setRequestId(randomUUID());}}><option value="">{uiText("Same as passage")}</option>{sourcePageLanguages.map(language=><option key={language} value={language}>{language}</option>)}</Select></label>
       <label>{uiText("Reader familiarity")}<Select value={familiarity} disabled={busy} onChange={event=>{setFamiliarity(event.target.value as ReadingExplanationOptions['familiarity']);setRequestId(randomUUID());}}>{Object.entries(readingExplanationFamiliarities).map(([value,label])=><option key={value} value={value}>{label}</option>)}</Select></label>
-      <PersonaSelect value={personaId} disabled={busy} onChange={id=>{setPersonaId(id);setRequestId(randomUUID());}}/>
+      <PersonaExpressionSelect value={personaExpression} disabled={busy} onChange={value=>{setPersonaExpression(value);setRequestId(randomUUID());}}/><PersonaSelect value={personaId} disabled={busy} onChange={id=>{setPersonaId(id);setRequestId(randomUUID());}}/>
       <p className="reading-explanation-help">{uiText("Creates an AI-generated reading note explaining only this passage. Up to") + " "}{readingNoteMaxWords}{" " + uiText("words.")}</p>
       {busy&&<span className="reading-explanation-status" role="status">{uiText("Explaining the passage… You can cancel with ×.")}</span>}
     </div>:<div className="reading-note-writing-area">

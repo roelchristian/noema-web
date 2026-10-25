@@ -7,15 +7,15 @@ import {speechSections,speechSelectionContext} from './speech-sections';
 import {entityIconName} from '../../shared/entity-icons';
 import {paragraphFlow} from './paragraph-indent';
 import {useDefaultPersona} from '../components/PersonaSelect';
-import {aiPersonas,personaMetadata,personaIdentityName,type PersonaIdentity} from '../../shared/ai-personas';
+import {aiPersonas,personaMetadata,personaIdentityName,type PersonaIdentity,type PersonaExpression} from '../../shared/ai-personas';
 import { fetchClipboardImage } from '../api';
 import {EntityLinkActions} from './EntityLinkActions';
 import {memoizeBlock} from '../../shared/immutable-blocks';
 import {getLocale} from '../i18n';
 import {t as uiText} from '../i18n';
-import type {EditorReviewText,EditorReviewSuggestion} from '../../shared/editor-review';
+import type {EditorReviewText,EditorReviewSuggestion,WritingReviewOptions,WritingAction} from '../../shared/editor-review';
 import {WritingReview} from './WritingReview';
-import {captureWritingReview,writingReviewChanges,applyWritingReviewEdits,type WritingReviewChange} from './writing-review';
+import {captureWritingReview,writingReviewContext,writingReviewChanges,applyWritingReviewEdits,type WritingReviewChange,type WritingReviewTarget} from './writing-review';
 import {inlineMathBlock,mathInlineOptions,recommendedMathInlinePlacement,type MathInlinePlacement} from '../../shared/math-blocks';
 import {TitleText} from '../components/TitleText';
 import {CitationPicker} from './CitationPicker';
@@ -60,7 +60,7 @@ import { completeInlineMath, mathElement } from './math';
 import { completeTypedMarkdown,typedMarkdownBlock } from './markdown-typing';
 import { useMarkdownTyping } from '../state/markdown-preferences';
 import {applyEditorTextFormat,shortcutTextFormat} from './text-formatting';
-interface Props {language?:string|null;pageId?:string;focusNewBody?:boolean;onCreationFocusConsumed?:()=>void;onReview?:(texts:EditorReviewText[])=>Promise<EditorReviewSuggestion[]>;featuredImageId?: string | null; pages?:PageSummary[];onOpenPage?:(id:string)=>void;onExplain?: (blocks: Block[],persona?:{id:string;version?:number}) => Promise<string|{markdown:string;persona:PersonaIdentity}>; reviewMatches?: EntityReviewItem[]; onAddAlias: (id: string, alias: string) => Promise<void>; vaultId: string; blocks: Block[]; entities: Entity[]; onChange: (blocks: Block[], featuredImageId?: string | null, aiReviewAccepted?:true) => void; onOpenEntity: (id: string) => void; onCreateEntity: (name: string, onCreated: (id: string) => void, onCancel?: () => void) => void; onSave: () => void}
+interface Props {language?:string|null;pageId?:string;focusNewBody?:boolean;onCreationFocusConsumed?:()=>void;onReview?:(texts:EditorReviewText[],options?:WritingReviewOptions,signal?:AbortSignal)=>Promise<EditorReviewSuggestion[]|{suggestions:EditorReviewSuggestion[];persona?:PersonaIdentity}>;featuredImageId?: string | null; pages?:PageSummary[];onOpenPage?:(id:string)=>void;onExplain?: (blocks: Block[],persona?:{id:string;version?:number;expression?:PersonaExpression}) => Promise<string|{markdown:string;persona:PersonaIdentity}>; reviewMatches?: EntityReviewItem[]; onAddAlias: (id: string, alias: string) => Promise<void>; vaultId: string; blocks: Block[]; entities: Entity[]; onChange: (blocks: Block[], featuredImageId?: string | null, aiReviewAccepted?:true) => void; onOpenEntity: (id: string) => void; onCreateEntity: (name: string, onCreated: (id: string) => void, onCancel?: () => void) => void; onSave: () => void}
 function explanationInsertionIndex(blocks: Block[], ids: string[]) {
   const last=blocks.filter(block=>ids.includes(block.id)).at(-1);
   if(!last)return -1;
@@ -184,7 +184,12 @@ export function BlockEditor(props: Props) {
     }
     props.onChange(normalized, featuredImageId, aiReviewAccepted);
   };
-  const [writingReview,setWritingReview]=useState<{anchorId:string;loading:boolean;error:string;changes:WritingReviewChange[]}|null>(null);
+  const [writingReview,setWritingReview]=useState<{anchorId:string;loading:boolean;error:string;changes:WritingReviewChange[];action?:WritingAction;persona?:PersonaIdentity}|null>(null);
+  const [reviewSetup,setReviewSetup]=useState<{targets:WritingReviewTarget[];action:WritingAction}|null>(null);
+  const [reviewPersona,setReviewPersona]=useState(''),[reviewExpression,setReviewExpression]=useState<PersonaExpression|''>('');
+  const reviewController=useRef<AbortController|null>(null);
+  const [writingUndo,setWritingUndo]=useState<{before:Block[];after:string}|null>(null);
+  useEffect(()=>()=>reviewController.current?.abort(),[]);
   const reviewRequest=useRef(0),reviewPending=useRef(false),reviewBlocks=useRef<Block[]|null>(null);
   useLayoutEffect(()=>{
     reviewBlocks.current=null;
@@ -197,7 +202,7 @@ export function BlockEditor(props: Props) {
       return {...current,anchorId:changes[0]?.blockId??current.anchorId,changes};
     });
   },[blocks]);
-  function closeWritingReview(){++reviewRequest.current;reviewBlocks.current=null;setWritingReview(null);}
+  function closeWritingReview(){reviewController.current?.abort();reviewPending.current=false;++reviewRequest.current;reviewBlocks.current=null;setWritingReview(null);}
   function dismissWritingSuggestion(id:string){
     setWritingReview(current=>{
       if(!current)return null;
@@ -205,29 +210,41 @@ export function BlockEditor(props: Props) {
       return changes.length?{...current,anchorId:changes[0]!.blockId,changes}:null;
     });
   }
-  async function reviewWriting(ids?:string[]) {
+  async function reviewWriting(ids?:string[],action:WritingAction='proofread') {
     if(reviewPending.current||!latest.current.onReview||!root.current)return;
     const targets=captureWritingReview(root.current,latest.current.blocks,ids);
     const draft=commitSelection();
     targets.forEach(target=>{const block=draft.find(block=>block.id===target.blockId);if(block)target.snapshot=JSON.stringify(block.content);});
     setMenu(null);reviewBlocks.current=null;
     if(!targets.length){setWritingReview({anchorId:ids?.[0]??draft[0]?.id??'',loading:false,error:'Select prose to review. Code, equations, references, and entity mentions are preserved.',changes:[]});return;}
+    setReviewSetup({targets,action});
+  }
+  async function generateWritingProposal(){
+    if(!reviewSetup||!latest.current.onReview||reviewPending.current)return;
+    const {targets,action}=reviewSetup;setReviewSetup(null);
+    if(targets.some(target=>{const block=latest.current.blocks.find(block=>block.id===target.blockId);return !block||JSON.stringify(block.content)!==target.snapshot||!!target.contextSnapshot&&writingReviewContext(block)!==target.contextSnapshot;})){
+      setWritingReview({anchorId:targets[0]!.blockId,loading:false,error:'Text changed. Select it again for a fresh proposal.',changes:[],action});return;
+    }
     const request=++reviewRequest.current;reviewPending.current=true;
-    setWritingReview({anchorId:targets[0]!.blockId,loading:true,error:'',changes:[]});
+    const controller=new AbortController();reviewController.current=controller;
+    setWritingReview({anchorId:targets[0]!.blockId,loading:true,error:'',changes:[],action});
     try {
-      const suggestions=await latest.current.onReview(targets.flatMap(target=>target.texts));
-      if(mounted.current&&request===reviewRequest.current)setWritingReview({anchorId:targets[0]!.blockId,loading:false,error:'',changes:writingReviewChanges(targets,suggestions)});
-    }catch(error){if(mounted.current&&request===reviewRequest.current)setWritingReview({anchorId:targets[0]!.blockId,loading:false,error:error instanceof Error?error.message:'Could not review this text.',changes:[]});}
-    finally{reviewPending.current=false;}
+      const result=await latest.current.onReview(targets.flatMap(target=>target.texts),{action,...(action==='rewrite'||action==='recast'?{personaId:reviewPersona||undefined,personaExpression:reviewExpression||undefined}:{})},controller.signal);
+      const suggestions=Array.isArray(result)?result:result.suggestions;
+      if(mounted.current&&request===reviewRequest.current)setWritingReview({anchorId:targets[0]!.blockId,loading:false,error:'',changes:writingReviewChanges(targets,suggestions),action,persona:Array.isArray(result)?undefined:result.persona});
+    }catch(error){if(mounted.current&&request===reviewRequest.current)setWritingReview({anchorId:targets[0]!.blockId,loading:false,error:error instanceof Error?error.message:'Could not review this text.',changes:[],action});}
+    finally{if(request===reviewRequest.current)reviewPending.current=false;}
   }
   function acceptWritingReview(change:WritingReviewChange,ids?:string[]) {
     // Accept-all may apply several corrections before React renders the updated props.
     const current=reviewBlocks.current??latest.current.blocks;
     const block=current.find(block=>block.id===change.blockId);
-    if(!block||isAIExplanation(block)||JSON.stringify(block.content)!==change.snapshot)return 'This text changed after the review. Select it again for a fresh review.';
+    if(!block||isAIExplanation(block)||JSON.stringify(block.content)!==change.snapshot||!!change.contextSnapshot&&writingReviewContext(block)!==change.contextSnapshot)return 'This text changed after the review. Select it again for a fresh review.';
     const applied=applyWritingReviewEdits(change,ids);
     if(!applied)return 'Choose at least one edit to accept.';
-    const next=current.map(block=>block.id===change.blockId?{...block,content:applied.content}:block);
+    const provenance={action:writingReview?.action??'proofread' as WritingAction,...(writingReview?.persona?{persona:writingReview.persona}:{}),acceptedAt:new Date().toISOString()};
+    const next=current.map(block=>block.id===change.blockId?{...block,content:applied.content,writingProvenance:[...(block.writingProvenance??[]),provenance].slice(-100)}:block);
+    setWritingUndo(previous=>({before:previous&&previous.after===JSON.stringify(current)?previous.before:current,after:JSON.stringify(next)}));
     if(root.current)clearEditorSelection(root.current);
     const active=document.activeElement;
     if(active instanceof Element&&active.closest('.writing-review-inline'))focusTarget.current={id:change.blockId,start:false};
@@ -725,7 +742,7 @@ export function BlockEditor(props: Props) {
   function aiActionChoice(anchor: HTMLElement, ids: string[], back: Choice): Choice {
     const originalPersona=aiExplanationsForSources(latest.current.blocks,ids)[0]?.semanticGroup?.persona;
     const personaName=explanationPersona.current?personaMetadata(explanationPersona.current).name:originalPersona?personaIdentityName(originalPersona):personaMetadata(defaultExplanationPersona).name;
-    return {get title(){return uiText("AI actions")},icon:'sparkles',submenu:true,pick:()=>show(anchor,[back,...(props.onReview?[{title:reviewPending.current?uiText("Reviewing…"):uiText("Review with AI"),detail:uiText("Suggest spelling, punctuation, grammar, and phrasing corrections"),icon:'sparkles',disabled:reviewPending.current,pick:()=>void reviewWriting(ids)}]:[]),{title:'Explanation persona · '+personaName,icon:'sparkles',submenu:true,pick:()=>show(anchor,[back,...[{id:'',name:'Default / original'},...aiPersonas].map(p=>({title:p.name,icon:'sparkles',submenu:true,pick:()=>{explanationPersona.current=p.id;aiActionChoice(anchor,ids,back).pick();}}))],'AI PERSONA',true)},explainChoice(ids)],'AI ACTIONS',true)};
+    return {get title(){return uiText("AI actions")},icon:'sparkles',submenu:true,pick:()=>show(anchor,[back,...(props.onReview?(['proofread','refine','rewrite','recast'] as const).map(action=>({title:action==='proofread'?'Proofread':action==='refine'?'Refine':action==='rewrite'?'Rewrite with Persona':'Recast',detail:action==='proofread'?'Correct grammar and punctuation; preserve voice':'Preview selected text before accepting changes',icon:'sparkles',disabled:reviewPending.current,pick:()=>void reviewWriting(ids,action)})):[]),{title:'Explanation persona · '+personaName,icon:'sparkles',submenu:true,pick:()=>show(anchor,[back,...[{id:'',name:'Default / original'},...aiPersonas].map(p=>({title:p.name,icon:'sparkles',submenu:true,pick:()=>{explanationPersona.current=p.id;aiActionChoice(anchor,ids,back).pick();}}))],'AI PERSONA',true)},explainChoice(ids)],'AI ACTIONS',true)};
   }
   function groupOptions(anchor: HTMLElement, id: string) {
     const children=latest.current.blocks.filter(block=>block.semanticGroup?.id===id || block.id===id && isAIExplanation(block)),locked=children.some(isAIExplanation);
@@ -999,7 +1016,7 @@ export function BlockEditor(props: Props) {
     // Once suggestions exist, each is rendered only alongside its source block.
     if(!change&&writingReview.changes.length)return null;
     const first=change===writingReview.changes[0];
-    return <WritingReview key={`${reviewRequest.current}:${blockId}`} loading={writingReview.loading} error={writingReview.error} change={change} stale={!!change&&JSON.stringify(blocks.find(block=>block.id===blockId)?.content)!==change.snapshot} entities={entities} remaining={first?writingReview.changes.length:0} onAccept={acceptWritingReview} onDismiss={()=>dismissWritingSuggestion(blockId)} onAcceptAll={()=>writingReview.changes.forEach(change=>acceptWritingReview(change))} onClose={closeWritingReview}/>;
+    return <WritingReview action={writingReview.action} persona={writingReview.persona} key={`${reviewRequest.current}:${blockId}`} loading={writingReview.loading} error={writingReview.error} change={change} stale={!!change&&(()=>{const block=blocks.find(block=>block.id===blockId);return !block||JSON.stringify(block.content)!==change.snapshot||!!change.contextSnapshot&&writingReviewContext(block)!==change.contextSnapshot;})()} entities={entities} remaining={first?writingReview.changes.length:0} onAccept={acceptWritingReview} onDismiss={()=>dismissWritingSuggestion(blockId)} onAcceptAll={()=>writingReview.changes.forEach(change=>acceptWritingReview(change))} onClose={closeWritingReview}/>;
   }
   function textInput(block:Block,el:HTMLElement,event:InputEvent) {
       const markdownInput=markdownTyping&&!event.isComposing&&event.inputType==='insertText';
@@ -1145,7 +1162,7 @@ export function BlockEditor(props: Props) {
     <span id="block-drag-help" className="block-drag-sr">{uiText("Drag to reorder. Click for options. With the handle focused, press Space to pick up, Up or Down to move, Space or Enter to drop, Escape to cancel.")}</span>
     <div ref={dragStatus} className="block-drag-sr" role="status" aria-live="polite" aria-atomic="true"/>
     <EntityLinkActions editor={root} entities={entities} onCommit={commitSelection} onOpen={onOpenEntity}/>
-    <SelectionToolbar onCitation={citeSelection} onRead={speech.enabled?readSelection:undefined} onOpenEntity={onOpenEntity} onReview={props.onReview?()=>void reviewWriting():undefined} reviewing={writingReview?.loading} explainLabel={explainLabel} mobile={mobile} keyboardInset={keyboardInset} viewportHeight={viewportHeight} onExplain={props.onExplain?()=>void explain():undefined} explaining={explaining} onAddAlias={props.onAddAlias} onMath={range => setMathTarget({range, initial: range.toString()})} editor={root} entities={entities} suggestionContext={{priorityIds:suggestionPriorityIds}} onCommit={commitSelection} onSemantic={tagSelection} onCreateEntity={onCreateEntity}/>
+    <SelectionToolbar onCitation={citeSelection} onRead={speech.enabled?readSelection:undefined} onOpenEntity={onOpenEntity} onReview={props.onReview?(action)=>void reviewWriting(undefined,action):undefined} reviewing={writingReview?.loading} explainLabel={explainLabel} mobile={mobile} keyboardInset={keyboardInset} viewportHeight={viewportHeight} onExplain={props.onExplain?()=>void explain():undefined} explaining={explaining} onAddAlias={props.onAddAlias} onMath={range => setMathTarget({range, initial: range.toString()})} editor={root} entities={entities} suggestionContext={{priorityIds:suggestionPriorityIds}} onCommit={commitSelection} onSemantic={tagSelection} onCreateEntity={onCreateEntity}/>
     {linkedExplanations.length > 0 && <Modal className="confirmation-dialog linked-explanation-dialog" titleId="linked-explanation-delete-title" onClose={() => setLinkedDeletion([])}>
       <ModalHeader titleId="linked-explanation-delete-title" leading={<Icon name="sparkles"/>} closeLabel={uiText("Close and keep explanations")}>{linkedExplanations.length === 1 ? uiText("Keep the explanation?") : uiText("Keep the explanations?")}</ModalHeader>
       <p>{linkedExplanations.length === 1
@@ -1163,6 +1180,16 @@ export function BlockEditor(props: Props) {
         <button type="button" className="button primary" autoFocus onClick={() => setLinkedDeletion([])}>{linkedExplanations.length === 1 ? uiText("Keep explanation") : uiText("Keep explanations")}</button>
       </div>
     </Modal>}
+    {reviewSetup&&<Modal titleId="writing-proposal-title" onClose={()=>setReviewSetup(null)} dismissOnBackdrop>
+      <ModalHeader titleId="writing-proposal-title">Writing proposal</ModalHeader>
+      <div className="dialog-body">
+        <label>Action <select autoFocus value={reviewSetup.action} onChange={event=>setReviewSetup({...reviewSetup,action:event.target.value as WritingAction})}><option value="proofread">Proofread — preserve voice</option><option value="refine">Refine — restrained clarity</option><option value="rewrite">Rewrite with Persona</option><option value="recast">Recast — broader rhetorical organisation</option></select></label>
+        {(reviewSetup.action==='rewrite'||reviewSetup.action==='recast')&&<><label>Persona <select value={reviewPersona} onChange={event=>setReviewPersona(event.target.value)}><option value="">Saved default</option>{aiPersonas.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label><label>Persona expression <select value={reviewExpression} onChange={event=>setReviewExpression(event.target.value as PersonaExpression|'')}><option value="">Saved default</option><option value="subtle">Subtle</option><option value="expressive">Expressive</option><option value="immersive">Immersive</option></select></label></>}
+        <p>Only the selected prose is sent to your configured AI provider. API costs apply. Meaning, facts, references, equations and requested language must be preserved. Recast reorganises prose within each formatted span; blocks and protected references stay in place. Review the proposal before accepting.</p>
+        <details><summary>Selected text</summary>{reviewSetup.targets.map(target=><p key={target.blockId}>{target.texts.map(item=>item.text).join('')}</p>)}</details>
+      </div><div className="dialog-actions"><button type="button" className="button" onClick={()=>setReviewSetup(null)}>Cancel</button><button type="button" className="button primary" onClick={()=>void generateWritingProposal()}>Generate proposal</button></div>
+    </Modal>}
+    {writingUndo&&<div className="note-link-status" role="status">Writing proposal accepted. <button type="button" disabled={JSON.stringify(blocks)!==writingUndo.after} onClick={()=>{if(JSON.stringify(latest.current.blocks)===writingUndo.after){latest.current.onChange(writingUndo.before);setWritingUndo(null);closeWritingReview();}}}>Undo writing changes</button>{JSON.stringify(blocks)!==writingUndo.after&&' Further edits made; use page history to restore earlier text.'}</div>}
     {citationTarget && <CitationPicker vaultId={props.vaultId} entities={entities} blocks={blocks} getAnchor={()=>resolveCitationRange(citationTarget.editor,citationTarget.bookmark)} editor={citationTarget.editor} onInsert={insertCitations} onInsertBibliographic={insertBibliographicCitations} onClose={closeCitation}/>}
     {mathTarget && <InlineMathEditor onMakeDisplay={inlineMathHost()?makeInlineMathDisplay:undefined} range={mathTarget.range} node={mathTarget.node} initial={mathTarget.initial} onSave={saveInlineMath} onClose={() => setMathTarget(null)}/>}
     {pageLinkStatus && <div className="note-link-status" role="status">{pageLinkStatus}</div>}

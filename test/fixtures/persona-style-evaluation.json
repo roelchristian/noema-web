@@ -1,19 +1,113 @@
 {
   "liveEvaluation": "UNRUN",
-  "personaIds": ["oxford_don", "divinity_student", "editor", "tutor", "antiquarian", "socratic", "salon_wit"],
+  "personaIds": [
+    "oxford_don",
+    "divinity_student",
+    "editor",
+    "tutor",
+    "antiquarian",
+    "socratic",
+    "salon_wit"
+  ],
   "prompts": [
-    {"input":"The supplied theological note distinguishes definitive doctrine from a theological opinion and a disciplinary practice. Explain these distinctions without assigning authority beyond what the note establishes, and fairly describe the position it critiques.","language":"English"},
-    {"input":"A group has an identity element e such that ae = ea = a. Explain why this does not imply every element is its own inverse.","language":"English"},
-    {"input":"A trial found an association between study time and scores but did not randomly assign study time. Explain the limits of its conclusion.","language":"French"},
-    {"input":"The account describes grief after a death, with uncertainty about what support the family received. Explain what can and cannot be concluded.","language":"English"}
+    {
+      "id": "theology-authority",
+      "domain": "theology",
+      "input": "The supplied theological note distinguishes definitive doctrine from a theological opinion and a disciplinary practice. Explain these distinctions without assigning authority beyond what the note establishes, and fairly describe the position it critiques.",
+      "language": "English",
+      "format": "Short explanation",
+      "fidelityChecks": [
+        "Do not invent authorities, Scripture passages, citations, or a teaching status.",
+        "Represent the criticised position fairly."
+      ]
+    },
+    {
+      "id": "group-identity",
+      "domain": "mathematics",
+      "input": "A group has an identity element e such that ae = ea = a. Explain why this does not imply every element is its own inverse.",
+      "language": "English",
+      "format": "Short explanation",
+      "fidelityChecks": [
+        "Preserve ae = ea = a.",
+        "Distinguish identity from inverse; avoid claiming a = a⁻¹ in every group.",
+        "Do not introduce religious claims into algebra."
+      ]
+    },
+    {
+      "id": "literary-close-reading",
+      "domain": "literature",
+      "input": "Read only this invented passage: “Mara folded the unanswered letter and placed it beneath the clock. At noon she moved the clock, but left the letter where it was.” Explain two possible interpretations of the juxtaposition. Distinguish textual evidence from inference and do not invent a biography, historical setting, or authorial intention.",
+      "language": "English",
+      "format": "Two interpretations with textual support",
+      "fidelityChecks": [
+        "Treat motive and interpretation as uncertain.",
+        "Preserve quoted wording and the sequence of actions.",
+        "Do not invent historical or biographical context."
+      ]
+    },
+    {
+      "id": "historical-fragment",
+      "domain": "history",
+      "input": "The supplied inventory records twelve sacks of grain in a town storehouse in 1712. A second surviving record, dated 1714, lists eight sacks. The intervening records are missing. Explain what these records establish and which explanations remain hypotheses. Use only this evidence; do not infer a famine, war, price change, or named official.",
+      "language": "English",
+      "format": "Evidence then limits",
+      "fidelityChecks": [
+        "Keep dates and quantities unchanged.",
+        "Do not turn missing records into evidence of loss or crisis.",
+        "Historical texture must remain within supplied facts."
+      ]
+    },
+    {
+      "id": "association-language",
+      "domain": "evidence",
+      "input": "A trial found an association between study time and scores but did not randomly assign study time. Explain the limits of its conclusion.",
+      "language": "French",
+      "format": "Short explanation in French",
+      "fidelityChecks": [
+        "Do not infer causation or a randomised design.",
+        "Output French without unsolicited code-switching."
+      ]
+    },
+    {
+      "id": "bereavement-sensitive",
+      "domain": "sensitive",
+      "input": "The account describes grief after a death, with uncertainty about what support the family received. Explain what can and cannot be concluded.",
+      "language": "English",
+      "format": "Compassionate explanation",
+      "fidelityChecks": [
+        "Preserve uncertainty about support.",
+        "Avoid jokes, irony, theatricality, intrusive religious advice, or invented family details."
+      ]
+    },
+    {
+      "id": "violence-sensitive",
+      "domain": "sensitive",
+      "input": "A witness account reports that a survivor declined an interview after an assault. It gives no reason for that choice. Explain why the refusal does not establish the survivor’s motives or the reliability of the account. Do not speculate about trauma symptoms or offer a diagnosis.",
+      "language": "English",
+      "format": "Restrained evidence-based explanation",
+      "fidelityChecks": [
+        "Do not invent motives, symptoms, diagnoses, or blame.",
+        "No levity, provocative interrogation, or rhetorical spectacle."
+      ]
+    }
   ],
   "rubric": [
-    "Score 0–2: Divinity Student distinguishes levels of Catholic teaching without invented authority or citations, fairly represents other positions, and avoids excessive devotional language.",
-    "Score 0–2: voice is recognizably consistent with the named character without parody or repeated catchphrases.",
-    "Score 0–2: terminology, equations, evidence boundaries and uncertainty remain accurate across all voices.",
-    "Score 0–2: explicit output language wins; Divinity Student preserves requested French and does not insert unsolicited religious commentary.",
-    "Score 0–2: questions, wit and historical parallels aid understanding; no invented anecdotes or extra-source facts.",
-    "Score 0–2: humour and whimsy are muted for grief; Socratic persona still supplies substantive conclusions."
+    "Stylistic distinctiveness (0–4, independent of fidelity): rhetorical organisation and development are recognisable for the selected persona; compare blind-labelled outputs rather than counting decorative vocabulary.",
+    "Factual fidelity (0–4, independent of style): facts, equations, citations, uncertainty, evidence scope, and meaning remain intact; record every unsupported assertion separately. A factual failure cannot be offset by style.",
+    "Task and format adherence (0–4): requested language, length, purpose, structure, and any output schema are satisfied; persona does not add unsolicited content or defeat the task.",
+    "Excessive mannerism (0–4, higher is better): natural proportionate expression without catchphrases, parody, repeated rhetorical questions, gratuitous theology, invented historical colour, or ornamental digressions.",
+    "Sensitive adaptation (0–4, higher is better): compassion and restraint replace levity, theatricality, invasive speculation, and adversarial questioning where the subject requires care.",
+    "Expression calibration (0–4): subtle, expressive, and immersive differ in rhetorical latitude while preserving all fidelity and format checks. Stronger expression is not measured by randomness."
   ],
-  "procedure": "Human/live provider evaluation is unrun. With separately authorized credentials, generate each prompt unchanged for all seven personas using the same model/settings, blind-label outputs, then score each rubric dimension. Deterministic tests verify composition only."
+  "procedure": "OPT-IN ONLY; provider and human evaluation remain UNRUN. After separate authorisation for credentials and API spend, freeze each input, language, task format, provider/model, reasoning setting, token budget and sampling settings; generate all seven personas at each expression level. Blind-label and randomise outputs, use independent reviewers for style and fidelity, record each dimension separately plus unsupported claims and excessive mannerisms, and retain actual outputs/settings. Compare repeated samples before drawing quality conclusions. Deterministic and mocked-provider tests verify contracts and workflows only; they do not establish live stylistic distinction.",
+  "expressionLevels": [
+    "subtle",
+    "expressive",
+    "immersive"
+  ],
+  "evaluationStatus": {
+    "providerCalls": "UNRUN",
+    "humanReview": "UNRUN",
+    "mockPurpose": "Contract and workflow verification only; mock text is not evidence of stylistic quality."
+  }
 }

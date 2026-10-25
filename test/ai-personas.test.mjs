@@ -4,8 +4,8 @@ import {mkdtempSync,rmSync,readFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID,createHash} from 'node:crypto';
-import {aiPersonas,builtinPersonaIds,isPersonaId,personaIdentityName,parsePersonaIdentity} from '../src/shared/ai-personas.ts';
-import {personaRegistry,resolvePersona} from '../src/server/modules/ai-personas.ts';
+import {aiPersonas,aiPersonasV1,parsePersonaExpression,builtinPersonaIds,isPersonaId,personaIdentityName,parsePersonaIdentity} from '../src/shared/ai-personas.ts';
+import {personaRegistry,personaRegistryV1,personaProfiles,personaInstructions,resolvePersona} from '../src/server/modules/ai-personas.ts';
 import {generationPolicy} from '../src/server/modules/generation-request.ts';
 import {generationContracts} from './helpers/generation-contract.ts';
 import {Intelligence,intelligencePreferencesFor} from '../src/server/modules/intelligence.ts';
@@ -22,19 +22,19 @@ import {parsePageGenerationMetadata} from '../src/shared/page-generation.ts';
 import {defaultSourcePageOptions} from '../src/shared/source-page.ts';
 const selection={model:'gpt-5-mini',reasoningEffort:'low'};
 const selections={standard:selection,title:selection,enrichment:selection};
-const identity=id=>({id,version:1,origin:'builtin'});
+const identity=id=>id==='conyo'?({id,version:1,origin:'builtin'}):({id,version:2,origin:'builtin',expression:'expressive'});
 class Secrets {value=null;read(){return this.value;}write(value){this.value=value;}remove(){this.value=null;}}
 function fixture(){const dir=mkdtempSync(path.join(tmpdir(),'noema-personas-')),filename=path.join(dir,'test.sqlite'),db=openDatabase(filename),store=new Store(db);return {dir,filename,db,store,close(){db.close();rmSync(dir,{recursive:true,force:true});}};}
-test('seven immutable v1 built-ins have distinct character, samples and server-only instructions',()=>{
+test('seven immutable v2 built-ins have distinct character, samples and server-only instructions',()=>{
  assert.equal(aiPersonas.length,7);assert.equal(personaRegistry.length,7);assert.equal(isPersonaId('conyo'),false);assert.equal(isPersonaId('divinity_student'),true);assert.deepEqual(aiPersonas.map(p=>p.id),builtinPersonaIds);assert.equal(new Set(personaRegistry.map(p=>p.instructions)).size,7);
- for(const p of aiPersonas){assert.ok(Object.isFrozen(p));assert.equal(p.version,1);assert.equal(p.origin,'builtin');for(const key of ['name','description','character','sample'])assert.ok(p[key]);assert.equal('instructions' in p,false);assert.ok(Object.isFrozen(personaRegistry.find(r=>r.id===p.id)));assert.deepEqual({...resolvePersona(p.id),name:undefined,instructions:undefined},{...identity(p.id),name:undefined,instructions:undefined});}
+ for(const p of aiPersonas){assert.ok(Object.isFrozen(p));assert.equal(p.version,2);assert.equal(p.origin,'builtin');for(const key of ['name','description','character','sample'])assert.ok(p[key]);assert.equal('instructions' in p,false);assert.ok(Object.isFrozen(personaRegistry.find(r=>r.id===p.id)));assert.deepEqual({...resolvePersona(p.id),name:undefined,instructions:undefined},{...identity(p.id),name:undefined,instructions:undefined});}
  for(const value of [undefined,null,{},'removed','__proto__'])assert.equal(resolvePersona(value).id,'oxford_don');
- for(const version of [0,2,-1,NaN])assert.equal(resolvePersona('conyo',version).id,'oxford_don');
+ for(const version of [0,-1,NaN])assert.equal(resolvePersona('conyo',version).id,'oxford_don');
  assert.deepEqual(parsePersonaIdentity({id:'retired',version:2,origin:'custom'}),{id:'retired',version:2,origin:'custom'});
  assert.throws(()=>parsePersonaIdentity({id:'conyo',version:0,origin:'builtin'}));
 });
 test('every admitted prose variant composes persona; every utility payload stays identical for all seven defaults',()=>{
- for(const {label,request} of generationContracts){const base=generationPolicy(request,selections);for(const p of aiPersonas){const policy=generationPolicy(request,{...selections,personaId:p.id});const prompt=policy.prompt();if(['explanation','sourcePage','review'].includes(request.kind)){assert.equal(policy.persona.id,p.id,label);assert.match(prompt.instructions,new RegExp('AI PERSONA: '+p.name));assert.match(prompt.instructions,/FINAL OVERRIDING CONSTRAINTS/);assert.deepEqual(prompt.input,base.prompt().input);assert.equal(policy.stream,base.stream);assert.equal(policy.maxOutputTokens,base.maxOutputTokens);}else{assert.equal(policy.persona,undefined,label);assert.deepEqual(prompt,base.prompt(),label);}}
+ for(const {label,request} of generationContracts){const base=generationPolicy(request,selections);for(const p of aiPersonas){const policy=generationPolicy(request,{...selections,personaId:p.id});const prompt=policy.prompt();if(['explanation','sourcePage','review','personaPreview'].includes(request.kind)){const selected=request.kind==='personaPreview'?aiPersonas.find(p=>p.id===request.personaId):p;assert.equal(policy.persona.id,selected.id,label);assert.match(prompt.instructions,new RegExp('AI PERSONA: '+selected.name));assert.match(prompt.instructions,/FINAL OVERRIDING CONSTRAINTS/);assert.deepEqual(prompt.input,base.prompt().input);assert.equal(policy.stream,base.stream);assert.equal(policy.maxOutputTokens,base.maxOutputTokens);}else{assert.equal(policy.persona,undefined,label);assert.deepEqual(prompt,base.prompt(),label);}}
  }
  const request={kind:'explanation',input:'A claim.',personaId:'editor'};assert.equal(generationPolicy(request,{...selections,personaId:'divinity_student'}).persona.id,'editor');
  assert.equal(generationPolicy({...request,personaId:'removed'},{...selections,personaId:'divinity_student'}).persona.id,'oxford_don');
@@ -65,6 +65,8 @@ test('source revisions retain original persona through default changes, acceptan
  try{const file=files.add('default','persona-source.txt',Buffer.from('A group has an identity.')),source=knowledge.create('default',{name:'Synthetic persona source',type:'source',attachmentIds:[file.id]});await files.tick();
  function stage(body,defaultId){const prepared=sources.prepare('default',source.id,{requestId:randomUUID(),options:{...defaultSourcePageOptions,language:'English'},...body},defaultId);const draft=new SourcePageDraft(()=>{},prepared.file.text,prepared.file,'English');draft.feed(JSON.stringify({type:'title',title:'Identity',language:'en'})+'\n'+JSON.stringify({type:'block',blockType:'paragraph',basis:'source',text:'The source describes an identity.',citations:[{startLine:1,endLine:1}]})+'\n');draft.finish();return {prepared,review:sources.stage('default',prepared,draft,'synthetic')};}
  const first=stage({personaId:'divinity_student'},'divinity_student');assert.deepEqual(first.review.persona,identity('divinity_student'));
+ assert.equal(first.prepared.fingerprint,createHash('sha256').update(JSON.stringify([source.id,'divinity_student',null,'',{...defaultSourcePageOptions,language:'English'},'','changes'])).digest('hex'),'Historical explicit-persona fingerprint tuple stays unchanged');
+ assert.equal(sources.prepare('default',source.id,{requestId:first.review.id,personaId:'divinity_student',options:{...defaultSourcePageOptions,language:'English'}},'editor').review.id,first.review.id);
  // Simulate an existing Conyo v1 draft from before replacement without relabelling it.
  const originalMetadata=JSON.parse(env.store.get('SELECT generation_metadata FROM source_page_drafts WHERE request_id=?',first.review.id).generation_metadata);originalMetadata.persona=identity('conyo');
  env.store.run('UPDATE source_page_drafts SET generation_metadata=? WHERE request_id=?',JSON.stringify(originalMetadata),first.review.id);
@@ -72,8 +74,11 @@ test('source revisions retain original persona through default changes, acceptan
  assert.throws(()=>sources.prepare('default',other.id,{requestId:first.review.id,personaId:'divinity_student',options:{...defaultSourcePageOptions,language:'English'}}),e=>e.status===409,'Request fingerprints must retain source scope with explicit persona overrides');
  const second=stage({revision:{draftId:first.review.id,feedback:'Clarify.',mode:'changes'}},'editor');assert.deepEqual(second.prepared.persona,identity('conyo'));assert.deepEqual(second.review.persona,identity('conyo'));assert.equal(personaIdentityName(second.review.persona),'Conyo');
  assert.match(generationPolicy({kind:'sourcePage',input:second.prepared.input,personaId:second.prepared.persona.id,personaVersion:second.prepared.persona.version,signal:new AbortController().signal,onDelta(){}},selections).prompt().instructions,/AI PERSONA: Conyo/);
+ const historicalDraft=env.store.get('SELECT * FROM source_page_drafts WHERE request_id=?',second.review.id);
  const third=stage({revision:{draftId:second.review.id,feedback:'Again.',mode:'retry'},personaId:'tutor'},'editor');assert.deepEqual(third.review.persona,identity('tutor'));
- const page=sources.accept('default',source.id,third.review.id).page;assert.deepEqual(page.generationMetadata.persona,identity('tutor'));assert.doesNotMatch(page.generationMetadata.instructions,/AI PERSONA:/);
+ const preservedDraft=env.store.get('SELECT * FROM source_page_drafts WHERE request_id=?',second.review.id);assert.deepEqual({...preservedDraft},{...historicalDraft,status:'rejected'},'Superseded v1 draft retains its original content, source options and generation provenance');
+ const preAcceptance=env.store.get('SELECT * FROM source_page_drafts WHERE request_id=?',third.review.id);
+ const page=sources.accept('default',source.id,third.review.id).page;assert.deepEqual({...env.store.get('SELECT * FROM source_page_drafts WHERE request_id=?',third.review.id)},{...preAcceptance,status:'accepted'},'Accepted drafts retain their historical snapshots');assert.deepEqual(page.generationMetadata.persona,identity('tutor'));assert.doesNotMatch(page.generationMetadata.instructions,/AI PERSONA:/);
  const legacyDraft=stage({},'divinity_student');
  const legacyMetadata=JSON.parse(env.store.get('SELECT generation_metadata FROM source_page_drafts WHERE request_id=?',legacyDraft.review.id).generation_metadata);legacyMetadata.persona=identity('conyo');
  env.store.run('UPDATE source_page_drafts SET generation_metadata=? WHERE request_id=?',JSON.stringify(legacyMetadata),legacyDraft.review.id);
@@ -135,4 +140,106 @@ test('Divinity Student instructions express Catholic formation, authority distin
  const instructions=resolvePersona('divinity_student',1).instructions;
  for(const phrase of ['Scripture','Fathers and Doctors','scholastic theology','magisterial teaching','liturgy','Catholic social doctrine','dogma','definitive doctrine','authoritative non-definitive teaching','theological opinion','disciplinary practice','fairly and charitably','Never invent authorities','Avoid excessive devotional','non-theological subjects','preserve the author’s voice'])assert.ok(instructions.includes(phrase),phrase);
  const review=generationPolicy({kind:'review',input:'Synthetic text',personaId:'divinity_student'},selections).prompt();assert.match(review.instructions,/only to explanatory rationale/);assert.match(review.instructions,/Never rewrite corrections in the persona’s voice/);
+});
+
+
+test('v1 prompt snapshots are immutable and distinct from v2 compositional profiles',()=>{
+ assert.equal(aiPersonasV1.length,7);assert.equal(personaRegistryV1.length,7);
+ for(const legacy of personaRegistryV1){
+  const resolved=resolvePersona(legacy.id,1);
+  assert.equal(legacy.version,1);assert.equal(resolved.version,1);assert.equal(resolved.expression,undefined);
+  assert.equal(resolved.instructions,`AI PERSONA: ${legacy.name} (v1). Character: ${legacy.character} ${legacy.instructions}`);
+  assert.match(personaInstructions('TASK',resolved),/Persona governs presentation only/);
+ }
+ for(const profile of personaProfiles){assert.ok(Object.isFrozen(profile));assert.ok(Object.isFrozen(profile.composition));assert.equal(profile.version,2);assert.ok(profile.examples.length);assert.equal(profile.constraints.respectEvidence,true);}
+ for(const expression of ['subtle','expressive','immersive'])assert.equal(resolvePersona('editor',2,expression).expression,expression);
+ assert.throws(()=>parsePersonaExpression('loud'));assert.throws(()=>parsePersonaIdentity({id:'editor',version:2,origin:'builtin',expression:'loud'}));
+});
+
+test('expression overrides preserve generation contract and historical v1 has no expression reinterpretation',()=>{
+ const request={kind:'explanation',input:'Untrusted prose.',personaId:'socratic'};
+ const immersive=generationPolicy({...request,personaExpression:'immersive'},selections);
+ assert.equal(immersive.persona.expression,'immersive');assert.match(immersive.prompt().instructions,/rhetorical method/);
+ const legacy=generationPolicy({...request,personaVersion:1,personaExpression:'immersive'},selections);
+ assert.equal(legacy.persona.version,1);assert.equal(legacy.persona.expression,undefined);assert.doesNotMatch(legacy.prompt().instructions,/AUTHORING PROFILE/);
+ const source={kind:'sourcePage',input:'{}',signal:new AbortController().signal,onDelta(){}};
+ assert.match(generationPolicy(source,selections).prompt().instructions,/COMPOSITION WITHIN THIS REQUEST/);
+ assert.doesNotMatch(generationPolicy({...source,personaVersion:1},selections).prompt().instructions,/COMPOSITION WITHIN THIS REQUEST/);
+});
+
+test('expression preferences persist, invalid updates are atomic, and old identities stay sparse',()=>{
+ const env=fixture();try{
+  const secrets=new Secrets(),ai=new Intelligence(secrets,fetch,Date.now,intelligencePreferencesFor(env.store));
+  assert.equal(ai.status().personaExpression,'expressive');
+  ai.saveCategoryPreferences('ai',{...selection,personaId:'editor',personaExpression:'immersive'});
+  assert.equal(new Intelligence(secrets,fetch,Date.now,intelligencePreferencesFor(env.store)).status().personaExpression,'immersive');
+  assert.throws(()=>ai.saveCategoryPreferences('ai',{...selection,personaExpression:'extreme'}),e=>e.status===400);
+  assert.equal(ai.status().personaExpression,'immersive');
+  assert.throws(()=>ai.personaSelection('editor',undefined,'extreme'),e=>e.status===400);
+  assert.deepEqual(parsePersonaIdentity({id:'editor',version:1,origin:'builtin'}),{id:'editor',version:1,origin:'builtin'});
+  assert.equal(ai.personaSelection('editor',1).expression,undefined);
+  assert.equal(ai.personaSelection('editor').expression,'immersive');
+ }finally{env.close();}
+});
+
+test('reading expression overrides inherit defaults and legacy retries do not acquire metadata',async()=>{
+ const env=fixture(),knowledge=new Knowledge(env.store),pages=new Pages(env.store,knowledge),files=new SourceFiles(env.store),reading=new SourceReading(env.store);
+ try{
+  const file=files.add('default','reading-expression.txt',Buffer.from('An identity leaves each element unchanged.'));
+  const source=knowledge.create('default',{name:'Synthetic expression source',type:'source',attachmentIds:[file.id]});await files.tick();
+  const processed=env.store.get('SELECT * FROM source_files WHERE id=?',file.id);
+  const body={sourceId:source.id,fileId:file.id,sourceHash:createHash('sha256').update(processed.text).digest('hex'),startOffset:0,endOffset:processed.text.length,excerpt:processed.text,requestId:randomUUID(),language:'English',familiarity:'beginner'};
+  const inherited=reading.prepareExplanation('default',file.id,body,'editor','immersive');assert.equal(inherited.options.persona.expression,'immersive');
+  const explicit=reading.prepareExplanation('default',file.id,{...body,personaExpression:'subtle'},'editor','immersive');assert.equal(explicit.options.persona.expression,'subtle');
+  assert.throws(()=>reading.prepareExplanation('default',file.id,{...body,personaExpression:'loud'}),e=>e.status===400);
+  const note=reading.createReadingNote('default',file.id,{...body,text:'An identity leaves each element unchanged.'},inherited.options);
+  const metadata={...note.generationMetadata};delete metadata.persona;
+  env.store.run('UPDATE pages SET generation_metadata=? WHERE id=?',JSON.stringify(metadata),note.id);
+  const retry=reading.prepareExplanation('default',file.id,body,'salon_wit','immersive');
+  assert.ok(retry.saved);assert.equal(retry.options.persona.version,1);assert.equal(retry.options.persona.expression,undefined);assert.equal(retry.saved.generationMetadata.persona,undefined);
+  assert.equal(pages.get('default',note.id).generationMetadata.persona,undefined);
+ }finally{files.close();env.close();}
+});
+
+
+test('block explanation client forwards historical expression during regeneration',async t=>{
+ const {api}=await import('../src/client/api.ts');let sent;
+ const original={id:'tutor',version:2,origin:'builtin',expression:'immersive'};
+ t.mock.method(globalThis,'fetch',async(_url,options)=>{sent=JSON.parse(options.body);return Response.json({markdown:'Synthetic explanation.',persona:original});});
+ const result=await api.explainBlocks('default','synthetic',[],original);
+ assert.equal(sent.personaVersion,2);assert.equal(sent.personaExpression,'immersive');assert.deepEqual(result.persona,original);
+});
+
+
+test('source-version selector preserves original persona fingerprint and expression metadata',async()=>{
+ const env=fixture(),knowledge=new Knowledge(env.store),pages=new Pages(env.store,knowledge),files=new SourceFiles(env.store),sources=new SourcePages(env.store,knowledge,pages);
+ try{
+  const file=files.add('default','persona-source-version.txt',Buffer.from('A group has an identity element.'));
+  const source=knowledge.create('default',{name:'Persona source version compatibility',type:'source',attachmentIds:[file.id]});await files.tick();
+  const requestId=randomUUID(),body={requestId,sourceRevisionId:'',personaId:'socratic',personaExpression:'immersive',options:{...defaultSourcePageOptions,language:'English'}};
+  const prepared=sources.prepare('default',source.id,body,'editor','subtle');
+  assert.equal(prepared.sourceRevisionId,'');assert.equal(prepared.persona.version,2);assert.equal(prepared.persona.expression,'immersive');
+  const settings=[source.id,'socratic','immersive',null,'',body.options,'','changes'];
+  assert.equal(prepared.fingerprint,createHash('sha256').update(JSON.stringify(settings)).digest('hex'));
+  const draft=new SourcePageDraft(()=>{},prepared.sourceVersion.file.text,prepared.sourceVersion.file,'English',prepared.sourceVersion.document);
+  draft.feed(JSON.stringify({type:'title',title:'Identity',language:'en'})+'\n'+JSON.stringify({type:'block',blockType:'paragraph',basis:'source',text:'A group has an identity.',citations:[{startLine:1,endLine:1}]})+'\n');draft.finish();
+  const staged=sources.stage('default',prepared,draft,'synthetic');
+  assert.equal(staged.sourceRevisionId,'');assert.equal(staged.persona.expression,'immersive');
+  const replay=sources.prepare('default',source.id,body,'tutor','subtle');assert.equal(replay.review.id,staged.id);assert.equal(replay.review.persona.expression,'immersive');
+  const revised=sources.prepare('default',source.id,{requestId:randomUUID(),sourceRevisionId:'',revision:{draftId:staged.id,feedback:'Clarify.'}},'editor','subtle');
+  assert.equal(revised.persona.id,'socratic');assert.equal(revised.persona.expression,'immersive');
+  assert.throws(()=>sources.prepare('default',source.id,{...body,personaExpression:'subtle'}),e=>e.status===409);
+  const preRejection=env.store.get('SELECT * FROM source_page_drafts WHERE request_id=?',staged.id);sources.reject('default',source.id,staged.id);
+  assert.deepEqual({...env.store.get('SELECT * FROM source_page_drafts WHERE request_id=?',staged.id)},{...preRejection,status:'rejected'},'Rejected drafts retain their historical snapshots');
+ }finally{files.close();env.close();}
+});
+
+test('source-page client sends source revision and persona expression without positional collision',async t=>{
+ const {createPageFromSource}=await import('../src/client/api.ts');let sent;
+ const previous=Object.getOwnPropertyDescriptor(globalThis,'window');
+ Object.defineProperty(globalThis,'window',{configurable:true,value:{dispatchEvent(){}}});
+ t.after(()=>{if(previous)Object.defineProperty(globalThis,'window',previous);else delete globalThis.window;});
+ t.mock.method(globalThis,'fetch',async(_url,options)=>{sent=JSON.parse(options.body);return new Response(JSON.stringify({type:'review',draft:{id:'synthetic'}})+'\n');});
+ await createPageFromSource('default','synthetic','',defaultSourcePageOptions,'synthetic',()=>{},new AbortController().signal,undefined,'tutor','selected-source-revision','immersive');
+ assert.equal(sent.sourceRevisionId,'selected-source-revision');assert.equal(sent.personaExpression,'immersive');assert.equal(sent.personaId,'tutor');
 });

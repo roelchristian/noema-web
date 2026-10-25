@@ -1,3 +1,4 @@
+import type {WritingAction} from '../../shared/editor-review';
 import {t as uiText} from '../i18n';
 import { semanticFunctions, editableSemanticKinds, type SemanticKind } from '../../shared/semantic-blocks';
 import { clearEditorSelection, editorSelectionRange, editorSelectionRanges, selectedEditorBlocks } from './block-selection';
@@ -16,7 +17,7 @@ interface Props {
   keyboardInset?: number;
   viewportHeight?: number;
   onRead?: () => void;
-  onReview?:()=>void;
+  onReview?:(action:WritingAction)=>void;
   reviewing?:boolean;
   onExplain?: () => void;
   explaining?: boolean;
@@ -301,7 +302,7 @@ export function SelectionToolbar({mobile = false, keyboardInset = 0, viewportHei
       </div>
       <div role="group" aria-label="AI">
         <p className="selection-action-group" aria-hidden="true">AI</p>
-        {onReview&&<button type="button" role="menuitem" tabIndex={-1} data-selection-action="review" disabled={reviewing} onClick={()=>{const current=saved.current;releaseSheet();if(current&&restore(current))onReview();dismiss();}}><Icon name="sparkles"/><span>{uiText("Review with AI")}</span></button>}
+        {onReview&&(['proofread','refine','rewrite','recast'] as const).map(action=><button key={action} type="button" role="menuitem" tabIndex={-1} data-selection-action={action==='proofread'?'review':action} disabled={reviewing} onClick={()=>{const current=saved.current;releaseSheet();if(current&&restore(current))onReview(action);dismiss();}}><Icon name="sparkles"/><span>{action==='proofread'?'Proofread':action==='refine'?'Refine':action==='rewrite'?'Rewrite with Persona':'Recast'}</span></button>)}
         <button type="button" role="menuitem" tabIndex={-1} data-selection-action="explain" disabled={explaining || !onExplain} onClick={() => { const current = saved.current; releaseSheet(); if (current && restore(current)) onExplain?.(); dismiss(); }}><Icon name="sparkles"/><span>{explanationAction}</span></button>
       </div>
     </div>}

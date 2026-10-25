@@ -37,7 +37,8 @@
     "test/notification-reducer.test.mjs",
     "test/notification-workspace.test.mjs",
     "test/tagline.test.mjs",
-    "test/source-annotation-mapping.test.mjs"
+    "test/source-annotation-mapping.test.mjs",
+    "test/writing-actions.test.mjs"
   ],
   "dom": [
     "test/trash-ui.test.mjs",
@@ -109,7 +110,9 @@
     "test/notice-recovery-ui.test.mjs",
     "test/notification-bridge.test.mjs",
     "test/chat-navigation.test.mjs",
-    "test/source-revision-diff.test.mjs"
+    "test/source-revision-diff.test.mjs",
+    "test/writing-actions-ui.test.mjs",
+    "test/persona-comparison.test.mjs"
   ],
   "server": [
     "test/activity-page-titles.test.mjs",
@@ -254,6 +257,7 @@
     "test/source-reading-revisions.test.mjs",
     "test/source-page-revisions.test.mjs",
     "test/chat-context-expansion.test.mjs",
-    "test/chat-context-security.test.mjs"
+    "test/chat-context-security.test.mjs",
+    "test/persona-preview-http.test.mjs"
   ]
 }

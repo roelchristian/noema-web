@@ -1,5 +1,5 @@
-import {PersonaSelect,useDefaultPersona} from '../components/PersonaSelect';
-import {personaMetadata,personaIdentityName} from '../../shared/ai-personas';
+import {PersonaExpressionSelect,PersonaSelect,useDefaultPersona} from '../components/PersonaSelect';
+import {personaMetadata,personaIdentityName,type PersonaExpression} from '../../shared/ai-personas';
 import {getLocale,languageLabel,t as uiText} from '../i18n';
 import {TitleText} from '../components/TitleText';
 import {sourceDuration,type SourceProcessingProgress} from '../../shared/source-progress';
@@ -45,6 +45,7 @@ export function CreatePageFromSourceDialog({vaultId,source,onClose,onCreated,onO
   const [focus,setFocus]=useState(''),[title,setTitle]=useState(''),[blocks,setBlocks]=useState<Block[]>([]),[phase,setPhase]=useState<Phase>('loading'),[error,setError]=useState(''),[draft,setDraft]=useState<SourcePageReview|null>(null),[page,setPage]=useState<Page|null>(null),[opening,setOpening]=useState(false);
   const inheritedPersona=useDefaultPersona();
   const [personaId,setPersonaId]=useState('');
+  const [personaExpression,setPersonaExpression]=useState<PersonaExpression|''>('');
   const [options,setOptions]=useState<SourcePageOptions>(readSourcePagePreferences);
   const [submitted,setSubmitted]=useState<{options:SourcePageOptions;focus:string}|null>(null);
   const [retryOpen,setRetryOpen]=useState(false),[feedback,setFeedback]=useState('');
@@ -62,7 +63,7 @@ export function CreatePageFromSourceDialog({vaultId,source,onClose,onCreated,onO
   useEffect(()=>{if(!running)return;const timer=setInterval(()=>setClock(Date.now()),1000);return()=>clearInterval(timer);},[running]);
   const route=`entities/${encodeURIComponent(source.id)}/create-page`;
   function clearLive(){if(liveTimer.current!==null)clearTimeout(liveTimer.current);liveTimer.current=null;live.current=null;setLiveBlock(null);}
-  function review(value:SourcePageReview){setPersonaId('');setSubmitted({options:normalizeSourcePageOptions(value.options),focus:value.focus});clearLive();generation.current={id:value.id,settings:JSON.stringify([value.focus,value.options??defaultSourcePageOptions])};setOptions(normalizeSourcePageOptions(value.options));setDraft(value);setFocus(value.focus);setTitle(value.title);setBlocks(value.blocks);setPhase('review');setRetryOpen(false);setFeedback('');}
+  function review(value:SourcePageReview){setPersonaId('');setPersonaExpression('');setSubmitted({options:normalizeSourcePageOptions(value.options),focus:value.focus});clearLive();generation.current={id:value.id,settings:JSON.stringify([value.focus,value.options??defaultSourcePageOptions])};setOptions(normalizeSourcePageOptions(value.options));setDraft(value);setFocus(value.focus);setTitle(value.title);setBlocks(value.blocks);setPhase('review');setRetryOpen(false);setFeedback('');}
   useEffect(()=>{
     active.current=true;const controller=new AbortController();request.current=controller;
     void apiRequest<{draft:SourcePageReview|null}>(route,'GET',undefined,vaultId,controller.signal).then(result=>{if(active.current&&!controller.signal.aborted){if(result.draft)review(result.draft);else setPhase('idle');}}).catch(error=>{if(active.current&&!controller.signal.aborted){setPhase('failed');setError(error instanceof Error?error.message:'Could not check for an existing draft.');}});
@@ -82,7 +83,7 @@ export function CreatePageFromSourceDialog({vaultId,source,onClose,onCreated,onO
     if(generationOptions.language==='current-ui')generationOptions.language=getLocale();
     setSubmitted({options:generationOptions,focus:focus.trim()});
     const controller=new AbortController();request.current=controller;
-    const settings=JSON.stringify([focus.trim(),generationOptions,personaId,...(revision?[revision]:[])]);
+    const settings=JSON.stringify([focus.trim(),generationOptions,personaId,personaExpression,...(revision?[revision]:[])]);
     if(generation.current.settings!==settings)generation.current={id:randomUUID(),settings};
     clearLive();setGenerationStage('waiting');setWaitingLonger(false);setMathProgress(undefined);setEstimate(undefined);startedAt.current=Date.now();setClock(Date.now());
     setPhase('generating');setTitle('');setBlocks([]);setError('');follow.current=true;
@@ -108,7 +109,7 @@ export function CreatePageFromSourceDialog({vaultId,source,onClose,onCreated,onO
       else if(event.type==='review')review(event.draft);
       else if(event.type==='completed'){clearLive();setPage(event.page);setTitle(event.page.title);setBlocks(event.page.blocks);setPhase('completed');onCreated(event.page);}
     };
-    try{await createPageFromSource(vaultId,source.id,focus.trim(),generationOptions,generation.current.id,receive,controller.signal,revision,personaId||undefined);}
+    try{await createPageFromSource(vaultId,source.id,focus.trim(),generationOptions,generation.current.id,receive,controller.signal,revision,personaId||undefined,personaExpression||undefined);}
     catch(error){if(active.current&&!controller.signal.aborted){clearLive();if(previousDraft){setTitle(previousDraft.title);setBlocks(previousDraft.blocks);setPhase('review');}else setPhase('failed');setError(error instanceof Error?error.message:'Could not generate the page. Please retry.');}}
     finally{clearTimeout(slowTimer);if(request.current===controller)request.current=null;}
   }
@@ -177,14 +178,14 @@ export function CreatePageFromSourceDialog({vaultId,source,onClose,onCreated,onO
           </optgroup>
         </Select></label>
         <label className="source-page-option">{uiText("Reader familiarity")}<Select aria-label={uiText("Reader familiarity")} value={options.familiarity} disabled={controlsDisabled} onChange={event=>setOptions(current=>({...current,familiarity:event.target.value as SourcePageOptions['familiarity']}))}>{Object.entries(sourcePageChoices.familiarity.options).map(([value,label])=><option key={value} value={value}>{uiText(label)}</option>)}</Select></label>
-        <PersonaSelect value={personaId} onChange={setPersonaId} disabled={busy||!!page||(!!draft&&!retryOpen)}/>
+        <PersonaExpressionSelect value={personaExpression} onChange={setPersonaExpression} disabled={busy||!!page||(!!draft&&!retryOpen)}/><PersonaSelect value={personaId} onChange={setPersonaId} disabled={busy||!!page||(!!draft&&!retryOpen)}/>
       </div>
       <div className="source-page-scope"><div><span id="source-page-scope-label">{uiText("Go beyond sources")}</span><p id="source-page-scope-hint">{options.beyondSources?uiText("Allow clearly labeled AI background knowledge and illustrative examples."):uiText("Use only the supplied source. Any analysis stays grounded in its text.")}</p></div><button type="button" className="source-page-switch" role="switch" aria-checked={options.beyondSources} aria-labelledby="source-page-scope-label" aria-describedby="source-page-scope-hint" disabled={controlsDisabled} onClick={()=>setOptions(current=>sourcePageScope(current,!current.beyondSources))}><span/></button></div>
       <label className="source-page-focus">{options.format==='custom'?uiText("Describe your page"):uiText("Anything to focus on?")} <span>{uiText("Optional")}</span><textarea autoFocus value={focus} onChange={event=>setFocus(event.target.value)} maxLength={2000} rows={2} disabled={controlsDisabled} placeholder={options.format==='custom'?uiText("Describe the note you want to create…"):uiText("Add a topic, question, or emphasis…")} aria-describedby="source-page-focus-hint"/></label>
       <p className="section-hint source-page-note" id="source-page-focus-hint">{uiText("Your settings are remembered. Review the AI draft before saving.")}</p>
       </>}
       {draft&&retryOpen&&<div className="source-page-retry">
-        <PersonaSelect original={draft.persona} value={personaId} onChange={setPersonaId} disabled={busy}/><label className="source-page-focus">{uiText("What would you like to change?") + " "}<span>{uiText("Optional")}</span><textarea ref={feedbackField} value={feedback} onChange={event=>setFeedback(event.target.value)} maxLength={2000} rows={3} disabled={busy} placeholder={uiText("For example: make it shorter, explain the key ideas more clearly, or use a different structure.")} aria-describedby="source-page-retry-hint"/></label>
+        <PersonaExpressionSelect original={personaId?undefined:draft.persona} value={personaExpression} onChange={setPersonaExpression} disabled={busy}/><PersonaSelect original={draft.persona} value={personaId} onChange={setPersonaId} disabled={busy}/><label className="source-page-focus">{uiText("What would you like to change?") + " "}<span>{uiText("Optional")}</span><textarea ref={feedbackField} value={feedback} onChange={event=>setFeedback(event.target.value)} maxLength={2000} rows={3} disabled={busy} placeholder={uiText("For example: make it shorter, explain the key ideas more clearly, or use a different structure.")} aria-describedby="source-page-retry-hint"/></label>
         <p className="section-hint" id="source-page-retry-hint">{uiText("Your current draft is kept until the revision is ready.")}</p>
         <div className="source-page-retry-actions"><button type="button" className="button" disabled={busy} onClick={()=>setRetryOpen(false)}>{uiText("Cancel")}</button><button type="submit" className="button primary" disabled={busy}>{uiText("Generate revision")}</button></div>
       </div>}

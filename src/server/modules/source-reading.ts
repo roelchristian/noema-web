@@ -6,7 +6,7 @@ import {projectPageText} from '../../shared/page-text.js';
 import {randomUUID} from 'node:crypto';
 import {entityMentionName,type Block,type Page,type SourceFile,type SourceReference} from '../../shared/domain.js';
 import {resolvePersona} from './ai-personas.js';
-import {defaultPersonaId} from '../../shared/ai-personas.js';
+import {defaultPersonaId,defaultPersonaExpression,parsePersonaExpression,type PersonaExpression} from '../../shared/ai-personas.js';
 import {highlightColors,readingNoteMaxWords,readingNoteWordCount,readingExplanationFamiliarities,type ReadingExplanationOptions,type SourceHighlight,type ReadingNoteAnchor} from '../../shared/source-reading.js';
 import {sourcePageLanguages} from '../../shared/source-page.js';
 import {pageLanguage} from './page-language.js';
@@ -121,7 +121,7 @@ export class SourceReading {
   this.store.run('UPDATE highlights SET color=? WHERE id=? AND vault_id=? AND file_id=?',body.color as string,id,vault,fileId);
   return this.highlight({...row,color:body.color as SourceHighlight['color']});
  }
- prepareExplanation(vault:string,fileId:string,body:Record<string,unknown>,defaultId=defaultPersonaId) {
+ prepareExplanation(vault:string,fileId:string,body:Record<string,unknown>,defaultId=defaultPersonaId,defaultExpression:PersonaExpression=defaultPersonaExpression) {
   const ref=this.selection(vault,fileId,body),requestId=readingNoteRequestId(body.requestId);
   const language=body.language??'',familiarity=body.familiarity??'familiar';
   if(typeof language!=='string'||language!==''&&!sourcePageLanguages.some(value=>value===language))throw new HttpError(400,'Choose a supported explanation language.');
@@ -137,9 +137,10 @@ export class SourceReading {
    if(!note?.explanation||note.fileId!==fileId||note.sourceHash!==ref.sourceHash||note.startOffset!==ref.startOffset||note.endOffset!==ref.endOffset||note.explanation.language!==language||note.explanation.familiarity!==familiarity)throw new HttpError(409,'This reading note request is already in use.');
   }
   const historical=saved?.generationMetadata?.persona;
-  const resolved=resolvePersona(body.personaId??historical?.id??defaultId,body.personaId===undefined||body.personaId===historical?.id?historical?.version:undefined);
-  options.persona={id:resolved.id,version:resolved.version,origin:resolved.origin};
-  if(saved&&body.personaId!==undefined&&saved.generationMetadata?.persona?.id!==options.persona.id)throw new HttpError(409,'This reading note request has different persona settings.');
+  if(body.personaExpression!==undefined){try{parsePersonaExpression(body.personaExpression);}catch{throw new HttpError(400,'Choose a supported persona expression.');}}
+  const resolved=resolvePersona(body.personaId??historical?.id??defaultId,body.personaId===undefined||body.personaId===historical?.id?historical?.version??(saved?1:undefined):undefined,body.personaExpression as PersonaExpression|undefined??historical?.expression??defaultExpression);
+  options.persona={id:resolved.id,version:resolved.version,origin:resolved.origin,...(resolved.expression?{expression:resolved.expression}:{})};
+  if(saved&&((body.personaId!==undefined&&saved.generationMetadata?.persona?.id!==options.persona.id)||(body.personaExpression!==undefined&&historical?.expression!==options.persona.expression)))throw new HttpError(409,'This reading note request has different persona settings.');
   return {ref,options,requestId,saved};
  }
  createReadingNote(vault:string,fileId:string,body:Record<string,unknown>,explanation?:ReadingExplanationOptions):Page {

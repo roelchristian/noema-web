@@ -6,7 +6,7 @@ import {editorSelectionRange,editorSelectionRanges} from './block-selection';
 import {readSegments} from './segments';
 
 export interface WritingReviewTarget {
-  blockId:string; scope:'span'|'block'; snapshot:string;
+  blockId:string; scope:'span'|'block'; snapshot:string; contextSnapshot?:string;
   before:Segment[]; selected:Segment[]; after:Segment[];
   texts:EditorReviewText[];
 }
@@ -48,9 +48,10 @@ export function captureWritingReview(root:HTMLElement,blocks:Block[],ids?:string
     }
     const texts=selected.flatMap((segment,index)=>segment.text?.trim()&&!segment.math&&!segment.code&&!segment.sourceReference&&!segment.bibliographicReference&&!segment.skipAutoTag?[{id:`${block.id}:${index}`,text:segment.text}]:[]);
     if(!texts.length)return [];
-    return [{blockId:block.id,scope:portion&&(before.some(hasContent)||after.some(hasContent))?'span' as const:'block' as const,snapshot:JSON.stringify(block.content),before,selected,after,texts}];
+    return [{blockId:block.id,scope:portion&&(before.some(hasContent)||after.some(hasContent))?'span' as const:'block' as const,snapshot:JSON.stringify(block.content),contextSnapshot:writingReviewContext(block),before,selected,after,texts}];
   });
 }
+export function writingReviewContext(block:Block):string {return JSON.stringify({type:block.type,semantic:block.semantic,semanticGroup:block.semanticGroup,column:block.column});}
 function hasContent(segment:Segment){return !!(segment.text||segment.entityId);}
 export function reviewEditedSegments(selected:Segment[],edits:WritingReviewEdit[]):Segment[]{
   return selected.map((segment,index)=>{

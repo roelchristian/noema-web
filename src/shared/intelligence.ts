@@ -1,4 +1,4 @@
-import type {BuiltinPersonaId} from './ai-personas.js';
+import type {BuiltinPersonaId,PersonaExpression} from './ai-personas.js';
 // Curated Responses API text models, checked against official OpenAI docs on 2026-10-16.
 // /v1/models does not describe reasoning compatibility; keep the allowlist explicit.
 export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
@@ -21,9 +21,9 @@ export function defaultSpeechVoiceFor(provider:SpeechProvider):SpeechVoice {retu
 export function isSpeechVoice(value:unknown,provider:SpeechProvider='kokoro'):value is SpeechVoice {return typeof value==='string'&&speechVoicesFor(provider).some(voice=>voice===value);}
 export function speechModelFor(provider:SpeechProvider):string {return provider==='gemini'?geminiSpeechModel:provider==='openai'?openAISpeechModel:speechModel;}
 export interface IntelligencePreferences { model: string; reasoningEffort: ReasoningEffort }
-export interface IntelligenceConfiguration extends IntelligencePreferences {personaId?:BuiltinPersonaId;ttsEnabled:boolean;narration?:import('./narration.js').NarrationPreferences;ttsProvider?:SpeechProvider;ttsVoice:SpeechVoice;manualRequestsPerMinute: number; pageEnrichment?: IntelligencePreferences}
+export interface IntelligenceConfiguration extends IntelligencePreferences {personaId?:BuiltinPersonaId;personaExpression?:PersonaExpression;ttsEnabled:boolean;narration?:import('./narration.js').NarrationPreferences;ttsProvider?:SpeechProvider;ttsVoice:SpeechVoice;manualRequestsPerMinute: number; pageEnrichment?: IntelligencePreferences}
 /** Category updates deliberately exclude the other category's fields. */
-export type AIPreferences = Pick<IntelligenceConfiguration,'model'|'reasoningEffort'|'personaId'|'manualRequestsPerMinute'|'pageEnrichment'>;
+export type AIPreferences = Pick<IntelligenceConfiguration,'model'|'reasoningEffort'|'personaId'|'personaExpression'|'manualRequestsPerMinute'|'pageEnrichment'>;
 export type VoicePreferences = Pick<IntelligenceConfiguration,'ttsEnabled'|'ttsProvider'|'ttsVoice'|'narration'>;
 export const defaultPageEnrichmentPreferences: IntelligencePreferences = {model:'gpt-6-luna',reasoningEffort:'none'};
 export const defaultManualRequestsPerMinute = 5;
@@ -55,7 +55,7 @@ export function supportedIntelligencePreferences(value: unknown): value is Intel
 }
 
 export interface AIActivity extends IntelligencePreferences {
-  id: string; action: 'bibliographic_lookup' | 'text_to_speech' | 'collection_rules' | 'entity_discovery' | 'page_enrichment' | 'source_enrichment' | 'source_math_preprocessing' | 'source_reprocessing' | 'text_review' | 'block_explanation' | 'page_title' | 'page_summary' | 'entity_scan' | 'note_embedding' | 'search_embedding' | 'connection_test' | 'create_page_from_source';
+  id: string; action: 'persona_preview' | 'bibliographic_lookup' | 'text_to_speech' | 'collection_rules' | 'entity_discovery' | 'page_enrichment' | 'source_enrichment' | 'source_math_preprocessing' | 'source_reprocessing' | 'text_review' | 'block_explanation' | 'page_title' | 'page_summary' | 'entity_scan' | 'note_embedding' | 'search_embedding' | 'connection_test' | 'create_page_from_source';
   status: 'running' | 'completed' | 'failed' | 'interrupted' | 'skipped';
   startedAt: string; finishedAt: string | null; durationMs: number | null; httpStatus: number | null;
   vaultId: string | null; vaultName: string | null; objectKind: 'page' | 'entity' | null;
@@ -91,6 +91,6 @@ export const aiActivityLabels: Record<AIActivity['action'], string> = {
   collection_rules:'Generate collection rules',
   entity_discovery:'Entity discovery',
   page_enrichment:'Page enrichment',
-  bibliographic_lookup:'DOI metadata lookup (no AI)', source_reprocessing:'Source editorial reprocessing', source_enrichment:'Source enrichment', source_math_preprocessing:'Math span preprocessing', text_review:'AI writing review', block_explanation:'AI Explanation', page_title:'Page title & category', page_summary:'Page summary', entity_scan:'Entity scan',
+  bibliographic_lookup:'DOI metadata lookup (no AI)', source_reprocessing:'Source editorial reprocessing', source_enrichment:'Source enrichment', source_math_preprocessing:'Math span preprocessing', persona_preview:'Persona comparison preview', text_review:'AI writing review', block_explanation:'AI Explanation', page_title:'Page title & category', page_summary:'Page summary', entity_scan:'Entity scan',
   create_page_from_source:'Create page from source', note_embedding:'Note embedding', search_embedding:'Search embedding', connection_test:'Connection test',
 };

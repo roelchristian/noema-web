@@ -1,7 +1,7 @@
 import type {NarrationPreferences} from '../shared/narration';
 import type {SpeechProvider,SpeechVoice} from '../shared/intelligence';
 import {cleanSpeechText} from '../shared/speech-text';
-import type {EditorReviewText,EditorReviewSuggestion} from '../shared/editor-review';
+import type {EditorReviewText,EditorReviewSuggestion,WritingReviewOptions} from '../shared/editor-review';
 import type { Organization, Entity, EntityDetail, EntityInput, PropertyInput, RelationshipInput, Page, PageInput, PageSummary, Vault, TrashedPage } from '../shared/domain';
 export type PropertyProposalPreview=import('../shared/property-provenance').PropertyProposal & {stale:boolean;staleReason:string|null;fingerprint:string;conflicts:import('../shared/domain').Property[];currentName:string;definition?:import('../shared/property-definitions').PropertyDefinition;sourceName?:string};
 export interface SpeechModelStatus {ready:boolean;model:string;missingFiles:string[];downloadCommand:string}
@@ -97,8 +97,8 @@ export const api={
   associatePages:(vault:string,id:string,targetId:string,body:{pinned?:boolean;annotation?:string}={})=>request<import('../shared/domain').PagePageAssociation[]>(`pages/${id}/connections/${targetId}`,'PUT',body,vault),
   removePageAssociation:(vault:string,id:string,targetId:string)=>request<import('../shared/domain').PagePageAssociation[]>(`pages/${id}/connections/${targetId}`,'DELETE',undefined,vault),
   pageBacklinks:(vault:string,id:string,signal?:AbortSignal)=>request<PageSummary[]>(`pages/${id}/backlinks`,'GET',undefined,vault,signal),
-  reviewText:(vault:string,id:string,texts:EditorReviewText[])=>request<{suggestions:EditorReviewSuggestion[]}>(`pages/${id}/review`,'POST',{texts},vault),
-  explainBlocks:(vault:string,id:string,blocks:Page['blocks'],persona?:{id:string;version?:number})=>request<{markdown:string;persona:import('../shared/ai-personas').PersonaIdentity}>(`pages/${id}/explain`,'POST',{blocks,personaId:persona?.id,personaVersion:persona?.version},vault),
+  reviewText:(vault:string,id:string,texts:EditorReviewText[],options:WritingReviewOptions={},signal?:AbortSignal)=>request<{suggestions:EditorReviewSuggestion[];persona?:import('../shared/ai-personas').PersonaIdentity}>(`pages/${id}/review`,'POST',{texts,...options},vault,signal),
+  explainBlocks:(vault:string,id:string,blocks:Page['blocks'],persona?:{id:string;version?:number;expression?:import('../shared/ai-personas').PersonaExpression})=>request<{markdown:string;persona:import('../shared/ai-personas').PersonaIdentity}>(`pages/${id}/explain`,'POST',{blocks,personaId:persona?.id,personaVersion:persona?.version,personaExpression:persona?.expression},vault),
   exportVault:exportVaultBackup,
   importVault:importVaultBackup,
   entityMatches:(vault:string,id:string,revision:number,signal?:AbortSignal)=>request<import('../shared/entity-match-cache').EntityMatchCache>(`pages/${id}/entity-matches?revision=${revision}`,'GET',undefined,vault,signal),
@@ -141,6 +141,7 @@ export const api={
   removeGeminiCredential:()=>request<import('../shared/intelligence').SpeechCredentialStatus>('intelligence/gemini','DELETE'),
   saveIntelligence:(apiKey:string,days:number)=>request<import('../shared/domain').IntelligenceStatus>('intelligence','PUT',{apiKey,days}),
   saveIntelligencePreferences:(preferences:import('../shared/intelligence').IntelligenceConfiguration)=>request<import('../shared/intelligence').IntelligenceConfiguration>('intelligence/preferences','PUT',preferences),
+  personaPreview:(body:import('../shared/persona-comparison').PersonaPreviewInput,signal?:AbortSignal)=>request<{text:string;persona:import('../shared/ai-personas').PersonaIdentity;modelSettings:import('../shared/intelligence').IntelligencePreferences}>('intelligence/persona-preview','POST',body,undefined,signal),
   saveAIPreferences:(preferences:import('../shared/intelligence').AIPreferences)=>request<import('../shared/intelligence').IntelligenceConfiguration>('intelligence/preferences/ai','PUT',preferences),
   saveVoicePreferences:(preferences:import('../shared/intelligence').VoicePreferences)=>request<import('../shared/intelligence').IntelligenceConfiguration>('intelligence/preferences/voice','PUT',preferences),
   removeIntelligence:()=>request<import('../shared/domain').IntelligenceStatus>('intelligence','DELETE'),
@@ -197,8 +198,8 @@ export const api={
 };
 
 /** Consume provisional text deltas and verified blocks, retaining the saved draft for recovery. */
-export async function createPageFromSource(vault:string,sourceId:string,focus:string,options:import('../shared/source-page').SourcePageOptions,requestId:string,onEvent:(event:import('../shared/source-page').SourcePageEvent)=>void,signal:AbortSignal,revision?:import('../shared/source-page').SourcePageRevision,personaId?:string):Promise<void> {
-  const response=await fetch(`/api/entities/${encodeURIComponent(sourceId)}/create-page`,{method:'POST',signal,headers:{'X-Noema-Request':'1','X-Vault-Id':vault,'Content-Type':'application/json'},body:JSON.stringify({focus,options,requestId,...(personaId?{personaId}:{}),...(revision?{revision}:{})})});
+export async function createPageFromSource(vault:string,sourceId:string,focus:string,options:import('../shared/source-page').SourcePageOptions,requestId:string,onEvent:(event:import('../shared/source-page').SourcePageEvent)=>void,signal:AbortSignal,revision?:import('../shared/source-page').SourcePageRevision,personaId?:string,personaExpression?:import('../shared/ai-personas').PersonaExpression):Promise<void> {
+  const response=await fetch(`/api/entities/${encodeURIComponent(sourceId)}/create-page`,{method:'POST',signal,headers:{'X-Noema-Request':'1','X-Vault-Id':vault,'Content-Type':'application/json'},body:JSON.stringify({focus,options,requestId,...(personaId?{personaId}:{}),...(personaExpression?{personaExpression}:{}),...(revision?{revision}:{})})});
   if(!response.ok){const result=await response.json();throw new ApiError(response.status,result.error||'Could not create a page from this source.');}
   const reader=response.body?.getReader();
   if(!reader)throw new Error('The page stream is unavailable. Please retry.');

@@ -21,7 +21,7 @@ interface GenerationRequest {
 }
 export function createSourcePageGeneration({store,sourcePages,intelligence,vaults,activity,notifications}:Services) {
   return {
-    prepare:(vault:string,id:string,body:Record<string,unknown>)=>sourcePages.prepare(vault,id,body,intelligence.personaSelection().id),
+    prepare:(vault:string,id:string,body:Record<string,unknown>)=>sourcePages.prepare(vault,id,body,intelligence.personaSelection().id,intelligence.personaSelection().expression),
     async run({vault,id,prepared,signal,onEvent:emit,onGenerating}:GenerationRequest) {
       let activityId:string|undefined;
       try {
@@ -50,7 +50,7 @@ export function createSourcePageGeneration({store,sourcePages,intelligence,vault
         // A preliminary JSON draft can be previewed, but only final-answer records are saved.
         let preview=new SourcePageDraft(emit,cleanedFile.text,cleanedFile,prepared.options.language),previewFailed=false;
         const resetPreview=()=>{emit({type:'preview_reset'});preview=new SourcePageDraft(emit,cleanedFile.text,cleanedFile,prepared.options.language);previewFailed=false;};
-        await intelligence.generate({kind:'sourcePage',personaId:prepared.persona.id,personaVersion:prepared.persona.version,input:prepared.input,onRequest:bytes=>activity.request(activityId!,bytes,null),
+        await intelligence.generate({kind:'sourcePage',personaId:prepared.persona.id,personaVersion:prepared.persona.version,personaExpression:prepared.persona.expression,input:prepared.input,onRequest:bytes=>activity.request(activityId!,bytes,null),
           signal,onDelta:delta=>draft.feed(delta),onPreviewReset:resetPreview,
           onPreviewDelta:delta=>{
             if(previewFailed)return;

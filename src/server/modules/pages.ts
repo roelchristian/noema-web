@@ -236,6 +236,15 @@ export class Pages {
         });
       };
       const block: Block = {id,type,checked:!!b.checked,content:segments(b.content)};
+      if(b.writingProvenance!==undefined){
+        if(!Array.isArray(b.writingProvenance)||b.writingProvenance.length>100)throw new HttpError(400,'Invalid writing provenance.');
+        block.writingProvenance=b.writingProvenance.map(value=>{
+          const item=object(value);
+          if(!['proofread','refine','rewrite','recast'].includes(String(item.action))||typeof item.acceptedAt!=='string'||!Number.isFinite(Date.parse(item.acceptedAt)))throw new HttpError(400,'Invalid writing provenance.');
+          let persona;try{persona=parsePersonaIdentity(item.persona);}catch{throw new HttpError(400,'Invalid writing persona.');}
+          return {action:item.action as import('../../shared/editor-review.js').WritingAction,acceptedAt:item.acceptedAt,...(persona?{persona}:{})};
+        });
+      }
       if (b.column !== undefined) {
         if (!allowedInColumn(type)) throw new HttpError(400,'Columns cannot contain tables or nested columns');
         const column=object(b.column);

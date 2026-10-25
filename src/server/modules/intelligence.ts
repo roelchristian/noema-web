@@ -8,7 +8,7 @@ import {geminiSpeech,geminiSpeechEndpoint} from './gemini-speech.js';
 import {kokoroSpeech} from './kokoro-speech.js';
 export const speechEndpoint='local://kokoro-82m';
 export type SpeechSynthesizer=(text:string,signal:AbortSignal,voice:SpeechVoice,pace?:number)=>Promise<Buffer>;
-import {defaultPersonaId,isPersonaId,type BuiltinPersonaId} from '../../shared/ai-personas.js';
+import {defaultPersonaId,isPersonaId,defaultPersonaExpression,parsePersonaExpression,type PersonaExpression,type BuiltinPersonaId} from '../../shared/ai-personas.js';
 import {resolvePersona} from './ai-personas.js';
 import {generationPolicy,type GenerationRequest} from './generation-request.js';
 import {EntityScanBatchReady} from './entity-scan-stream.js';
@@ -141,7 +141,11 @@ export class Intelligence {
   private preferences: IntelligencePreferences={...defaultIntelligencePreferences};
   private preferenceRevision=0;
   private personaId:BuiltinPersonaId=defaultPersonaId;
-  personaSelection(id:unknown=this.personaId,version?:number) {return resolvePersona(id,version);}
+  private personaExpression:PersonaExpression=defaultPersonaExpression;
+  personaSelection(id:unknown=this.personaId,version?:number,expression?:unknown) {
+    let parsed:PersonaExpression|undefined;try{parsed=expression===undefined?undefined:parsePersonaExpression(expression);}catch{throw new HttpError(400,'Choose a supported persona expression.');}
+    return resolvePersona(id,version,parsed??this.personaExpression);
+  }
   private enrichmentPreferences: IntelligencePreferences={...defaultPageEnrichmentPreferences};
   constructor(private secrets: SecretStore, private transport: typeof fetch=fetch, private clock=()=>Date.now(), private preferenceStore?: PreferencesStore,private speechSynthesizer:SpeechSynthesizer=kokoroSpeech,private speechSocketFactory:SpeechSocketFactory=createSpeechSocket,private geminiSecrets?:SecretStore) {
     const saved=preferenceStore?.read();
@@ -151,6 +155,7 @@ export class Intelligence {
       this.ttsVoice=defaultSpeechVoiceFor(this.ttsProvider);
       if('ttsVoice' in saved&&isSpeechVoice(saved.ttsVoice,this.ttsProvider))this.ttsVoice=saved.ttsVoice;
       if('ttsEnabled' in saved && typeof saved.ttsEnabled==='boolean')this.ttsEnabled=saved.ttsEnabled;
+      if('personaExpression' in saved){try{this.personaExpression=parsePersonaExpression(saved.personaExpression);}catch{/* Keep new-generation default for invalid preferences. */}}
       if('personaId' in saved&&isPersonaId(saved.personaId))this.personaId=saved.personaId;
       if('personaId' in saved&&saved.personaId==='conyo') {
         this.personaId='divinity_student';
@@ -178,6 +183,7 @@ export class Intelligence {
     const requestedPersona=body.personaId==='conyo'?'divinity_student':body.personaId;
     if(requestedPersona!==undefined&&!isPersonaId(requestedPersona))throw new HttpError(400,'Choose a supported AI persona.');
     const personaId=requestedPersona===undefined?this.personaId:requestedPersona as BuiltinPersonaId;
+    let personaExpression=this.personaExpression;try{if(body.personaExpression!==undefined)personaExpression=parsePersonaExpression(body.personaExpression);}catch{throw new HttpError(400,'Choose a supported persona expression.');}
     if(body.ttsEnabled!==undefined&&typeof body.ttsEnabled!=='boolean')throw new HttpError(400,'Choose whether text to speech is enabled.');
     const ttsEnabled=body.ttsEnabled===undefined?this.ttsEnabled:body.ttsEnabled as boolean;
     if(body.ttsProvider!==undefined&&!isSpeechProvider(body.ttsProvider))throw new HttpError(400,'Choose a supported speech provider.');
@@ -188,12 +194,13 @@ export class Intelligence {
     const voiceChanged=ttsVoice!==this.ttsVoice;
     const narration=body.narration===undefined?this.narration:this.parseNarration(body.narration);
     const narrationChanged=JSON.stringify(narration)!==JSON.stringify(this.narration);
-    const value={personaId,ttsEnabled,ttsProvider,ttsVoice,narration,model:body.model,reasoningEffort:body.reasoningEffort,manualRequestsPerMinute,pageEnrichment};
+    const value={personaId,personaExpression,ttsEnabled,ttsProvider,ttsVoice,narration,model:body.model,reasoningEffort:body.reasoningEffort,manualRequestsPerMinute,pageEnrichment};
     this.preferenceStore?.write(value);
     const modelChanged=value.model!==this.preferences.model || value.reasoningEffort!==this.preferences.reasoningEffort||pageEnrichment.model!==this.enrichmentPreferences.model||pageEnrichment.reasoningEffort!==this.enrichmentPreferences.reasoningEffort;
     this.preferences={model:value.model,reasoningEffort:value.reasoningEffort};
     this.enrichmentPreferences={model:pageEnrichment.model,reasoningEffort:pageEnrichment.reasoningEffort};
     this.personaId=personaId;
+    this.personaExpression=personaExpression;
     this.ttsEnabled=ttsEnabled;
     this.ttsProvider=ttsProvider;
     this.ttsVoice=ttsVoice;
@@ -201,11 +208,11 @@ export class Intelligence {
     if(!ttsEnabled||voiceChanged||providerChanged||narrationChanged)for(const request of this.speechRequests)request.abort();
     this.manualRequestsPerMinute=manualRequestsPerMinute;
     if (modelChanged) {this.preferenceRevision++;for(const request of this.generationRequests)request.abort();}
-    return {...this.selection(),personaId:this.personaId,ttsEnabled:this.ttsEnabled,ttsProvider:this.ttsProvider,ttsVoice:this.ttsVoice,narration:structuredClone(this.narration),manualRequestsPerMinute:this.manualRequestsPerMinute,pageEnrichment:this.enrichmentSelection()};
+    return {...this.selection(),personaId:this.personaId,personaExpression:this.personaExpression,ttsEnabled:this.ttsEnabled,ttsProvider:this.ttsProvider,ttsVoice:this.ttsVoice,narration:structuredClone(this.narration),manualRequestsPerMinute:this.manualRequestsPerMinute,pageEnrichment:this.enrichmentSelection()};
   }
   /** Merge against live state synchronously: two category updates cannot erase one another. */
   saveCategoryPreferences(category:'ai'|'voice',body:Record<string,unknown>) {
-    const fields=category==='ai'?['model','reasoningEffort','personaId','manualRequestsPerMinute','pageEnrichment']:['ttsEnabled','ttsProvider','ttsVoice','narration'];
+    const fields=category==='ai'?['model','reasoningEffort','personaId','personaExpression','manualRequestsPerMinute','pageEnrichment']:['ttsEnabled','ttsProvider','ttsVoice','narration'];
     if(Object.keys(body).some(field=>!fields.includes(field)))throw new HttpError(400,'Preferences contain fields from another category.');
     return this.savePreferences({...this.selection(),...body});
   }
@@ -217,7 +224,7 @@ export class Intelligence {
   }
   status(): IntelligenceStatus {
     const value=this.credential();
-    return {configured:!!value,expiresAt:value?.expiresAt ?? null,manualRequestsPerMinute:this.manualRequestsPerMinute,personaId:this.personaId,ttsEnabled:this.ttsEnabled,ttsProvider:this.ttsProvider,ttsVoice:this.ttsVoice,narration:structuredClone(this.narration),...this.selection(),pageEnrichment:this.enrichmentSelection()};
+    return {configured:!!value,expiresAt:value?.expiresAt ?? null,manualRequestsPerMinute:this.manualRequestsPerMinute,personaId:this.personaId,personaExpression:this.personaExpression,ttsEnabled:this.ttsEnabled,ttsProvider:this.ttsProvider,ttsVoice:this.ttsVoice,narration:structuredClone(this.narration),...this.selection(),pageEnrichment:this.enrichmentSelection()};
   }
   save(body: Record<string,unknown>) {
     if(typeof body.apiKey!=='string'||!/^sk-[A-Za-z0-9_-]{16,500}$/.test(body.apiKey))throw new HttpError(400,'Enter a valid OpenAI API key.');
@@ -230,7 +237,7 @@ export class Intelligence {
     this.secrets.write({key:body.apiKey,expiresAt:new Date(this.clock()+days*86400000).toISOString(),generation:randomUUID()});
     return this.status();
   }
-  remove() {this.abortCloudPreviews('openai');if(this.ttsProvider==='openai')for(const request of this.speechRequests)request.abort();for(const request of this.generationRequests)request.abort();for(const request of this.embeddingRequests)request.abort();this.secrets.remove();return {configured:false,expiresAt:null,manualRequestsPerMinute:this.manualRequestsPerMinute,personaId:this.personaId,ttsEnabled:this.ttsEnabled,ttsProvider:this.ttsProvider,ttsVoice:this.ttsVoice,narration:structuredClone(this.narration),...this.selection(),pageEnrichment:this.enrichmentSelection()};}
+  remove() {this.abortCloudPreviews('openai');if(this.ttsProvider==='openai')for(const request of this.speechRequests)request.abort();for(const request of this.generationRequests)request.abort();for(const request of this.embeddingRequests)request.abort();this.secrets.remove();return {configured:false,expiresAt:null,manualRequestsPerMinute:this.manualRequestsPerMinute,personaId:this.personaId,personaExpression:this.personaExpression,ttsEnabled:this.ttsEnabled,ttsProvider:this.ttsProvider,ttsVoice:this.ttsVoice,narration:structuredClone(this.narration),...this.selection(),pageEnrichment:this.enrichmentSelection()};}
   private geminiCredential() {
     const value=this.geminiSecrets?.read();
     if(value&&Date.parse(value.expiresAt)<=this.clock()){this.geminiSecrets!.remove();this.abortCloudPreviews('gemini');if(this.ttsProvider==='gemini')for(const request of this.speechRequests)request.abort();return null;}
@@ -481,7 +488,7 @@ export class Intelligence {
   async generate(request:GenerationRequest) {
     const credential=this.credential(),preferenceRevision=this.preferenceRevision;
     if(!credential)throw new HttpError(409,'Add an API key in Settings → Intelligence. It may have expired.');
-    const policy=generationPolicy(request,{personaId:this.personaId,standard:this.selection(),title:this.titleSelection(),enrichment:this.enrichmentSelection()});
+    const policy=generationPolicy(request,{personaId:this.personaId,personaExpression:this.personaExpression,standard:this.selection(),title:this.titleSelection(),enrichment:this.enrichmentSelection()});
     if(policy.admission.activeSlot==='exclusive'&&(this.active||this.editorialRequests.size))throw new GenerationAdmissionError('Another AI request is running. Please wait.');
     if(policy.admission.activeSlot==='editorial'&&(this.active||this.editorialRequests.size>=2))throw new GenerationAdmissionError('Editorial AI capacity is busy. Wait for the active requests to finish.');
     if (policy.admission.manual) this.reserveManualRequest();
@@ -501,7 +508,7 @@ export class Intelligence {
       trace=redactedTrace(observer,credential.key);
       const payload={model:selection.model,store:false,max_output_tokens:policy.maxOutputTokens,reasoning:{effort:selection.reasoningEffort},tools:[],tool_choice:'none',...prompt,...(trace||policy.stream?{stream:true}:{})};
       trace?.request('https://api.openai.com/v1/responses',request.kind==='editorial'&&request.evidenceImages?.length?{...payload,input:[{role:'user',content:[{type:'input_text',text:request.input},...request.evidenceImages.map(image=>({type:'input_image',page:image.page,sha256:image.sha256,image_url:'[redacted original-page image]'}))]}]}:payload);
-      trace?.event('prompt',{template:request.kind,version:1,...(policy.persona?{persona:{id:policy.persona.id,version:policy.persona.version,origin:policy.persona.origin}}:{})});
+      trace?.event('prompt',{template:request.kind,version:1,...(policy.persona?{persona:{id:policy.persona.id,version:policy.persona.version,origin:policy.persona.origin,...(policy.persona.expression?{expression:policy.persona.expression}:{})}}:{})});
       if(controller.signal.aborted)throw request.kind==='editorial'?new GenerationCancellationError(false):new HttpError(409,'AI generation was stopped before sending the request.');
       const pendingResponse=this.transport('https://api.openai.com/v1/responses',{
         method:'POST',redirect:'error',signal:controller.signal,

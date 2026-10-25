@@ -1,7 +1,7 @@
 import {PageEnrichmentState} from './page-enrichment-state.js';
 import {PageHistory} from './page-history.js';
 import {resolvePersona} from './ai-personas.js';
-import {defaultPersonaId} from '../../shared/ai-personas.js';
+import {defaultPersonaId,defaultPersonaExpression,parsePersonaExpression,type PersonaExpression} from '../../shared/ai-personas.js';
 import {parsePageGenerationMetadata,type PageGenerationMetadata} from '../../shared/page-generation.js';
 import {sourcePagePrompt} from './source-page-prompt.js';
 import {sourceDocumentEntries,sourceNodeLabel,sourceNodeLocator} from '../../shared/source-document.js';
@@ -173,7 +173,7 @@ export class SourcePageDraft {
 }
 export class SourcePages {
   constructor(private store:Store,private knowledge:Knowledge,private pages:Pages) {}
-  prepare(vault:string,sourceId:string,body:Record<string,unknown>,defaultId=defaultPersonaId) {
+  prepare(vault:string,sourceId:string,body:Record<string,unknown>,defaultId=defaultPersonaId,defaultExpression:PersonaExpression=defaultPersonaExpression) {
     const source=this.knowledge.require(vault,sourceId);
     if(source.archived_at)throw new HttpError(409,'Restore this archived source before creating a page.');
     if(source.type!=='source')throw new HttpError(400,'Choose a Source entity.');
@@ -207,9 +207,10 @@ export class SourcePages {
     if(!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestId))throw new HttpError(400,'Invalid generation request.');
     const storedPersona=this.store.get<DraftRow>('SELECT * FROM source_page_drafts WHERE request_id=? AND vault_id=?',revisionId??requestId,vault);
     const historical=parsePageGenerationMetadata(storedPersona?.generation_metadata)?.persona;
-    const resolved=resolvePersona(body.personaId??historical?.id??defaultId,body.personaId===undefined?historical?.version:undefined);
-    const persona={id:resolved.id,version:resolved.version,origin:resolved.origin};
-    const fingerprint=createHash('sha256').update(JSON.stringify(body.personaId!==undefined?[sourceId,body.personaId,revisionId,focus,options,feedback,revisionMode]:revisionId?[sourceId,focus,options,revisionId,feedback,revisionMode]:body.options===undefined?[sourceId,focus]:[sourceId,focus,options])).digest('hex');
+    let expression:PersonaExpression|undefined;try{expression=body.personaExpression===undefined?(body.personaId===undefined&&storedPersona?historical?.expression:defaultExpression):parsePersonaExpression(body.personaExpression);}catch{throw new HttpError(400,'Choose a supported persona expression.');}
+    const resolved=resolvePersona(body.personaId??historical?.id??defaultId,body.personaId===undefined&&storedPersona?(historical?.version??1):undefined,expression);
+    const persona={id:resolved.id,version:resolved.version,origin:resolved.origin,...(resolved.expression?{expression:resolved.expression}:{})};
+    const fingerprint=createHash('sha256').update(JSON.stringify(body.personaExpression!==undefined?[sourceId,body.personaId,body.personaExpression,revisionId,focus,options,feedback,revisionMode]:body.personaId!==undefined?[sourceId,body.personaId,revisionId,focus,options,feedback,revisionMode]:revisionId?[sourceId,focus,options,revisionId,feedback,revisionMode]:body.options===undefined?[sourceId,focus]:[sourceId,focus,options])).digest('hex');
     const previous=this.store.get<{page_id:string;fingerprint:string}>('SELECT page_id,fingerprint FROM source_page_creations WHERE request_id=? AND vault_id=?',requestId,vault);
     if(previous&&previous.fingerprint!==fingerprint)throw new HttpError(409,'This generation request has different generation settings. Start a new request.');
     if(previous)return {persona,requestId,fingerprint,file,sourceId,revisionId,input:'',existing:this.pages.get(vault,previous.page_id),focus,options,review:undefined};

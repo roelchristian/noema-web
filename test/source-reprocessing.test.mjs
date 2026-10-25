@@ -416,3 +416,49 @@ test('accepting corrections beside page markers preserves separators and canonic
   materializeSourceRevision(r);assert.deepEqual(pageBoundaryDiagnostics(text,r.reprocessed.text),[]);assert.equal(r.original.text,text);assert.equal(r.patches[0].original,original);assert.ok(r.patches[0].userReplacement.endsWith('\n'));
  }
 });
+
+
+test('partial emphasis at a heading boundary preserves structure and rejects ambiguous alignment',()=>{
+ const r=fixture(),node=headings(r.original)[0].node,start=node.range.startOffset;
+ const original=r.original.text.slice(start,start+1);
+ const make=(at,before,after)=>({id:'heading-'+at,nodeIds:[node.id],range:{startOffset:at,endOffset:at+before.length,startLine:1,endLine:1},original:before,replacement:after,category:'formatting',confidence:1,reason:'Supported formatting',riskReasons:[],decision:'accepted'});
+ r.patches=[make(start,original,'**'+original)];
+ materializeSourceRevision(r);
+ assert.equal(headings(r.reprocessed).length,headings(r.original).length);
+ assert.ok(r.nodeLinks.find(link=>link.originalNodeId===node.id).reprocessedNodeIds.length);
+ const ambiguous=fixture();ambiguous.patches=[make(start,original,original+original)];
+ assert.throws(()=>materializeSourceRevision(ambiguous),/cannot preserve the heading/);
+});
+
+
+test('proof labels remain mapped when their paragraph receives emphasis and mathematical markup',async()=>{
+ const {processedSourceDocument}=await import('../src/server/modules/source-document.ts');
+ const text='<!-- Page 1 -->\n\nProof. Let x be a variable and x = 2.\n';
+ const r=fixture();r.pipelineVersion=undefined;r.original={text,document:processedSourceDocument({id:'f',name:'Synthetic',format:'txt',text,structural_nodes:JSON.stringify([{text:'Proof.',kind:'proof',startLine:3}]),page_start_lines:'[]',enrichment_status:'completed'})};
+ const before='Proof. Let x',start=text.indexOf(before);r.patches=[{id:'p',original:before,replacement:'**Proof.** Let $x',decision:'accepted',range:{startOffset:start,endOffset:start+before.length}}];
+ assert.ok(sourceDocumentEntries(r.original.document).some(({node})=>node.kind==='proof'));
+ materializeSourceRevision(r);
+ assert.ok(sourceDocumentEntries(r.reprocessed.document).some(({node})=>node.kind==='proof'));
+ assert.match(r.reprocessed.text,/\*\*Proof\.\*\* Let \$x/);
+});
+
+test('statement labels remain mapped when a replacement also contains a prose reference',async()=>{
+ const {processedSourceDocument}=await import('../src/server/modules/source-document.ts');
+ const text='Example 3.2. Let x = 2.\n\nLook at Example 3.2. The result follows.\n';
+ for(const label of ['Example 3.2.','**Example 3.2.**','__Example 3.2.__','### Example 3.2.']){
+  const r=fixture();r.pipelineVersion=undefined;r.original={text,document:processedSourceDocument({id:'f',name:'Synthetic',format:'txt',text,structural_nodes:'[]',page_start_lines:'[]',enrichment_status:'completed'})};
+  const node=sourceDocumentEntries(r.original.document).find(({node})=>node.kind==='example').node;
+  const replacement=`${label} Let $x=2$.\n\nLook at Example 3.2. The result follows.\n\n[^note]: A copied statement:\n\n    Example 3.2. Indented footnote copy.\n\n\x60\x60\x60\nExample 3.2. Code sample.\n\x60\x60\x60\n`;
+  r.patches=[{id:'p',original:text,replacement,decision:'accepted',range:{startOffset:0,endOffset:text.length}}];
+  materializeSourceRevision(r);
+  assert.equal(r.reprocessed.text,replacement);
+  const examples=sourceDocumentEntries(r.reprocessed.document).filter(({node})=>node.kind==='example');
+  assert.equal(examples.length,1);assert.equal(examples[0].node.title,'Example 3.2.');
+  assert.ok(r.nodeLinks.find(link=>link.originalNodeId===node.id).reprocessedNodeIds.includes(examples[0].node.id));
+  assert.equal(r.original.text,text);
+  for(const invalid of ['Example 3.2. First.\n\nExample 3.2. Second.','Look at Example 3.2. Again, Example 3.2.']){
+   r.patches[0].replacement=invalid;
+   assert.throws(()=>materializeSourceRevision(r),/cannot preserve the heading/);
+  }
+ }
+});

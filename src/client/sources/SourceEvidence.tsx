@@ -1,3 +1,4 @@
+import {Select} from '../components/Select';
 import {getLocale} from '../i18n';
 import {t as uiText} from '../i18n';
 import {useEffect,useState} from 'react';
@@ -31,7 +32,7 @@ export function SourceEvidence({vaultId,fileId,pageCount,page,onPage}:{vaultId:s
   <DisclosureSummary>{uiText("Compare with PDF and extraction evidence")}</DisclosureSummary>
   {page!==null&&<>
    <p>{uiText("The page image comes from the safe viewing copy. Raw extraction is shown before text formatting or AI edits.")}</p>
-   <label>{uiText("Physical page") + " "}<select aria-label={uiText("Evidence page")} value={page} onChange={event=>onPage(Number(event.target.value))}>{Array.from({length:pageCount},(_,i)=><option key={i+1} value={i+1}>{i+1}{" " + uiText("of") + " "}{pageCount}</option>)}</select></label>
+   <label>{uiText("Physical page") + " "}<Select aria-label={uiText("Evidence page")} value={page} onChange={event=>onPage(Number(event.target.value))}>{Array.from({length:pageCount},(_,i)=><option key={i+1} value={i+1}>{i+1}{" " + uiText("of") + " "}{pageCount}</option>)}</Select></label>
    {error&&<p role="alert">{error}</p>}
    {evidence&&<><p>{evidence.originalAvailable?uiText("Original file preserved separately."):uiText("Original file unavailable for this legacy import; re-upload to recover it.")} {evidence.rawExtraction?.ocrPages!==undefined&&`${evidence.rawExtraction.ocrPages} pages used OCR.`}</p>
     {evidence.flattening&&<p>{uiText("A separate viewing copy was flattened for safety. Text and structure are extracted from the preserved original when available.")}</p>}

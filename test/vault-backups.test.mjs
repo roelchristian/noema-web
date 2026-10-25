@@ -289,3 +289,13 @@ test('taxonomy backup preserves Thing, status and contextual references; old bac
   assert.deepEqual(store.db.prepare('PRAGMA foreign_key_check').all(),[]);
  } finally {state.close();}
 });
+
+test('backup retains editorial version high-water marks after all revisions were deleted',async()=>{
+ const state=fixture();try{
+  const file=state.store.get('SELECT id FROM source_files WHERE entity_id=?',state.source.id);
+  state.store.run('INSERT INTO source_reprocessing_versions(file_id,last_version) VALUES(?,?)',file.id,12);
+  const exported=await state.backups.export(state.vault.id),restored=await state.backups.import(exported.bytes);
+  const counter=state.store.get('SELECT last_version FROM source_reprocessing_versions WHERE file_id IN (SELECT id FROM source_files WHERE vault_id=?)',restored.id);
+  assert.equal(counter.last_version,12);
+ }finally{state.close();}
+});

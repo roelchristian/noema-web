@@ -36,7 +36,8 @@
     "test/transliteration.test.mjs",
     "test/notification-reducer.test.mjs",
     "test/notification-workspace.test.mjs",
-    "test/tagline.test.mjs"
+    "test/tagline.test.mjs",
+    "test/source-annotation-mapping.test.mjs"
   ],
   "dom": [
     "test/trash-ui.test.mjs",
@@ -107,7 +108,8 @@
     "test/notification-components.test.mjs",
     "test/notice-recovery-ui.test.mjs",
     "test/notification-bridge.test.mjs",
-    "test/chat-navigation.test.mjs"
+    "test/chat-navigation.test.mjs",
+    "test/source-revision-diff.test.mjs"
   ],
   "server": [
     "test/activity-page-titles.test.mjs",
@@ -246,6 +248,10 @@
     "test/chat-security.test.mjs",
     "test/chat-backup.test.mjs",
     "test/chat-retrieval-extra.test.mjs",
-    "test/chat-readonly.test.mjs"
+    "test/chat-readonly.test.mjs",
+    "test/source-reprocessing-version.test.mjs",
+    "test/source-reprocessing-furniture-patterns.test.mjs",
+    "test/source-reading-revisions.test.mjs",
+    "test/source-page-revisions.test.mjs"
   ]
 }

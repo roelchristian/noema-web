@@ -136,3 +136,37 @@ test('existing queues gain default batch limits on database migration',async t=>
  assert.ok(f.store.all('PRAGMA table_info(source_passage_embedding_jobs)').some(column=>column.name==='batch_max_inputs'));
  await f.drain();f.assertComplete();
 });
+
+test('automatic source discovery uses bounded passage history lookups as failed jobs accumulate',async t=>{
+ const {SourceFiles}=await import('../src/server/modules/source-files.ts');
+ const {SourcePassages}=await import('../src/server/modules/source-passages.ts');
+ const f=await fixture(t,1);
+ const text=Array.from({length:2},(_,i)=>`# Source section ${i}\n\n`+'A source discussing algebraic structures and fields. '.repeat(10)).join('\n\n');
+ const file=new SourceFiles(f.store).add(f.vault,'history.md',Buffer.from(text));
+ const source=new Knowledge(f.store).create(f.vault,{name:'History lookup',type:'source',attachmentIds:[file.id]});
+ f.store.run("UPDATE source_files SET status='ready',admitted=1,text=? WHERE id=?",text,file.id);
+ f.store.run('UPDATE entities SET inactive=0 WHERE id=?',source.id);
+ new SourcePassages(f.store).synchronize(f.vault);
+ const passages=f.store.all('SELECT * FROM source_passages WHERE source_id=? ORDER BY ordinal',source.id);
+ assert.equal(passages.length,2);
+ const insert=f.store.db.prepare(`INSERT INTO source_passage_embedding_jobs(id,vault_id,passage_id,file_id,generation_id,source_id,content_hash,model,dimensions,status,reason,created_at,next_attempt_at,error) VALUES(?,?,?,?,?,?,?,'text-embedding-3-small',1536,'failed','save',?,?,?)`);
+ f.store.transaction(()=>{
+  for(let i=0;i<1200;i++)insert.run(`unrelated-${i}`,f.vault,`old-passage-${i}`,file.id,'old-generation',source.id,`old-hash-${i}`,'2026-01-01','2026-01-01','Terminal provider rejection');
+  const p=passages[0];insert.run('current-failed',f.vault,p.id,file.id,p.generation_id,source.id,p.content_hash,'2026-01-02','2026-01-02','Terminal provider rejection');
+ });
+ // Exercise additive migration of an existing populated database, not just a fresh schema.
+ f.store.db.exec('DROP INDEX source_passage_jobs_history');f.restart();
+ f.worker.saveSettings(f.vault,{automatic:true});
+ const all=f.store.all.bind(f.store);let details;
+ f.store.all=(sql,...params)=>{
+  if(sql.startsWith('SELECT p.id,p.file_id,p.generation_id,p.source_id,p.content_hash '))details=all('EXPLAIN QUERY PLAN '+sql,...params).map(row=>row.detail);
+  return all(sql,...params);
+ };
+ f.worker.onSourceSave(f.vault,source.id);
+ assert.ok(details,'Capture the actual automatic discovery query');
+ assert.ok(details.some(detail=>/SEARCH latest USING (?:COVERING )?INDEX source_passage_jobs_history/.test(detail)),details.join('\n'));
+ assert.ok(details.some(detail=>/SEARCH j USING (?:COVERING )?INDEX source_passage_jobs_history/.test(detail)),details.join('\n'));
+ assert.ok(!details.some(detail=>/SCAN (?:j|latest)\b/.test(detail)),details.join('\n'));
+ assert.equal(f.store.get("SELECT count(*) AS n FROM source_passage_embedding_jobs WHERE passage_id=? AND status='queued'",passages[0].id).n,0,'A terminal failure must remain suppressed');
+ assert.equal(f.store.get("SELECT count(*) AS n FROM source_passage_embedding_jobs WHERE passage_id=? AND status='queued'",passages[1].id).n,1,'An unrelated missing passage must still queue');
+});

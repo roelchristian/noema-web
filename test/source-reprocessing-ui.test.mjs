@@ -17,7 +17,7 @@ const fixture=()=>{
  r.acceptanceMode='review_all';r.patches=r.patches.slice(0,2).map((p,i)=>({...p,id:'patch-'+i,decision:'pending',riskReasons:['Quotation wording requires comparison with the PDF.']}));
  r.reprocessed=structuredClone(r.original);r.reprocessed.document.semantic.children=[];r.reprocessed.text='Sample reading text';return r;
 };
-async function mount(t,{initial=null,post,onReadingRevision,get,onShow=()=>{},onOriginal=()=>{},onReviewOpenChange,onReturnContext,onCompare,component=SourceReprocessing,capabilities={originalPages:false,ocr:false,externalImages:false,reason:'Native evidence is unavailable on this device.'}}={}){
+async function mount(t,{initial=null,history,remove,post,onReadingRevision,get,onShow=()=>{},onOriginal=()=>{},onReviewOpenChange,onReturnContext,onCompare,component=SourceReprocessing,legacyDetails=true,capabilities={originalPages:false,ocr:false,externalImages:false,reason:'Native evidence is unavailable on this device.'}}={}){
  const env=setupDOM(t),{dom}=env;
  dom.window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};
  dom.window.HTMLDialogElement.prototype.close=function(){this.open=false;};
@@ -25,10 +25,11 @@ async function mount(t,{initial=null,post,onReadingRevision,get,onShow=()=>{},on
  t.mock.method(globalThis,'fetch',async(url,options={})=>{
   const entry={url:String(url),method:options.method??'GET',body:options.body?JSON.parse(options.body):undefined};requests.push(entry);
   let result;
-  if(entry.method==='POST'){result=await post(entry,revision);if(result)revision=result;}
+  if(entry.method==='DELETE'){result=await remove(entry,revision);if(history)history=history.filter(item=>!entry.url.endsWith('/'+item.id));if(revision&&entry.url.endsWith('/'+revision.id))revision=null;}
+  else if(entry.method==='POST'){result=await post(entry,revision);if(result)revision=result;}
   else if(entry.url.endsWith('/reprocessing/capabilities'))result=typeof capabilities==='function'?await capabilities():capabilities;
   else if(entry.url.endsWith('/intelligence'))result={model:'gpt-5-mini',reasoningEffort:'low'};
-  else if(entry.url.endsWith('/reprocessing'))result=revision?[{...revision,patchCount:revision.patches.length,pendingCount:revision.patches.length}]:[];
+  else if(entry.url.endsWith('/reprocessing'))result=history??(revision?[{...revision,patchCount:revision.patches.length,pendingCount:revision.patches.length}]:[]);
   else if(entry.url.endsWith('/status'))result={id:revision.id,status:revision.status,updatedAt:revision.updatedAt,...revision.report};
   else result=get?await get(entry,revision):revision;
   return {ok:true,json:async()=>structuredClone(result)};
@@ -38,9 +39,10 @@ async function mount(t,{initial=null,post,onReadingRevision,get,onShow=()=>{},on
  const props={vaultId:'v',fileId:'f',visible:true,onReadingRevision,onShow,onOriginal,onReviewOpenChange,onReturnContext,onCompare};
  await act(async()=>root.render(React.createElement(component,{...props,key:'f'})));
  const switchFile=async fileId=>act(async()=>root.render(React.createElement(SourceReprocessing,{...props,fileId,key:fileId})));
- const button=text=>[...document.querySelectorAll('button')].find(el=>el.textContent===text);
- const click=async el=>{assert.ok(el,'Expected control exists');await act(async()=>el.click());};
- return {button,click,requests,dom,switchFile};
+ const button=text=>[...document.querySelectorAll('button')].find(el=>el.textContent===text||el.getAttribute('aria-label')===text);
+ const click=async el=>{assert.ok(el,'Expected control exists');await act(async()=>el.click());if(legacyDetails&&/^Review changes \(/.test(el.textContent)){const details=button('Detailed review');if(details)await act(async()=>details.click());}};
+ const remount=async()=>act(async()=>root.render(React.createElement(component,{...props,key:Math.random()})));
+ return {button,click,requests,dom,switchFile,remount};
 }
 test('failed initial reprocessing render still closes its DOM and restores global descriptors',{timeout:5000},async t=>{
  const keys=['window','document','Node','NodeFilter','Element','HTMLElement','HTMLAnchorElement','HTMLInputElement','HTMLSelectElement','HTMLTextAreaElement','Range','DOMParser','InputEvent','MouseEvent','Event','CustomEvent','MutationObserver','getComputedStyle','getSelection','requestAnimationFrame','cancelAnimationFrame','innerWidth','innerHeight','IS_REACT_ACT_ENVIRONMENT'];
@@ -61,7 +63,7 @@ test('processing depth defaults to balanced separately from verified review and 
  let finish;const env=await mount(t,{post:()=>new Promise(resolve=>{finish=resolve;})});
  await env.click(env.button('Refine text'));assert.equal(document.querySelector('[aria-label="Processing depth"]').value,'balanced');assert.equal(document.querySelector('[aria-label="Review policy"]').value,'verified');
  await env.click(env.button('Start reprocessing'));assert.equal(env.requests.filter(r=>r.method==='POST').length,1);
- assert.deepEqual(env.requests.find(r=>r.method==='POST').body,{instructions:'',pipelineVersion:2,configuration:{depth:'balanced',reviewPolicy:'verified',evidence:{originalPages:false,ocr:false,allowExternalTransmission:false}}});
+ assert.deepEqual(env.requests.find(r=>r.method==='POST').body,{instructions:'',pipelineVersion:2,configuration:{depth:'balanced',substantialMath:false,reviewPolicy:'verified',evidence:{originalPages:false,ocr:false,allowExternalTransmission:false}}});
  const starting=env.button('Starting…');assert.equal(starting.disabled,true);await env.click(starting);assert.equal(env.requests.filter(r=>r.method==='POST').length,1);
  const r=fixture();r.status='queued';await act(async()=>finish(r));assert.ok(document.querySelector('[aria-label="Completed excerpt coverage"]'));
 });
@@ -128,7 +130,7 @@ test('partial failures show actionable processing cause and excerpt ledger separ
 });
 test('start preview uses supported selected reasoning and never claims forced none',async t=>{
  const env=await mount(t,{post:async()=>fixture()});await env.click(env.button('Refine text'));
- const preview=document.querySelector('.reprocessing-configuration');assert.match(preview.textContent,/GPT-5 Mini.*low reasoning/s);assert.match(preview.textContent,/Exactly 2 model requests per excerpt/);assert.doesNotMatch(document.querySelector('.reprocessing-prompt').textContent,/Reasoning: none/);
+ const preview=document.querySelector('.reprocessing-configuration');assert.match(preview.textContent,/GPT-5 Mini.*low reasoning/s);assert.match(preview.textContent,/2 model requests per excerpt.*additional repair request if footnote validation fails/);assert.doesNotMatch(document.querySelector('.reprocessing-prompt').textContent,/Reasoning: none/);
  assert.equal(env.button('Start reprocessing').disabled,false);
 });
 test('resumed session estimates exclude previous successes and expose only current successful durations',async t=>{
@@ -152,7 +154,7 @@ test('resumed ledger preserves each last attempt configuration and marks incompl
  test('pending count excludes applied and rejected changes and never opens review automatically',async t=>{
  const r=fixture();r.patches[1].decision='accepted';const env=await mount(t,{initial:r});
  assert.ok(env.button('Review changes (1)'));assert.equal(document.querySelector('.reprocessing-reviews'),null);
- assert.equal(document.querySelector('.reprocessing-monitor-details').open,false);
+ assert.equal(document.querySelector('.reprocessing-monitor-details'),null);
  await env.click(env.button('Review changes (1)'));assert.equal(document.querySelectorAll('.reprocessing-patch').length,1);
  assert.equal(document.querySelector('.reprocessing-patch-explanation').open,false);assert.equal(document.querySelector('.reprocessing-history-filters').open,false,'Historical decision filters start collapsed');
  assert.equal(document.querySelector('[aria-label="Comparison layout"]').value,'unified');
@@ -166,7 +168,7 @@ test('only explicit completed revision selection changes the reading version',as
  assert.deepEqual(readings,[null]);assert.equal(document.querySelector('.reprocessing-document'),null);
  const picker=document.querySelector('[aria-label="Reading version"]');assert.ok([...picker.options].some(option=>option.value===r.id));
  await act(async()=>{picker.value=r.id;picker.dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});
- assert.equal(readings.at(-1).id,r.id);assert.equal(document.querySelector('.reprocessing-reviews'),null);
+ assert.equal(readings.at(-1).id,r.id);assert.equal(document.querySelector('.reprocessing-diff-review'),null);
  await act(async()=>{picker.value='original';picker.dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});assert.equal(readings.at(-1),null);
 });
 
@@ -190,7 +192,7 @@ test('a delayed reading version response cannot replace original after switching
  const r=fixture();r.fileId='f';r.status='completed';r.report.chunksCompleted=r.report.chunksTotal;let finish,details=0;const readings=[];
  const env=await mount(t,{initial:r,onReadingRevision:value=>readings.push(value),get:async()=>{details++;return details>1?new Promise(resolve=>{finish=resolve;}):r;}});
  const picker=document.querySelector('[aria-label="Reading version"]');await act(async()=>{picker.value=r.id;picker.dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});
- assert.equal(typeof finish,'function');await act(async()=>{picker.value='original';picker.dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});await act(async()=>finish(r));assert.equal(readings.at(-1),null);assert.equal(readings.some(value=>value!==null),false);
+ assert.equal(typeof finish,'function');await act(async()=>{picker.value='original';picker.dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});await act(async()=>finish(r));assert.equal(readings.at(-1),null);assert.equal(readings.some(value=>value?.id===r.id),true,'The already loaded snapshot is shown immediately before switching back');
 });
 
 test('switching source while a start request is pending ignores the old completion',async t=>{
@@ -282,6 +284,16 @@ test('changing depth leaves the independent review policy unchanged',async t=>{
 });
 
 
+test('substantial math toggle is off by default and submits independently of depth and policy',async t=>{
+ const env=await mount(t,{post:async()=>fixture()});await env.click(env.button('Refine text'));
+ const toggle=document.querySelector('[aria-label="Substantial math content"]');
+ assert.equal(toggle.checked,false);assert.match(document.getElementById(toggle.getAttribute('aria-describedby')).textContent,/every mathematical expression/);
+ await env.click(toggle);assert.equal(toggle.checked,true);
+ await env.click(env.button('Start reprocessing'));
+ const config=env.requests.find(entry=>entry.method==='POST').body.configuration;
+ assert.equal(config.substantialMath,true);assert.equal(config.depth,'balanced');assert.equal(config.reviewPolicy,'verified');
+});
+
 test('linked scholarly decisions submit the complete atomic group',async t=>{
  const r=fixture();r.patches=r.patches.map(patch=>({...patch,patchGroupId:'footnote-pair'}));
  const env=await mount(t,{initial:r,post:async(_,current)=>current});await env.click(env.button('Review changes (2)'));
@@ -371,7 +383,7 @@ test('local evidence preparation has visible progress before model excerpts comp
 
 test('summary quotation review visibly explains corrected and unresolved observations',async t=>{
  const r=fixture();r.report.summaryValidation={state:'completed',issues:2,accepted:1,unresolved:1,diagnostics:['Observation 3: extraction fix — proposed dehyphenation was quoted as original. Source quotation validated.','Observation 5: unsupported — the source block does not contain this claim. Not used as verification context.']};
- await mount(t,{initial:r});const review=document.querySelector('.reprocessing-summary-validation');
+ const env=await mount(t,{initial:r});await env.click(env.button('Processing details'));const review=document.querySelector('.reprocessing-summary-validation');
  assert.ok(review);assert.match(review.textContent,/2 quotation differences.*1 resolved.*1 excluded from summary context/);assert.match(review.textContent,/proposed dehyphenation/);assert.match(review.textContent,/unsupported/);assert.match(review.textContent,/Resolved quotation corrections do not block processing/);
 });
 
@@ -381,8 +393,9 @@ for(const [stage,title] of Object.entries({reconstructing:'Reconstructing excerp
   r.report.chunksCompleted=0;r.report.chunksTotal=3;r.report.stage=stage;r.report.stageProgress={completed:2,total:3};
   await mount(t,{initial:r});const presentation=document.querySelector('[data-reprocessing-stage]');
   assert.equal(presentation.dataset.reprocessingStage,stage);assert.match(document.querySelector('[id^="reprocessing-progress-"] [aria-live]').textContent,new RegExp(title));assert.match(presentation.textContent,new RegExp(title));assert.match(presentation.textContent,/2 \/ 3/);
-  const progress=document.querySelector('[aria-label="Completed excerpt coverage"]');
-  assert.equal(progress.value,0);assert.equal(progress.max,3);
+  const progress=document.querySelector('[aria-label="Overall revision progress"]');
+  const stageIndex=['reconstructing','understanding','verifying','auditing'].indexOf(stage);
+  assert.ok(Math.abs(progress.value-(stageIndex+2/3)*25)<0.001);assert.equal(progress.max,100);
   assert.match(document.querySelector('.reprocessing-stage-summary').textContent,/plus document synthesis/);
  });
 }
@@ -400,17 +413,17 @@ test('first pass shows activity before its first result and advances from polled
  r.report.stage='reconstructing';r.report.stageProgress={completed:0,total:3};r.report.sessionStartedAt=new Date(Date.now()-65000).toISOString();
  r.report.excerpts=[{index:0,status:'running',attempts:1,startPage:1,endPage:2,activePass:1,lastAttemptAt:r.report.sessionStartedAt,durationMs:0}];
  await mount(t,{initial:r});
- const progress=()=>document.querySelector('[aria-label="Completed excerpt coverage"]');
+ const progress=()=>document.querySelector('[aria-label="Overall revision progress"]');
  assert.equal(progress().value,0);
  assert.match(document.querySelector('.reprocessing-active-excerpts').textContent,/Excerpt 1.*Pass 1/);
  assert.match(document.querySelector('.reprocessing-monitor-details .reprocessing-hint:nth-of-type(2)').textContent,/Elapsed: 1 minutes.*Progress updates when each model request finishes/);
  r.updatedAt='2026-10-25T00:00:01Z';r.report.stageProgress.completed=1;
  await act(async()=>{for(const callback of [...scheduled])await callback();});
- assert.equal(progress().value,0);assert.equal(progress().max,3);
+ assert.ok(Math.abs(progress().value-100/12)<0.001);assert.equal(progress().max,100);
  assert.match(document.querySelector('[data-reprocessing-stage]').textContent,/1 \/ 3 items processed in this stage/);assert.match(document.querySelector('[id^="reprocessing-progress-"]').textContent,/0 of 3 excerpts completed/);
  r.updatedAt='2026-10-25T00:00:02Z';r.report.stage='understanding';r.report.stageProgress={completed:0,total:1};
  await act(async()=>{for(const callback of [...scheduled])await callback();});
- assert.equal(progress().value,0);
+ assert.equal(progress().value,25);
  assert.match(document.querySelector('[id^="reprocessing-progress-"] [aria-live]').textContent,/Understanding document/);
  assert.equal(document.querySelector('.reprocessing-active-excerpts'),null);
 });
@@ -435,14 +448,14 @@ test('legacy incomplete errors suppress stale configuration advice and offer rec
 test('completed corrections offer an explicit action to show the processed reading version',async t=>{
  const r=fixture();r.fileId='f';r.status='completed';r.report.chunksCompleted=r.report.chunksTotal;r.patches.forEach(patch=>patch.decision='accepted');const readings=[];
  const env=await mount(t,{initial:r,onReadingRevision:value=>readings.push(value)});
- assert.match(document.querySelector('.reprocessing-result-summary').textContent,/includes 2 applied corrections/);
+ await env.click(env.button('Processing details'));assert.match(document.querySelector('.reprocessing-result-summary').textContent,/includes 2 applied corrections/);
  assert.equal(readings.some(Boolean),false);await env.click(env.button('Show processed version'));assert.equal(readings.at(-1).id,r.id);
  assert.equal(env.button('Show processed version'),undefined);
 });
 
 test('completion distinguishes proposed corrections from unchanged output',async t=>{
  const r=fixture();r.status='completed';r.report.chunksCompleted=r.report.chunksTotal;
- const env=await mount(t,{initial:r});assert.match(document.querySelector('.reprocessing-result-summary').textContent,/2 proposed corrections.*reading text is unchanged/);
+ const env=await mount(t,{initial:r});await env.click(env.button('Processing details'));assert.match(document.querySelector('.reprocessing-result-summary').textContent,/2 proposed corrections.*reading text is unchanged/);
  await env.click(env.button('Review proposed corrections'));assert.ok(document.querySelector('.reprocessing-reviews'));
 });
 
@@ -465,7 +478,8 @@ test('explicit reading version selection clears temporary evidence context',asyn
  const picker=document.querySelector('[aria-label="Reading version"]');const choose=async value=>act(async()=>{picker.value=value;picker.dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});
  await choose(r.id);assert.equal(readings.at(-1),r.id);await env.click(env.button('Review changes (2)'));await env.click(env.button('Show original passage'));assert.ok(env.button('Return to correction'));
  await choose('original');assert.equal(readings.at(-1),null);assert.equal(env.button('Return to correction'),undefined);assert.ok(returned>=2);
- await env.click(env.button('Close corrections'));assert.equal(readings.at(-1),null,'Closing review must retain the explicit reader choice');
+ assert.equal(document.querySelector('.reprocessing-reviews'),null,'Choosing Original exits the revision comparison');
+ await env.click(env.button('Review changes (2)'));await env.click(env.button('Close corrections'));assert.equal(readings.at(-1),null,'Closing review must retain the explicit reader choice');
 });
 test('an ineligible saved reading choice falls back to the original selector value',async t=>{
  const r=fixture();r.fileId='f';r.status='completed';r.report.chunksCompleted=r.report.chunksTotal;const readings=[];
@@ -473,4 +487,173 @@ test('an ineligible saved reading choice falls back to the original selector val
  const picker=document.querySelector('[aria-label="Reading version"]');await act(async()=>{picker.value=r.id;picker.dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});assert.equal(readings.at(-1),r.id);
  await env.click(env.button('Review changes (2)'));await env.click(env.button('Keep original'));
  assert.equal(readings.at(-1),null);assert.equal(picker.value,'original');
+});
+
+test('revision controls use Noema dropdowns including modal processing settings',async t=>{
+ const env=await mount(t,{initial:fixture()});
+ for(const native of document.querySelectorAll('.source-reprocessing select')){assert.equal(native.classList.contains('select-native'),true);assert.ok(native.parentElement.querySelector('.select-trigger[role="combobox"]'));}
+ await env.click(env.button('Refine text'));
+ for(const label of ['Processing depth','Review policy']){assert.ok(document.querySelector(`button.select-trigger[aria-label="${label}"]`));assert.equal(document.querySelector(`select[aria-label="${label}"]`).getAttribute('aria-hidden'),'true');}
+ assert.equal(document.activeElement.getAttribute('role'),'combobox');
+});
+
+test('five-version cap prompts deletion before setup and never starts paid work automatically',async t=>{
+ const revisions=Array.from({length:4},(_,i)=>({...fixture(),id:'revision-'+i,createdAt:`2026-10-2${i+1}T00:00:00Z`,status:'completed'}));
+ let deleted=0;const env=await mount(t,{initial:revisions[0],history:revisions,remove:async()=>{deleted++;return {deleted:true};},post:async()=>{throw Error('No automatic processing');}});
+ await env.click(env.button('Refine text'));assert.match(document.querySelector('.source-revision-manager').textContent,/Version limit reached \(5 of 5 max revisions\).*You can keep up to 5 versions, including the original\. Delete 1 editorial revision to continue\./);
+ assert.equal(document.querySelector('.reprocessing-setup-sheet'),null);assert.equal(env.button('Continue to new revision').disabled,true);
+ const originalRow=document.querySelector('.source-revision-list li');assert.match(originalRow.textContent,/Original processed.*Always retained/);assert.equal(originalRow.querySelector('button'),null);
+ await env.click(document.querySelector('button[aria-label^="Delete revision from"]'));assert.equal(deleted,0);assert.match(document.querySelector('.confirmation-dialog:not(.source-revision-manager)').textContent,/permanently deletes/);
+ await env.click(env.button('Delete revision'));assert.equal(deleted,1);assert.equal(document.querySelectorAll('.source-revision-list li').length,4);assert.equal(env.button('Continue to new revision').disabled,false);
+ assert.equal(env.requests.some(request=>request.method==='POST'),false);
+ await env.click(env.button('Continue to new revision'));assert.ok(document.querySelector('.reprocessing-setup-sheet'));assert.equal(env.requests.some(request=>request.method==='POST'),false);
+});
+
+test('deleting the displayed preferred revision clears reading state and saved preference',async t=>{
+ const r={...fixture(),fileId:'f',status:'completed'},storage=new Map([['noema:source-reading:v:f',r.id]]),readings=[];
+ const descriptor=Object.getOwnPropertyDescriptor(globalThis,'localStorage');Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)}});t.after(()=>{if(descriptor)Object.defineProperty(globalThis,'localStorage',descriptor);else delete globalThis.localStorage;});
+ const env=await mount(t,{initial:r,history:[r],onReadingRevision:value=>readings.push(value?.id??null),remove:async()=>({deleted:true})});
+ assert.equal(readings.at(-1),r.id);await env.click(env.button('Manage revisions'));await env.click(document.querySelector('button[aria-label^="Delete revision from"]'));await env.click(env.button('Delete revision'));
+ assert.equal(readings.at(-1),null);assert.equal(storage.has('noema:source-reading:v:f'),false);assert.equal(document.querySelector('select[aria-label="Reading version"]').value,'original');
+ assert.equal(document.querySelector('.source-revision-list').querySelectorAll('li').length,1);
+});
+
+test('active revisions cannot be deleted and legacy over-limit histories require enough space',async t=>{
+ const revisions=Array.from({length:10},(_,i)=>({...fixture(),id:'legacy-'+i,status:i===0?'running':'failed'}));
+ const env=await mount(t,{initial:revisions[0],history:revisions});await env.click(env.button('Manage revisions'));
+ assert.match(document.querySelector('.source-revision-manager').textContent,/Version limit exceeded \(11 of 5 max revisions\).*You can keep up to 5 versions, including the original\. Delete 7 editorial revisions to continue\./);
+ const rows=document.querySelectorAll('.source-revision-list li');assert.equal(rows[1].querySelector('button').disabled,true);assert.equal(rows[2].querySelector('button').disabled,false);assert.match(rows[1].querySelector('button').title,/Stop processing/);
+});
+
+test('completed revision selection defaults to changes applied and diff is an explicit toggle',async t=>{
+ const r=fixture();r.fileId='f';r.status='completed';r.report.chunksCompleted=r.report.chunksTotal;
+ const presentations=[],readings=[];
+ const env=await mount(t,{initial:r,legacyDetails:false,onReadingRevision:value=>readings.push(value),onReviewOpenChange:(open,presentation)=>presentations.push({open,presentation})});
+ const picker=document.querySelector('[aria-label="Reading version"]');
+ await act(async()=>{picker.value=r.id;picker.dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});
+ assert.equal(document.querySelector('.source-revision-diff'),null,'Selecting a revision opens its reading view');
+ assert.equal(env.button('Changes applied').getAttribute('aria-pressed'),'true');
+ assert.deepEqual([...document.querySelector('[aria-label="Revision view"]').querySelectorAll('button')].map(button=>button.textContent),['Changes applied','Diff']);
+ await env.click(env.button('Diff'));
+ assert.equal(document.querySelector('[aria-label="Review corrections"]'),null,'Detailed review is optional');
+ assert.equal(env.button('Diff').getAttribute('aria-pressed'),'true');
+ assert.equal(document.querySelector('.revision-diff-notes').open,false);
+ assert.deepEqual(presentations.at(-1),{open:true,presentation:'diff'});
+ await env.click(env.button('Changes applied'));
+ assert.equal(document.querySelector('.source-revision-diff'),null);assert.equal(readings.at(-1).id,r.id);
+ assert.equal(env.button('Changes applied').getAttribute('aria-pressed'),'true');
+ assert.equal(presentations.at(-1).open,false);
+ await env.click(env.button('Diff'));assert.ok(document.querySelector('.source-revision-diff'));
+ await env.click(env.button('Detailed review'));assert.ok(document.querySelector('.reprocessing-reviews'));
+ assert.deepEqual(presentations.at(-1),{open:true,presentation:'drawer'});
+});
+
+test('inline diff decisions submit the whole footnote group and refresh the accepted reading snapshot',async t=>{
+ const r=fixture();r.fileId='f';r.status='completed';r.report.chunksCompleted=r.report.chunksTotal;r.patches=r.patches.map(patch=>({...patch,patchGroupId:'footnote-pair'}));
+ const readings=[],env=await mount(t,{initial:r,legacyDetails:false,onReadingRevision:value=>readings.push(value),post:async(entry,current)=>({...current,updatedAt:'2026-10-25T16:00:00Z',reprocessed:{...current.reprocessed,text:'Updated accepted footnotes'},patches:current.patches.map(patch=>({...patch,decision:entry.body.decisions.find(item=>item.patchId===patch.id)?.decision??patch.decision}))})});
+ const picker=document.querySelector('[aria-label="Reading version"]');
+ await act(async()=>{picker.value=r.id;picker.dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});
+ await env.click(env.button('Diff'));
+ const change=document.querySelector('.revision-diff-change');assert.ok(change);
+ await env.click([...change.querySelectorAll('button')].find(button=>button.textContent==='Accept'));
+ const request=env.requests.find(item=>item.method==='POST');
+ assert.deepEqual(request.body.decisions,[{patchId:'patch-0',decision:'accepted'},{patchId:'patch-1',decision:'accepted'}]);
+ assert.equal(document.querySelector('.revision-diff-change').dataset.decision,'accepted','Reviewed changes remain visible in the diff');
+ await env.click(env.button('Changes applied'));
+ assert.equal(readings.at(-1).reprocessed.text,'Updated accepted footnotes');
+ await env.click(env.button('Diff'));
+ await env.click([...document.querySelector('.revision-diff-change').querySelectorAll('button')].find(button=>button.textContent==='Reject'));
+ assert.deepEqual(env.requests.filter(item=>item.method==='POST').at(-1).body.decisions,[{patchId:'patch-0',decision:'rejected'},{patchId:'patch-1',decision:'rejected'}]);
+ assert.equal(document.querySelector('.revision-diff-change').dataset.decision,'rejected');
+});
+
+test('completed processing hides its monitor until details are opened in a dismissible modal',async t=>{
+ const r=fixture(),env=await mount(t,{initial:r});
+ assert.equal(document.querySelector('.reprocessing-monitor'),null);
+ assert.equal(document.querySelector('progress'),null);
+ assert.equal(document.querySelector('dialog'),null);
+ await env.click(env.button('Processing details'));
+ const modal=document.querySelector('dialog.reprocessing-details-modal');assert.ok(modal.open);
+ assert.ok(modal.querySelector('.reprocessing-report'));assert.equal(modal.querySelector('.reprocessing-monitor-main'),null);
+ await env.click(modal.querySelector('[aria-label="Close dialog"]'));
+ assert.equal(document.querySelector('dialog'),null);assert.ok(env.button('Processing details'));
+});
+
+test('editorial version labels preserve assigned ordinals with gaps and retain timestamps',async t=>{
+ const r=fixture();r.id='middle';r.versionNumber=4;r.createdAt='2026-10-24T12:00:00Z';
+ const older={...r,id:'older',versionNumber:2,createdAt:'2026-10-23T12:00:00Z'},newer={...r,id:'newer',versionNumber:7,createdAt:'2026-10-25T12:00:00Z'};
+ await mount(t,{initial:newer,history:[newer,r,older]});
+ const options=[...document.querySelector('[aria-label="Reading version"]').options];
+ for(const [id,version] of [['older','V2'],['middle','V4'],['newer','V7']]){
+  const option=options.find(option=>option.value===id);assert.ok(option);assert.ok(option.textContent.startsWith(version+' · '));assert.ok(!option.textContent.includes('Editorial revision'));
+  assert.match(option.textContent,/2026/);
+ }
+ const details=document.querySelector('button[aria-label="Processing details"]');assert.ok(details.querySelector('svg'));assert.equal(details.textContent,'');assert.equal(details.title,'Processing details');
+});
+
+test('accepted view republishes the selected revision after evidence restores a different preferred snapshot',async t=>{
+ const selected={...fixture(),id:'selected',fileId:'f',versionNumber:2},preferred={...fixture(),id:'preferred',fileId:'f',versionNumber:1};
+ selected.reprocessed.text='Selected revision rendered text';preferred.reprocessed.text='Preferred revision rendered text';
+ const storage=new Map([['noema:source-reading:v:f',preferred.id]]),descriptor=Object.getOwnPropertyDescriptor(globalThis,'localStorage');
+ Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)}});
+ t.after(()=>{if(descriptor)Object.defineProperty(globalThis,'localStorage',descriptor);else delete globalThis.localStorage;});
+ const readings=[],env=await mount(t,{initial:preferred,history:[selected,preferred],legacyDetails:false,get:entry=>entry.url.endsWith('/selected')?selected:preferred,onReadingRevision:value=>readings.push(value),onReturnContext:()=>readings.push(preferred)});
+ const picker=document.querySelector('[aria-label="Reading version"]');
+ await act(async()=>{picker.value=selected.id;picker.dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});
+ assert.equal(readings.at(-1).id,selected.id);
+ await env.click(env.button('Changes applied'));
+ assert.equal(readings.at(-1).id,selected.id);assert.equal(readings.at(-1).reprocessed.text,'Selected revision rendered text');
+ assert.equal(storage.get('noema:source-reading:v:f'),preferred.id,'Previewing a revision never changes the preference');
+ assert.equal(picker.value,selected.id);assert.equal(env.button('Changes applied').getAttribute('aria-pressed'),'true');
+ await env.click(env.button('Diff'));await env.click(env.button('Changes applied'));assert.equal(readings.at(-1).id,selected.id);
+});
+
+
+test('source view restores changes applied, diff and reading version after remount',async t=>{
+ const storage=new Map(),descriptor=Object.getOwnPropertyDescriptor(globalThis,'localStorage');
+ Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)}});
+ t.after(()=>{if(descriptor)Object.defineProperty(globalThis,'localStorage',descriptor);else delete globalThis.localStorage;});
+ const r={...fixture(),fileId:'f',status:'completed'};r.report.chunksCompleted=r.report.chunksTotal;
+ const env=await mount(t,{initial:r,legacyDetails:false});
+ const picker=document.querySelector('[aria-label="Reading version"]');
+ await act(async()=>{picker.value=r.id;picker.dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});
+ for(const mode of ['Changes applied','Diff','Changes applied']){
+  await env.click(env.button(mode));await env.remount();
+  assert.equal(env.button(mode).getAttribute('aria-pressed'),'true');
+  assert.equal(document.querySelector('[aria-label="Reading version"]').value,r.id);
+  assert.equal(!!document.querySelector('.source-revision-diff'),mode==='Diff');
+ }
+ assert.equal(storage.has('noema:source-reading:v:f'),false,'Remembering the current view does not change the preferred version');
+});
+
+for(const details of [false,true])test(`accept all pending works in ${details?'detailed':'diff'} review without changing prior decisions`,async t=>{
+ const r=fixture();r.fileId='f';r.status='completed';r.report.chunksCompleted=r.report.chunksTotal;
+ r.patches=[...r.patches.map(patch=>({...patch,patchGroupId:'linked'})),{...r.patches[0],id:'rejected',patchGroupId:undefined,decision:'rejected'},{...r.patches[1],id:'applied',patchGroupId:undefined,decision:'accepted'}];
+ const env=await mount(t,{initial:r,legacyDetails:details,post:async(entry,current)=>({...current,updatedAt:'2026-10-26T00:00:01Z',patches:current.patches.map(patch=>({...patch,decision:entry.body.decisions.find(item=>item.patchId===patch.id)?.decision??patch.decision}))})});
+ await env.click(env.button('Review changes (2)'));
+ const accept=env.button('Apply all pending (2)');assert.ok(accept);await env.click(accept);
+ const posts=env.requests.filter(entry=>entry.method==='POST');assert.equal(posts.length,1);
+ assert.equal(posts[0].body.updatedAt,r.updatedAt);assert.deepEqual(posts[0].body.decisions,[{patchId:'patch-0',decision:'accepted'},{patchId:'patch-1',decision:'accepted'}]);
+ assert.equal(env.button('Apply all pending (0)').disabled,true);
+});
+
+test('hunk approval submits all pending hunk changes in one revision-checked request',async t=>{
+ const r=fixture();r.fileId='f';r.status='completed';r.report.chunksCompleted=r.report.chunksTotal;r.patches=r.patches.map(patch=>({...patch,patchGroupId:'linked'}));
+ const env=await mount(t,{initial:r,legacyDetails:false,post:async(entry,current)=>({...current,updatedAt:'2026-10-26T00:00:01Z',patches:current.patches.map(patch=>({...patch,decision:'accepted'}))})});
+ await env.click(env.button('Review changes (2)'));await env.click(env.button('Apply changes (2)'));
+ const posts=env.requests.filter(entry=>entry.method==='POST');assert.equal(posts.length,1);assert.equal(posts[0].body.updatedAt,r.updatedAt);assert.deepEqual(posts[0].body.decisions,[{patchId:'patch-0',decision:'accepted'},{patchId:'patch-1',decision:'accepted'}]);
+});
+
+test('numbered bibliography citations jump to exact entries without becoming footnotes',async t=>{
+ const {SourceReaderText}=await import('../src/client/sources/SourceReaderText.tsx');
+ const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
+ const text='A supporting result appears in [1].\n\nREFERENCES\n\n[1] A. Writer, A result, Journal (2020).';
+ await act(async()=>root.render(React.createElement(SourceReaderText,{text,footnotePrefix:'bibliography-test',startOffset:20})));
+ const link=document.querySelector('a[data-bibliographic-reference]');assert.ok(link);assert.equal(link.textContent,'[1]');
+ assert.equal(link.querySelector('[data-source-start]').dataset.sourceStart,String(20+text.indexOf('[1]')));
+ const target=document.getElementById(link.getAttribute('href').slice(1));assert.ok(target);assert.equal(target.textContent,'[1]');
+ let jumped=false;target.scrollIntoView=()=>{jumped=true;};await act(async()=>link.click());assert.equal(jumped,true);assert.equal(document.activeElement,target);
+ assert.equal(document.querySelector('sup,.source-reader-footnote'),null);assert.equal(document.querySelector('.source-reader-text').textContent,text.replace(/\n+/g,''));
+ await act(async()=>root.render(React.createElement(SourceReaderText,{text:'Ordinary [1], math $[1]$, and code `[1]` have no bibliography.'})));
+ assert.equal(document.querySelector('a[data-bibliographic-reference]'),null);
 });

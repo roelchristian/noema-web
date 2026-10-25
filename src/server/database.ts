@@ -31,6 +31,7 @@ import {setupSourceDocumentSchema} from './source-document-schema.js';
 import {setupSourcePassageEmbeddingSchema} from './source-passage-embedding-schema.js';
 import {setupTextSearchSchema} from './text-search-schema.js';
 import {setupPageEnrichmentSchedulerSchema} from './page-enrichment-schema.js';
+import {setupSourceReprocessingVersionSchema} from './source-reprocessing-version-schema.js';
 import {setupSourceReprocessingSummarySchema} from './source-reprocessing-summary-schema.js';
 
 export function openDatabase(filename: string): DatabaseSync {
@@ -300,6 +301,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS source_reprocessing (
  CREATE UNIQUE INDEX IF NOT EXISTS source_reprocessing_active ON source_reprocessing(file_id) WHERE status IN ('queued','running');`);
 setupSourceReprocessingCheckpointSchema(db);
 setupSourceReprocessingSummarySchema(db);
+setupSourceReprocessingVersionSchema(db);
 const sourceColumns = db.prepare('PRAGMA table_info(source_files)').all() as {name:string}[];
 for (const [column, definition] of Object.entries({
  contains_math:"INTEGER NOT NULL DEFAULT 0 CHECK (contains_math IN (0,1))",

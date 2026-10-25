@@ -1,5 +1,6 @@
+import {sourceReadingRevision} from './source-reading-revision.js';
 import {PageHistory} from './page-history.js';
-import {createReadingAnchor,resolveReadingAnchor,type ReadingAnchor,type ReadingLocation,type ReadingContinuity} from '../../shared/reading-continuity.js';
+import {createReadingAnchor,resolveReadingAnchor,rawReadingOffset,type ReadingAnchor,type ReadingLocation,type ReadingContinuity} from '../../shared/reading-continuity.js';
 import {explanationPrompt} from './explanation-prompt.js';
 import type {PageGenerationMetadata} from '../../shared/page-generation.js';
 import {projectPageText} from '../../shared/page-text.js';
@@ -34,24 +35,34 @@ export class SourceReading {
   if(!file)throw new HttpError(404,'Source file not found in this vault');
   return file;
  }
- continuity(vault:string,fileId:string):ReadingContinuity {
+ continuity(vault:string,fileId:string,revisionId?:string):ReadingContinuity {
   const file=mathSource(this.store,this.file(vault,fileId)),revision=sourceTextHash(file.text);
+  const view=sourceReadingRevision(this.store,vault,file,revisionId);
   const locations=this.store.all<{id:string;label:string;anchor_json:string}>('SELECT id,label,anchor_json FROM source_reading_locations WHERE vault_id=? AND file_id=? ORDER BY rowid',vault,fileId).map(row=>{
    const anchor=JSON.parse(row.anchor_json) as ReadingAnchor;
-   return {id:row.id,label:row.label,anchor,resolution:resolveReadingAnchor(anchor,file.text,revision)} satisfies ReadingLocation;
+   const resolved=resolveReadingAnchor(anchor,file.text,revision);
+   if(!revisionId||resolved.status!=='resolved')return {id:row.id,label:row.label,anchor,resolution:resolved} satisfies ReadingLocation;
+   const start=rawReadingOffset(file.text,resolved.offset),range=view.forward({startOffset:start,endOffset:Math.min(file.text.length,start+Math.max(1,anchor.quote.length))});
+   if(!range)return {id:row.id,label:row.label,anchor,resolution:{status:'unresolved'}} satisfies ReadingLocation;
+   const projected=createReadingAnchor(fileId,view.hash,view.text,range.startOffset,view.document,anchor.atEnd);
+   return {id:row.id,label:row.label,anchor:projected,resolution:{status:'resolved',offset:projected.offset}} satisfies ReadingLocation;
   });
   return {resume:locations.find(item=>item.id==='resume')??null,bookmarks:locations.filter(item=>item.id!=='resume')};
  }
  saveLocation(vault:string,fileId:string,id:string,body:Record<string,unknown>) {
-  const raw=this.file(vault,fileId),file=mathSource(this.store,raw),revision=sourceTextHash(file.text);
+  const raw=this.file(vault,fileId),file=mathSource(this.store,raw),view=sourceReadingRevision(this.store,vault,file,body.revisionId),revision=view.hash;
   if(file.status!=='ready'||file.admitted!==1||body.revision!==revision)throw new HttpError(409,'This source changed. Reopen it before saving a reading location.');
-  if(!Number.isSafeInteger(body.offset)||(body.offset as number)<0||(body.offset as number)>file.text.length)throw new HttpError(400,'Invalid reading offset.');
+  if(!Number.isSafeInteger(body.offset)||(body.offset as number)<0||(body.offset as number)>view.text.length)throw new HttpError(400,'Invalid reading offset.');
   if(id!=='resume'&&!/^[a-f0-9-]{36}$/i.test(id))throw new HttpError(400,'Invalid bookmark ID.');
   const label=body.label===undefined?'':text(body.label,80).trim();
-  const anchor=createReadingAnchor(fileId,revision,file.text,body.offset as number,processedSourceDocument(file),body.atEnd===true);
+  const displayedOffset=body.offset as number;
+  const mapped=view.reverse({startOffset:Math.min(displayedOffset,Math.max(0,view.text.length-1)),endOffset:Math.min(view.text.length,displayedOffset+1)});
+  if(!mapped)throw new HttpError(409,'This reading position has no reliable original passage.');
+  const anchor=createReadingAnchor(fileId,sourceTextHash(file.text),file.text,displayedOffset===view.text.length?file.text.length:mapped.startOffset,processedSourceDocument(file),body.atEnd===true);
   if(!anchor.quote.trim())throw new HttpError(400,'This source has no readable passage.');
   this.store.run('INSERT INTO source_reading_locations (vault_id,file_id,id,label,anchor_json) VALUES (?,?,?,?,?) ON CONFLICT(vault_id,file_id,id) DO UPDATE SET label=excluded.label,anchor_json=excluded.anchor_json',vault,fileId,id,label,JSON.stringify(anchor));
-  return {id,label,anchor,resolution:{status:'resolved',offset:anchor.offset}} satisfies ReadingLocation;
+  const displayed=createReadingAnchor(fileId,view.hash,view.text,displayedOffset,view.document,body.atEnd===true);
+  return {id,label,anchor:displayed,resolution:{status:'resolved',offset:displayed.offset}} satisfies ReadingLocation;
  }
  renameLocation(vault:string,fileId:string,id:string,body:Record<string,unknown>) {
   this.file(vault,fileId);
@@ -70,14 +81,21 @@ export class SourceReading {
   if(raw.status!=='ready'||raw.admitted!==1)throw new HttpError(409,'Wait for this source to finish processing.');
   if(body.sourceId!==raw.entity_id||body.fileId!==fileId)throw new HttpError(400,'This passage does not belong to this source.');
   const hash=required(body.sourceHash);
-  const file=sourceTextHash(raw.text)===hash?raw:mathSource(this.store,raw);
-  if(sourceTextHash(file.text)!==hash)throw new HttpError(409,'This source changed. Reload it and select the passage again.');
-  const start=body.startOffset,end=body.endOffset;
+  const original=sourceTextHash(raw.text)===hash?raw:mathSource(this.store,raw);
+  const view=sourceReadingRevision(this.store,vault,original,body.revisionId);
+  const file={...original,text:view.text};
+  if(view.hash!==hash)throw new HttpError(409,'This source changed. Reload it and select the passage again.');
+  let start=body.startOffset,end=body.endOffset;
   if(!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||(start as number)<0||(end as number)<=(start as number)||(end as number)>file.text.length)throw new HttpError(400,'Select a valid passage in the source.');
-  const excerpt=text(body.excerpt,65536);
+  let excerpt=text(body.excerpt,65536);
   if(!excerpt.trim()||file.text.slice(start as number,end as number)!==excerpt)throw new HttpError(400,'The selected passage does not match this source.');
+  if(body.revisionId!==undefined){
+   const mapped=view.reverse({startOffset:start as number,endOffset:end as number});
+   if(!mapped)throw new HttpError(409,'This selection has no reliable original passage. Select a passage with original text.');
+   start=mapped.startOffset;end=mapped.endOffset;file.text=original.text;excerpt=file.text.slice(start as number,end as number);
+  }
   const startLine=file.text.slice(0,start as number).split('\n').length,endLine=startLine+excerpt.split('\n').length-1;
-  const ref:SourceReference={id:randomUUID(),sourceId:raw.entity_id!,fileId,sourceHash:hash,startOffset:start as number,endOffset:end as number,startLine,endLine,excerpt};
+  const ref:SourceReference={id:randomUUID(),sourceId:raw.entity_id!,fileId,sourceHash:sourceTextHash(file.text),startOffset:start as number,endOffset:end as number,startLine,endLine,excerpt};
   const entries=sourceDocumentEntries(processedSourceDocument(file));
   const node=typeof body.nodeId==='string'?entries.find(entry=>entry.node.id===body.nodeId&&entry.node.range.startOffset<=ref.startOffset!&&entry.node.range.endOffset>=ref.endOffset!):undefined;
   if(node){ref.nodeId=node.node.id;ref.contextLabel=sourceNodeLabel(node.path);}
@@ -90,22 +108,24 @@ export class SourceReading {
   const ref=JSON.parse(row.reference_json) as SourceReference;
   return {...ref,id:row.id,sourceId:row.source_id,fileId:row.file_id,sourceHash:row.source_hash,startOffset:row.start_offset,endOffset:row.end_offset,excerpt:row.excerpt,color:row.color,createdAt:row.created_at};
  }
- list(vault:string,fileId:string) {
-  this.file(vault,fileId);
-  return this.store.all<HighlightRow>('SELECT * FROM highlights WHERE vault_id=? AND file_id=? ORDER BY start_offset,created_at,id',vault,fileId).map(row=>this.highlight(row));
+ list(vault:string,fileId:string,revisionId?:string) {
+  const view=sourceReadingRevision(this.store,vault,mathSource(this.store,this.file(vault,fileId)),revisionId);
+  return this.store.all<HighlightRow>('SELECT * FROM highlights WHERE vault_id=? AND file_id=? ORDER BY start_offset,created_at,id',vault,fileId).flatMap(row=>{const item=this.highlight(row),mapped=view.reference(item);return mapped?[{...item,...mapped,id:item.id}]:[];});
  }
- listReadingNotes(vault:string,fileId:string) {
-  this.file(vault,fileId);
+ listReadingNotes(vault:string,fileId:string,revisionId?:string) {
+  const view=sourceReadingRevision(this.store,vault,mathSource(this.store,this.file(vault,fileId)),revisionId);
   const knowledge=new Knowledge(this.store);
   return this.store.all<ReadingNoteAnchor & {blocks:string}>(`SELECT n.page_id AS pageId,p.title,p.blocks,n.source_hash AS sourceHash,n.start_offset AS startOffset,n.end_offset AS endOffset
    FROM page_reading_notes n JOIN pages p ON p.id=n.page_id AND p.vault_id=n.vault_id
-   WHERE n.vault_id=? AND n.file_id=? AND p.deleted_at IS NULL AND p.archived_at IS NULL ORDER BY n.start_offset,n.created_at,n.page_id`,vault,fileId).map(({blocks,...note})=>({...note,text:projectPageText(JSON.parse(blocks) as Block[],id=>entityMentionName(knowledge.find(vault,id))).text}));
+   WHERE n.vault_id=? AND n.file_id=? AND p.deleted_at IS NULL AND p.archived_at IS NULL ORDER BY n.start_offset,n.created_at,n.page_id`,vault,fileId).flatMap(({blocks,...note})=>{const mapped=view.project(note);return mapped?[{...mapped,text:projectPageText(JSON.parse(blocks) as Block[],id=>entityMentionName(knowledge.find(vault,id))).text}]:[];});
  }
  createHighlight(vault:string,fileId:string,body:Record<string,unknown>) {
   if(!highlightColors.includes(body.color as SourceHighlight['color']))throw new HttpError(400,'Choose one of the five highlight colors.');
   const ref=this.selection(vault,fileId,body),id=randomUUID(),createdAt=now();
   this.store.run('INSERT INTO highlights (id,vault_id,source_id,file_id,source_hash,start_offset,end_offset,excerpt,color,reference_json,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)',id,vault,ref.sourceId,fileId,ref.sourceHash,ref.startOffset!,ref.endOffset!,ref.excerpt,body.color as string,JSON.stringify(ref),createdAt);
-  return this.highlight(this.store.get<HighlightRow>('SELECT * FROM highlights WHERE id=?',id)!);
+  const item=this.highlight(this.store.get<HighlightRow>('SELECT * FROM highlights WHERE id=?',id)!);
+  const view=sourceReadingRevision(this.store,vault,mathSource(this.store,this.file(vault,fileId)),body.revisionId);
+  return {...item,...view.reference(item),id:item.id};
  }
  removeHighlight(vault:string,fileId:string,id:string) {
   this.file(vault,fileId);
@@ -118,8 +138,10 @@ export class SourceReading {
   if(!highlightColors.includes(body.color as SourceHighlight['color']))throw new HttpError(400,'Choose one of the five highlight colors.');
   const row=this.store.get<HighlightRow>('SELECT * FROM highlights WHERE id=? AND vault_id=? AND file_id=?',id,vault,fileId);
   if(!row)throw new HttpError(404,'Highlight not found');
+  const item=this.highlight({...row,color:body.color as SourceHighlight['color']});
+  const view=sourceReadingRevision(this.store,vault,mathSource(this.store,this.file(vault,fileId)),body.revisionId);
   this.store.run('UPDATE highlights SET color=? WHERE id=? AND vault_id=? AND file_id=?',body.color as string,id,vault,fileId);
-  return this.highlight({...row,color:body.color as SourceHighlight['color']});
+  return {...item,...view.reference(item),id:item.id};
  }
  prepareExplanation(vault:string,fileId:string,body:Record<string,unknown>,defaultId=defaultPersonaId) {
   const ref=this.selection(vault,fileId,body),requestId=readingNoteRequestId(body.requestId);

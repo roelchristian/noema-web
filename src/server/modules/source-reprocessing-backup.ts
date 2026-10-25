@@ -25,8 +25,9 @@ export function validateReprocessingConfiguration(value:unknown):SourceReprocess
  const c=object(value),e=object(c.evidence);
  oneOf(c.depth,['light','balanced','deep']);oneOf(c.reviewPolicy,['verified','review_all']);
  for(const key of ['originalPages','ocr','allowExternalTransmission'])if(typeof e[key]!=='boolean')throw invalid();
+ if(c.substantialMath!==undefined&&typeof c.substantialMath!=='boolean')throw invalid();
  if(c.architectureVersion!==undefined&&c.architectureVersion!==1)throw invalid();
- return {...(c.architectureVersion===1?{architectureVersion:1 as const}:{}),depth:c.depth as SourceReprocessingConfiguration['depth'],reviewPolicy:c.reviewPolicy as SourceReprocessingConfiguration['reviewPolicy'],evidence:{originalPages:e.originalPages as boolean,ocr:e.ocr as boolean,allowExternalTransmission:e.allowExternalTransmission as boolean}};
+ return {...(c.substantialMath!==undefined?{substantialMath:c.substantialMath as boolean}:{}),...(c.architectureVersion===1?{architectureVersion:1 as const}:{}),depth:c.depth as SourceReprocessingConfiguration['depth'],reviewPolicy:c.reviewPolicy as SourceReprocessingConfiguration['reviewPolicy'],evidence:{originalPages:e.originalPages as boolean,ocr:e.ocr as boolean,allowExternalTransmission:e.allowExternalTransmission as boolean}};
 }
 
 /** Archive checkpoints are validated against canonical revision coordinates, then ID-remapped. */
@@ -42,7 +43,7 @@ export function restoreReprocessingCheckpoints(revision:SourceReprocessingRevisi
   if(c.evidenceTrusted!==undefined&&typeof c.evidenceTrusted!=='boolean')throw invalid();
   if(c.evidence!==undefined){evidenceBytes+=Buffer.byteLength(JSON.stringify(c.evidence));if(evidenceBytes>sourceReprocessingEvidenceRevisionBytes)throw invalid();c.evidence=validateReprocessingEvidenceSnapshot(c.evidence,{text:revision.original.text,document:revision.original.document,start:c.startOffset as number,end:c.endOffset as number,configuration,evidenceHash:c.evidenceHash as string});}
   oneOf(c.difficulty,['ordinary','difficult']);if(c.difficultyReason!==null)string(c.difficultyReason,2000);
-  const count=integer(c.requiredPassCount,1,3);if(configuration.depth==='light'&&count!==1||configuration.depth==='balanced'&&count!==2||configuration.depth==='deep'&&count<2||count===3&&!c.difficultyReason)throw invalid();
+  const count=integer(c.requiredPassCount,1,3);if(configuration.depth==='light'&&count!==1||configuration.depth!=='light'&&count<2||count===3&&!c.difficultyReason)throw invalid();
   oneOf(c.status,['pending','running','completed','failed','interrupted']);
   chunks.push({...structuredClone(c),revisionId:revision.id,baseHash:revision.baseHash,evidenceTrusted:false,status:c.status==='running'?'interrupted':c.status} as unknown as SourceReprocessingChunk);
  }
@@ -120,7 +121,7 @@ export function restoreReprocessingSynthesis(value:unknown,revision:SourceReproc
   const chunks=planReprocessingChunks(revision.original.text,revision.original.document,8000,configuration.architectureVersion===1);
   const frozenIndexes=data.register?array(object(data.register).constituentHashes,128).map(item=>object(item).chunkIndex):null;
   const firstPasses=passes.filter(pass=>pass.index===1&&pass.status==='completed'&&pass.validation.includes('complete-canonical-block-mapping')&&(!frozenIndexes||frozenIndexes.includes(pass.chunkIndex))).map(pass=>{const repair=repairs.filter(item=>item.chunkIndex===pass.chunkIndex&&item.passIndex===1&&item.status==='completed'&&!item.outcomeUncertain&&item.validation.includes('complete-canonical-block-mapping')).at(-1);return {chunkIndex:pass.chunkIndex,result:repair?.result??pass.result!,requestHash:repair?.requestHash??pass.requestHash};});
-  const input=createSynthesisInput({revisionId:oldRevisionId,baseHash:oldBaseHash,text:revision.original.text,title:revision.original.document.source.title,chunks,firstPasses});
+  const input=createSynthesisInput({revisionId:oldRevisionId,baseHash:oldBaseHash,preserveProposals:['source-reconstruction-v2-9','source-reconstruction-v2-10','source-reconstruction-v2-11'].includes(revision.report.promptVersion),text:revision.original.text,title:revision.original.document.source.title,chunks,firstPasses});
   if(createHash('sha256').update(input.request).digest('hex')!==data.requestHash||createSynthesisReviewInput(input,data.result).requestHash!==review.requestHash)throw invalid();
  }
  if(data.register!==null){
@@ -128,7 +129,7 @@ export function restoreReprocessingSynthesis(value:unknown,revision:SourceReproc
   const register=object(data.register);if(revision.report.contextHash!==undefined&&revision.report.contextHash!==register.hash)throw invalid();const constituents=array(register.constituentHashes,128).map(object);
   const firstPasses=constituents.map(item=>{const pass=passes.find(pass=>pass.index===1&&pass.chunkIndex===item.chunkIndex&&pass.requestHash===item.requestHash)??repairs.find(repair=>repair.passIndex===1&&repair.chunkIndex===item.chunkIndex&&repair.requestHash===item.requestHash&&repair.validation.includes('complete-canonical-block-mapping'));if(!pass)throw invalid();return pass;});
   if(firstPasses.some(pass=>pass.status!=='completed'||!pass.result)||firstPasses.length!==constituents.length)throw invalid();
-  const input=createSynthesisInput({revisionId:oldRevisionId,baseHash:oldBaseHash,text:revision.original.text,title:revision.original.document.source.title,chunks,firstPasses:firstPasses.map(pass=>({chunkIndex:pass.chunkIndex,result:pass.result!,requestHash:pass.requestHash}))});
+  const input=createSynthesisInput({revisionId:oldRevisionId,baseHash:oldBaseHash,preserveProposals:['source-reconstruction-v2-9','source-reconstruction-v2-10','source-reconstruction-v2-11'].includes(revision.report.promptVersion),text:revision.original.text,title:revision.original.document.source.title,chunks,firstPasses:firstPasses.map(pass=>({chunkIndex:pass.chunkIndex,result:pass.result!,requestHash:pass.requestHash}))});
   if(createHash('sha256').update(input.request).digest('hex')!==data.requestHash||JSON.stringify(register.evidenceReview?resolveReviewedSynthesis(input,data.result as string,string(object(data.review).result,128000)):parseDocumentSynthesis(input,data.result as string,{isolateInvalidObservations:register.validationPolicy==='isolate-invalid-observations-v1'}))!==JSON.stringify(register))throw invalid();
  }
  validateResponseAttempts(data);
@@ -144,6 +145,7 @@ export function restoreSourceRevision(payload:unknown,oldId:string,oldFileId:str
  const original=object(r.original),text=string(original.text,512000),document=object(original.document);
  if(r.id!==oldId||r.fileId!==oldFileId||document.schemaVersion!==1||r.baseHash!==hash(original))throw invalid();
  timestamp(r.createdAt);timestamp(r.updatedAt);string(r.instructions,4000);
+ if(r.versionNumber!==undefined)integer(r.versionNumber,1,Number.MAX_SAFE_INTEGER);
  oneOf(r.status,['queued','running','completed','failed','interrupted']);
  if(typeof r.stale!=='boolean')throw invalid();
  const source=object(document.source);
@@ -285,7 +287,7 @@ export function restoreSourceRevision(payload:unknown,oldId:string,oldFileId:str
  if(report.validationDiagnostics!==undefined)for(const diagnostic of array(report.validationDiagnostics,5000))string(diagnostic,10000);
  // Keep the validated original's key order for the evidence hash. The derived variant and
  // supplied node links are intentionally discarded and deterministically reconstructed.
- const revision=structuredClone({id:r.id,fileId:r.fileId,createdAt:r.createdAt,updatedAt:r.updatedAt,status:r.status,pipelineVersion:r.pipelineVersion,configuration:r.pipelineVersion===2?validateReprocessingConfiguration(r.configuration):undefined,furniture:r.furniture,acceptanceMode:r.acceptanceMode??'review_all',acceptanceThreshold:r.acceptanceThreshold,instructions:r.instructions,baseHash:r.baseHash,stale:r.stale,original,reprocessed:original,patches,report}) as unknown as SourceReprocessingRevision;
+ const revision=structuredClone({versionNumber:r.versionNumber,id:r.id,fileId:r.fileId,createdAt:r.createdAt,updatedAt:r.updatedAt,status:r.status,pipelineVersion:r.pipelineVersion,configuration:r.pipelineVersion===2?validateReprocessingConfiguration(r.configuration):undefined,furniture:r.furniture,acceptanceMode:r.acceptanceMode??'review_all',acceptanceThreshold:r.acceptanceThreshold,instructions:r.instructions,baseHash:r.baseHash,stale:r.stale,original,reprocessed:original,patches,report}) as unknown as SourceReprocessingRevision;
  revision.id=newId;revision.fileId=newFileId;revision.original.document.source.fileId=newFileId;
  revision.baseHash=hash(revision.original);revision.stale=false;
  for(const patch of revision.patches)if(patch.baseHash!==undefined)patch.baseHash=revision.baseHash;

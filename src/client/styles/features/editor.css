@@ -1036,12 +1036,7 @@
   background: light-dark(#efefef, var(--surface-inset));
   color: light-dark(#242424, var(--text))
 }
-.page {
-  --document-line-width: 680px;
-  max-width: calc(var(--document-line-width) + 2 * var(--editor-page-padding-inline));
-  margin: 0 auto;
-  padding: 58px var(--editor-page-padding-inline) 50px
-}
+
 .page-eyebrow {
   font-size: 10px;
   letter-spacing: 1.5px;
@@ -1171,7 +1166,7 @@
   margin-top: 17px;
   align-items: flex-start
 }
-.block input[type=checkbox] {
+.block input[type=checkbox], .source-reader-checkbox {
   appearance: none;
   flex-shrink: 0;
   border: 1px solid light-dark(#c6c6c6, var(--control-border));
@@ -1181,7 +1176,7 @@
   margin: 6px 0 0;
   cursor: pointer
 }
-.block input:checked:after {
+.block input:checked:after, .source-reader-checkbox[data-checked=true]::after {
   content: '✓';
   color: light-dark(white, var(--text));
   display: block;
@@ -1250,18 +1245,8 @@
 .editor-footer>span {
   margin: 0 5px
 }
-@media(min-width:1450px) {
-  .page {
-    padding-top: 77px
-  }
-}
-@media(max-width:1150px) {
-  .page {
-    padding: 47px var(--editor-page-padding-inline) 55px
-  }
-}
 @media(max-width:750px) {
-  .page,.library {
+  .library {
     padding: 40px 25px
   }
   #page-title {
@@ -1427,7 +1412,7 @@
 .block.quote {
   border-color: var(--accent);
 }
-.block input:checked {
+.block input:checked, .source-reader-checkbox[data-checked=true] {
   background: var(--accent);
   border-color: var(--accent);
 }
@@ -1488,7 +1473,7 @@
 .mention:hover {
   filter: brightness(.97);
 }
-:root[data-mode=dark] .block input:checked:after {
+:root[data-mode=dark] .block input:checked:after, :root[data-mode=dark] .source-reader-checkbox[data-checked=true]::after {
   color: var(--accent-foreground);
 }
 .block-controls {
@@ -2491,13 +2476,14 @@
   }
 }
 :root[data-mode=dark] .block input:checked,
+:root[data-mode=dark] .source-reader-checkbox[data-checked=true],
 :root[data-mode=dark] .page-selection input:is(:checked,:indeterminate) + .page-selection-check,
 :root[data-mode=dark] .membership-choice input:checked + .membership-check {
   background: var(--action-surface);
   border-color: var(--action-border);
   color: var(--text);
 }
-:root[data-mode=dark] .block input:checked::after {
+:root[data-mode=dark] .block input:checked::after, :root[data-mode=dark] .source-reader-checkbox[data-checked=true]::after {
   color: var(--text);
 }
 :root[data-mode=dark] .page-symbol {

@@ -7,7 +7,7 @@ import {SourceEvidence} from '../src/client/sources/SourceEvidence.tsx';
 
 test('OCR gaps expose recoveries, honest coverage limits, and correctly positioned page highlights',async t=>{
  const dom=new JSDOM('<div id="mount"></div>');
- const keys=['window','document','Node','Element','HTMLElement','Event','IS_REACT_ACT_ENVIRONMENT'],prior=keys.map(key=>Object.getOwnPropertyDescriptor(globalThis,key));
+ const keys=['window','document','Node','Element','HTMLElement','MutationObserver','Event','IS_REACT_ACT_ENVIRONMENT'],prior=keys.map(key=>Object.getOwnPropertyDescriptor(globalThis,key));
  for(const key of keys)Object.defineProperty(globalThis,key,{configurable:true,writable:true,value:key==='IS_REACT_ACT_ENVIRONMENT'?true:dom.window[key]});
  const evidence={originalAvailable:true,rawExtraction:{ocrPages:2,pageEvidence:[{page:1,method:'ocr',coordinateSystem:'normalized-bottom-left',text:'Recovered text',coverage:{detectedRegions:10,unmatchedRegions:2,retriedRegions:2,recoveredRegions:1,unresolvedRegions:1},regions:[{bounds:[0.1,0.2,0.3,0.1],reason:'unmatched-detected-text',status:'recovered',recoveredText:'Regan Arts.'},{bounds:[2,0,1,1],reason:'low-confidence',status:'unresolved'}]},{page:2,method:'ocr',text:'Next page',regions:[]}]}};
  t.mock.method(globalThis,'fetch',async()=>({ok:true,json:async()=>evidence}));

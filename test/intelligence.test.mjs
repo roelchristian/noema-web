@@ -65,6 +65,33 @@ test('V2 semantic reconstruction uses a blocks provider schema without changing 
   assert.equal(bodies[2].text.format.name,'source_document_synthesis');assert.deepEqual(bodies[2].text.format.schema.required,['observations']);
   assert.deepEqual(bodies[2].text.format.schema.properties.observations.items.required,['kind','reading','alternatives','evidence','resolutionNeed']);
 });
+test('Balanced corrections schema preserves legacy metadata and requires explicit review outcomes',async()=>{
+ const bodies=[],ai=new Intelligence(new Secrets(),async(_url,options)=>{bodies.push(JSON.parse(options.body));return completed('{"blocks":[],"metadata":[],"correctionReviews":[]}');});ai.save({apiKey:key});
+ const input=JSON.stringify({blocks:[{id:'canonical',text:'A disputed index.'}]}),signal=new AbortController().signal;
+ await ai.reeditSource(input,'Review corrections',signal,undefined,'blocksWithCorrections');
+ const format=bodies[0].text.format;
+ assert.equal(format.name,'source_reconstruction_corrections');assert.ok(format.schema.required.includes('correctionReviews'));
+ assert.deepEqual(format.schema.properties.correctionReviews.items.properties.outcome.enum,['proposed','retained','source_required']);
+ assert.deepEqual(format.schema.properties.blocks.items.properties.id.enum,['canonical']);
+ await ai.reeditSource(input,'Legacy metadata',signal,undefined,'blocksWithMetadata');
+ assert.equal(bodies[1].text.format.name,'source_reconstruction_metadata');assert.ok(!bodies[1].text.format.schema.required.includes('correctionReviews'));
+});
+test('Balanced apparatus schema requires explicit bibliography and furniture dispositions',async()=>{
+ const bodies=[],ai=new Intelligence(new Secrets(),async(_url,options)=>{bodies.push(JSON.parse(options.body));return completed('{"blocks":[]}');});ai.save({apiKey:key});
+ await ai.reeditSource(JSON.stringify({blocks:[{id:'canonical',text:'References'}]}),'Review apparatus',new AbortController().signal,undefined,'blocksWithApparatus');
+ const format=bodies[0].text.format;assert.equal(format.name,'source_reconstruction_apparatus');
+ assert.ok(format.schema.required.includes('referenceReviews'));assert.ok(format.schema.required.includes('furnitureReviews'));
+ assert.deepEqual(format.schema.properties.referenceReviews.items.properties.outcome.enum,['linked','ambiguous']);
+ assert.deepEqual(format.schema.properties.furnitureReviews.items.properties.outcome.enum,['classified','retained']);
+ assert.deepEqual(format.schema.properties.blocks.items.properties.id.enum,['canonical']);
+});
+test('editorial metadata schema binds response count and identifiers to canonical blocks',async()=>{
+ const bodies=[],ai=new Intelligence(new Secrets(),async(_url,options)=>{bodies.push(JSON.parse(options.body));return completed('{"blocks":[],"metadata":[]}');});ai.save({apiKey:key});
+ await ai.reeditSource(JSON.stringify({blocks:[{id:'first',text:'One'},{id:'second',text:'Two'}]}),'Edit',new AbortController().signal,undefined,'blocksWithMetadata');
+ const format=bodies[0].text.format;assert.equal(format.name,'source_reconstruction_metadata');
+ assert.equal(format.schema.properties.blocks.minItems,2);assert.equal(format.schema.properties.blocks.maxItems,2);assert.deepEqual(format.schema.properties.blocks.items.properties.id.enum,['first','second']);
+ assert.ok(format.schema.required.includes('metadata'));assert.equal(format.schema.properties.metadata.maxItems,32);
+});
 test('editorial schema is only sent for an explicitly compatible model and local parsing remains required',async()=>{
   const model=intelligenceModels.find(model=>model.id==='gpt-5-mini'),supported=model.structuredOutputs;
   let body;
@@ -108,7 +135,7 @@ test('source worker single and multiple synthetic excerpts exercise real editori
     const file={id:'synthetic-source',name:'Synthetic academic PDF',format:'pdf',text,pages,page_start_lines:JSON.stringify(Array.from({length:pages},(_,i)=>i*3+1)),status:'ready',admitted:1,enrichment_status:'done',entity_id:null};
     const original={text,document:processedSourceDocument(file)};
     let stored,active=0,peak=0,calls=0;
-    const store={transaction:work=>work(),all:()=>stored?.status==='queued'?[{vault_id:'synthetic',payload:JSON.stringify(stored)}]:[],get:()=>undefined,run:(_sql,...values)=>{const payload=values.find(value=>typeof value==='string'&&value.startsWith('{')&&value.includes('"original"'));if(payload)stored=JSON.parse(payload);}};
+    const store={transaction:work=>work(),all:()=>stored?.status==='queued'?[{vault_id:'synthetic',payload:JSON.stringify(stored)}]:[],get:sql=>sql.includes('count(*)')?{count:0}:sql.includes('AS version')?{version:1}:undefined,run:(_sql,...values)=>{const payload=values.find(value=>typeof value==='string'&&value.startsWith('{')&&value.includes('"original"'));if(payload)stored=JSON.parse(payload);}};
     const ai=new Intelligence(new Secrets(),async(_url,options)=>{
       const body=JSON.parse(options.body);assert.deepEqual(body.reasoning,{effort:'low'});assert.equal(body.model,'gpt-5-mini');calls++;active++;peak=Math.max(peak,active);
       await new Promise(resolve=>setTimeout(resolve,1));active--;

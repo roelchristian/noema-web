@@ -10,12 +10,13 @@ import type { EntityScan, EntitySuggestionEdit } from '../../shared/entity-scan'
 import { useEffect, useLayoutEffect, useRef, useState, type ComponentProps } from 'react';
 import { api } from '../api';
 import {pollKnowledge} from './knowledge-polling';
+import {knowledgeMetadataPage,type KnowledgeMetadataSnapshot} from './knowledge-metadata';
 import { ConnectedEntities } from './ConnectedEntities';
 import { Icon } from '../components/Icon';
 import type { CreateEntityRequest } from '../knowledge/CreateEntityDialog';
 import type { AIEnrichment, AISummary, Entity, Page, PageSummary } from '../../shared/domain';
 interface KnowledgeSnapshot { summary:AISummary|null; scan:EntityScan|null }
-function KnowledgePage({inactive=false,initialItems,initialError,snapshot,onSnapshot,page,pages,onOpenPage,entities,onOpenEntity,onSourcesChange,onCreateEntity,onClose,onSettings,onFlush,onReview,onReviewOpenChange,onDomainsChange}:{onReviewOpenChange?:(open:boolean)=>void;onDomainsChange?:(primary:string|null,secondary:string[])=>Promise<void>;inactive?:boolean;initialItems:AIEnrichment[];initialError:string;snapshot?:KnowledgeSnapshot;onSnapshot:(snapshot:KnowledgeSnapshot)=>void;page:Page;pages:PageSummary[];onOpenPage:(id:string)=>void;entities:Entity[];onOpenEntity:(id:string)=>void;onSourcesChange:(sourceIds:string[])=>void;onCreateEntity:(request:CreateEntityRequest)=>void;onClose:()=>void;onSettings:()=>void;onFlush:()=>Promise<Page|null>;onReview:(scanId:string,id:string|string[],decision:'accepted'|'rejected',edits?:EntitySuggestionEdit[])=>Promise<EntityScan>}) {
+function KnowledgePage({inactive=false,dirty=false,initialItems,initialError,snapshot,onSnapshot,page,pages,onOpenPage,entities,onOpenEntity,onSourcesChange,onCreateEntity,onClose,onSettings,onFlush,onReview,onReviewOpenChange,onDomainsChange}:{onReviewOpenChange?:(open:boolean)=>void;onDomainsChange?:(primary:string|null,secondary:string[])=>Promise<void>;inactive?:boolean;dirty?:boolean;initialItems:AIEnrichment[];initialError:string;snapshot?:KnowledgeSnapshot;onSnapshot:(snapshot:KnowledgeSnapshot)=>void;page:Page;pages:PageSummary[];onOpenPage:(id:string)=>void;entities:Entity[];onOpenEntity:(id:string)=>void;onSourcesChange:(sourceIds:string[])=>void;onCreateEntity:(request:CreateEntityRequest)=>void;onClose:()=>void;onSettings:()=>void;onFlush:()=>Promise<Page|null>;onReview:(scanId:string,id:string|string[],decision:'accepted'|'rejected',edits?:EntitySuggestionEdit[])=>Promise<EntityScan>}) {
   const [busy,setBusy]=useState(false),[error,setError]=useState(initialError),[result,setResult]=useState<AISummary|null>(()=>{
     if(snapshot)return snapshot.summary;
     const saved=initialItems.find(item=>item.kind==='summary');
@@ -25,6 +26,10 @@ function KnowledgePage({inactive=false,initialItems,initialError,snapshot,onSnap
   const [scan,setScan] = useState<EntityScan|null>(()=>snapshot?snapshot.scan:initialItems.find(item=>item.kind==='entity_scan')?.data.scan as unknown as EntityScan ?? null);
   useLayoutEffect(()=>{onSnapshot({summary:result,scan});},[result,scan]);
   const [pendingSummary,setPendingSummary]=useState(!!page.enrichmentPendingFields?.includes('summary'));
+  const latestPage=useRef(page);latestPage.current=page;
+  const [metadataSnapshot,setMetadataSnapshot]=useState<KnowledgeMetadataSnapshot|null>(null);
+  const knowledgePage=knowledgeMetadataPage(page,metadataSnapshot,dirty);
+  useEffect(()=>{setPendingSummary(!!page.enrichmentPendingFields?.includes('summary'));},[page.enrichmentPendingFields]);
   const loading = false;
   const [summaryExpanded, setSummaryExpanded] = useState(false);
   const [summaryOverflow, setSummaryOverflow] = useState(false);
@@ -48,8 +53,10 @@ function KnowledgePage({inactive=false,initialItems,initialError,snapshot,onSnap
       status:signal=>api.enrichmentStatus(page.vault_id,page.id,signal),
       onStatus:status=>{if(!cancelled)setPendingSummary(status.pendingFields.includes('summary'));},
       refresh:async signal=>{
-        const items=await api.enrichments(page.vault_id,page.id,signal);
+        const source=latestPage.current;
+        const [items,metadata]=await Promise.all([api.enrichments(page.vault_id,page.id,signal),api.pageMetadata(page.vault_id,page.id,signal)]);
         if(cancelled||signal.aborted)return;
+        setMetadataSnapshot({source,metadata});
         setError(current=>current===initialError?'':current);
         const saved=items.find(item=>item.kind==='summary');
         const next=saved&&typeof saved.data.summary==='string'?{summary:saved.data.summary,revision:saved.revision,contentHash:saved.contentHash,model:saved.model,reasoningEffort:saved.reasoningEffort}:null;
@@ -85,12 +92,12 @@ function KnowledgePage({inactive=false,initialItems,initialError,snapshot,onSnap
     }catch(error){if(active.current)setError(error instanceof Error?error.message:'Could not delete summary.');}
     finally{if(active.current)setDeleting(false);}
   }
-  const summaryChanged = !!result && (!result.contentHash || result.contentHash !== page.summaryContentHash);
+  const summaryChanged = !!result && (!result.contentHash || result.contentHash !== knowledgePage.summaryContentHash);
   const generatingSummary=busy||pendingSummary;
   return <aside inert={inactive} aria-busy={inactive} className="entity-panel intelligence-panel" id="intelligence-panel" aria-label={uiText("Knowledge")} onKeyDown={event=>{if(event.key==='Escape')onClose();}}>
     <div className="panel-top knowledge-panel-top"><span><Icon name="knowledge"/>{uiText("Knowledge")}</span><div className="knowledge-panel-actions"><button className="page-tool" aria-label={uiText("Knowledge settings")} title={uiText("Knowledge settings")} onClick={onSettings}><Icon name="settings"/></button><button className="page-tool" data-close-knowledge aria-label={uiText("Close Knowledge panel")} title={uiText("Close Knowledge panel")} onClick={onClose}><Icon name="close"/></button></div></div>
     <div className="panel-body">
-      <PageConceptCategory page={page} onDomainsChange={onDomainsChange} onRefresh={refreshDomains}/>
+      <PageConceptCategory page={knowledgePage} onDomainsChange={onDomainsChange} onRefresh={refreshDomains}/>
       <section className="knowledge-summary" aria-labelledby="knowledge-summary-heading">
         <div className={'knowledge-section-heading'+(!result?' sr-only':'')}>
           <h2 id="knowledge-summary-heading"><Icon name="sparkles"/>{uiText("Summary")}{summaryChanged&&<span className="knowledge-status-dot" role="status" aria-label={uiText("Summary needs refresh")} title={uiText("Summary needs refresh")}/>}</h2>
@@ -112,10 +119,10 @@ function KnowledgePage({inactive=false,initialItems,initialError,snapshot,onSnap
       <ConnectedEntities page={page} entities={entities} onOpenEntity={onOpenEntity}>
         <EntityScanReview onOpenChange={onReviewOpenChange} entities={entities} page={page} scan={scan} onScan={setScan} onFlush={onFlush} onReview={onReview} disabled={!!page.archived_at||!!page.editLocked||busy||deleting||loading}/>
       </ConnectedEntities>
-    <NoteConnections key={page.vault_id+'/'+page.id} page={page} pages={pages} onOpenPage={onOpenPage} inactive={inactive}/>
-    <RelatedNotes key={page.vault_id+'/'+page.id} page={page} pages={pages} onOpenPage={onOpenPage} inactive={inactive}/>
-    <PageSources key={page.vault_id+'/'+page.id} page={page} entities={entities} onOpenEntity={onOpenEntity} onSourcesChange={onSourcesChange} onCreateSource={()=>onCreateEntity({source:true})}/>
-      <PageMetadata page={page}/>
+    <NoteConnections key={page.vault_id+'/'+page.id+'/connections'} page={page} pages={pages} onOpenPage={onOpenPage} inactive={inactive}/>
+    <RelatedNotes key={page.vault_id+'/'+page.id+'/related'} page={page} pages={pages} onOpenPage={onOpenPage} inactive={inactive}/>
+    <PageSources key={page.vault_id+'/'+page.id+'/sources'} page={page} entities={entities} onOpenEntity={onOpenEntity} onSourcesChange={onSourcesChange} onCreateSource={()=>onCreateEntity({source:true})}/>
+      <PageMetadata page={knowledgePage}/>
     </div>
   </aside>;
 }

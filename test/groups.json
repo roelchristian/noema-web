@@ -38,7 +38,8 @@
     "test/notification-workspace.test.mjs",
     "test/tagline.test.mjs",
     "test/source-annotation-mapping.test.mjs",
-    "test/writing-actions.test.mjs"
+    "test/writing-actions.test.mjs",
+    "test/knowledge-polling.test.mjs"
   ],
   "dom": [
     "test/trash-ui.test.mjs",
@@ -258,6 +259,8 @@
     "test/source-page-revisions.test.mjs",
     "test/chat-context-expansion.test.mjs",
     "test/chat-context-security.test.mjs",
-    "test/persona-preview-http.test.mjs"
+    "test/persona-preview-http.test.mjs",
+    "test/page-read-overhead.test.mjs",
+    "test/page-assessment-lifecycle.test.mjs"
   ]
 }

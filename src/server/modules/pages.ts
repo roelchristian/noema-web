@@ -85,26 +85,15 @@ export class Pages {
     stored.title=resolvePageTitle(this.store,stored);
     const blocks = enrichCitationPages(this.store,JSON.parse(row.blocks) as Block[]);
     const names=new Map<string,string|undefined>();
-    const resolveName=(id:string)=>{if(!names.has(id))names.set(id,entityMentionName(this.knowledge.find(vault,id)));return names.get(id);};
+    const resolveName=this.resolveNames(vault,names);
     const classificationRow=this.store.get<{data:string}>("SELECT data FROM page_ai_enrichments WHERE page_id=? AND kind='concept_classification'",id);
     const conceptClassification=classificationRow ? JSON.parse(classificationRow.data) as import('../../shared/domain.js').ConceptClassification : undefined;
-    let hash = cachedHash;
-    if (!hash || hashVersion !== 2) {
-      hash = summaryContentHash({...stored, blocks}, resolveName);
-      if (hashVersion !== 2) {
-        // Rebase only summaries whose old fingerprint matches the actual note.
-        // Unknown or genuinely stale summaries keep their original fingerprint.
-        const legacy = summaryContentHash({...stored,blocks},resolveName,true);
-        this.store.run("UPDATE page_ai_enrichments SET content_hash=? WHERE page_id=? AND kind='summary' AND content_hash=?",hash,id,legacy);
-      }
-      this.store.run('UPDATE pages SET summary_content_hash=?,summary_hash_version=2 WHERE id=? AND vault_id=?',hash,id,vault);
-    }
+    const hash=cachedHash&&hashVersion===2?cachedHash:summaryContentHash({...stored,blocks},resolveName);
     const editLock=this.store.get<{password_hash:string|null}>('SELECT password_hash FROM page_edit_locks WHERE page_id=? AND vault_id=?',id,vault);
     const domainService=new Domains(this.store);
-    if(!stored.archived_at)domainService.assess({...stored,blocks,conceptContentHash:conceptContentHash({...stored,blocks},resolveName)} as Page,resolveName);
     const readingRow=this.store.get<{source_id:string|null;file_id:string|null;source_hash:string;start_offset:number;end_offset:number;excerpt:string;reference_json:string;created_at:string}>('SELECT * FROM page_reading_notes WHERE page_id=? AND vault_id=?',id,vault);
     const readingNote:ReadingNoteMetadata|undefined=readingRow?{...JSON.parse(readingRow.reference_json),sourceId:readingRow.source_id,fileId:readingRow.file_id,sourceHash:readingRow.source_hash,startOffset:readingRow.start_offset,endOffset:readingRow.end_offset,excerpt:readingRow.excerpt,createdAt:readingRow.created_at,maxWords:200}:undefined;
-    const enrichmentState=new PageEnrichmentState(this.store).get(id);
+    const enrichmentState=new PageEnrichmentState(this.store).metadata(id);
     const queued=this.store.get<{fields:string}>('SELECT fields FROM page_enrichment_jobs WHERE page_id=?',id);
     let enrichmentPendingFields:NonNullable<Page['enrichmentPendingFields']>=[];
     if(queued)try {
@@ -112,7 +101,48 @@ export class Pages {
       if(Array.isArray(fields))enrichmentPendingFields=(['title','domains','language','summary'] as const).filter(field=>fields.includes(field)&&enrichmentState.fields[field]?.origin!=='manual'&&!enrichmentState.fields[field]?.suppressed);
     }catch{/* Invalid queue data cannot claim a particular field is being generated. */}
     if(this.store.get<{automatic_summaries:number}>('SELECT automatic_summaries FROM page_enrichment_settings WHERE vault_id=?',vault)?.automatic_summaries===0)enrichmentPendingFields=enrichmentPendingFields.filter(field=>field!=='summary');
-    return {...stored,creationMethod,editedAfterGeneration:aiStatus==='ai_generated_edited',containsAIExplanations:blocks.some(isAIExplanation),aiReviewAccepted:!!aiReviewAccepted,generationMetadata:parsePageGenerationMetadata(generationMetadata),...(readingNote?{readingNote}:{}),enrichmentFields:enrichmentState.fields,enrichmentPending:!!queued,enrichmentPendingFields,pageDomains:domainService.get(id,conceptContentHash({...stored,blocks},resolveName)),aiStatus:reviewedPageAIStatus(aiStatus,!!aiReviewAccepted),editLocked:!!editLock,editProtected:!!editLock?.password_hash,featuredImageId,blocks,conceptClassification,conceptContentHash:conceptContentHash({...stored,blocks},resolveName),summaryContentHash:hash,sourceIds:[...new Set([...this.store.all<{source_id:string}>('SELECT source_id FROM page_sources WHERE page_id=?',id).map(s=>s.source_id),...citationSourceIds(blocks).filter(sourceId=>this.knowledge.find(vault,sourceId)?.type==='source')])]};
+    return {...stored,creationMethod,editedAfterGeneration:aiStatus==='ai_generated_edited',containsAIExplanations:blocks.some(isAIExplanation),aiReviewAccepted:!!aiReviewAccepted,generationMetadata:parsePageGenerationMetadata(generationMetadata),...(readingNote?{readingNote}:{}),enrichmentFields:enrichmentState.fields,enrichmentPending:!!queued,enrichmentPendingFields,pageDomains:domainService.get(id,conceptContentHash({...stored,blocks},resolveName),enrichmentState),aiStatus:reviewedPageAIStatus(aiStatus,!!aiReviewAccepted),editLocked:!!editLock,editProtected:!!editLock?.password_hash,featuredImageId,blocks,conceptClassification,conceptContentHash:conceptContentHash({...stored,blocks},resolveName),summaryContentHash:hash,sourceIds:[...new Set([...this.store.all<{source_id:string}>('SELECT source_id FROM page_sources WHERE page_id=?',id).map(s=>s.source_id),...citationSourceIds(blocks).filter(sourceId=>this.knowledge.find(vault,sourceId)?.type==='source')])]};
+  }
+  /** Only names referenced by this page are needed for textual fingerprints. */
+  private resolveNames(vault:string,names=new Map<string,string|undefined>()) {
+    return (id:string)=>{
+      if(!names.has(id)) {
+        const entity=this.store.get<{name:string;mentionCase:'canonical'|'lowercase'}>('SELECT name,mention_case AS mentionCase FROM entities WHERE vault_id=? AND id=?',vault,id);
+        names.set(id,entityMentionName(entity));
+      }
+      return names.get(id);
+    };
+  }
+  /** Mutation/queued preparation owns legacy fingerprint upgrades, never a page read. */
+  prepareHashes(vault:string,id:string):void {
+    const row=this.store.get<{title:string;blocks:string;revision:number;summary_content_hash:string|null;summary_hash_version:number;legacySummary:number}>(`SELECT title,blocks,revision,summary_content_hash,summary_hash_version,
+      EXISTS(SELECT 1 FROM page_ai_enrichments e WHERE e.page_id=pages.id AND e.kind='summary' AND e.content_hash IS NULL AND e.revision=pages.revision) AS legacySummary
+      FROM pages WHERE vault_id=? AND id=? AND deleted_at IS NULL`,vault,id);
+    if(!row)return;
+    if(row.summary_content_hash&&row.summary_hash_version===2) {
+      if(row.legacySummary)this.store.run("UPDATE page_ai_enrichments SET content_hash=? WHERE page_id=? AND kind='summary' AND content_hash IS NULL AND revision=?",row.summary_content_hash,id,row.revision);
+      return;
+    }
+    const page={title:resolvePageTitle(this.store,{id,...row}),blocks:JSON.parse(row.blocks) as Block[]},resolve=this.resolveNames(vault);
+    const hash=summaryContentHash(page,resolve);
+    if(row.summary_hash_version!==2||row.legacySummary) {
+      const legacy=summaryContentHash(page,resolve,true);
+      this.store.run("UPDATE page_ai_enrichments SET content_hash=? WHERE page_id=? AND kind='summary' AND (content_hash=? OR (content_hash IS NULL AND revision=?))",hash,id,legacy,row.revision);
+    }
+    this.store.run('UPDATE pages SET summary_content_hash=?,summary_hash_version=2 WHERE id=? AND vault_id=?',hash,id,vault);
+  }
+  /** Narrow metadata projection; unknown legacy hashes conservatively remain unknown until preparation. */
+  metadata(vault:string,id:string) {
+    const row=this.store.get<{id:string;vault_id:string;title:string;revision:number;language:string|null;summaryContentHash:string|null}>('SELECT id,vault_id,title,revision,language,CASE WHEN summary_hash_version=2 THEN summary_content_hash END AS summaryContentHash FROM pages WHERE vault_id=? AND id=? AND deleted_at IS NULL',vault,id);
+    if(!row)throw new HttpError(404,'Page not found');
+    const record=new PageEnrichmentState(this.store).metadata(id);
+    const queued=this.store.get<{fields:string}>('SELECT fields FROM page_enrichment_jobs WHERE page_id=?',id);
+    let enrichmentPendingFields:NonNullable<Page['enrichmentPendingFields']>=[];
+    if(queued)try {const fields:unknown=JSON.parse(queued.fields);if(Array.isArray(fields))enrichmentPendingFields=(['title','domains','language','summary'] as const).filter(field=>fields.includes(field)&&record.fields[field]?.origin!=='manual'&&!record.fields[field]?.suppressed);}catch {/* Invalid legacy queue data has no claimed fields. */}
+    if(this.store.get<{automatic_summaries:number}>('SELECT automatic_summaries FROM page_enrichment_settings WHERE vault_id=?',vault)?.automatic_summaries===0)enrichmentPendingFields=enrichmentPendingFields.filter(field=>field!=='summary');
+    const pageDomains=new Domains(this.store).get(id,undefined,record);
+    if(!row.summaryContentHash&&pageDomains.status==='inferred')pageDomains.status='needs_refresh';
+    return {...row,title:resolvePageTitle(this.store,row),summaryContentHash:row.summaryContentHash??undefined,pageDomains,enrichmentFields:record.fields,enrichmentPending:!!queued,enrichmentPendingFields};
   }
   requireActive(vault:string,id:string) {
     const page=this.get(vault,id);
@@ -180,6 +210,7 @@ export class Pages {
       const provenance=new PageEnrichmentState(this.store);
       if(typeof body.title==='string'&&body.title.trim()&&body.title.trim()!=='Untitled')provenance.markManual(id,'title');
       if(pageLanguage(body.language))provenance.markManual(id,'language');
+      this.prepareHashes(vault,id);
       if(captureHistory)new PageHistory(this.store).capture(vault,id,'created');
       this.store.db.exec('RELEASE create_page');
     } catch(error) {
@@ -352,6 +383,8 @@ export class Pages {
       this.store.run('UPDATE pages SET title=?,language=?,icon=?,featured_image_id=?,blocks=?,ai_status=?,ai_review_accepted=MAX(ai_review_accepted,?),updated_at=?,revision=revision+1 WHERE id=? AND vault_id=?',title,language,icon,featuredImageId,JSON.stringify(blocks),storedAIStatus,body.aiReviewAccepted===true?1:0,now(),id,vault);
       this.store.run('DELETE FROM page_sources WHERE page_id=?',id);
       for(const source of new Set(sourceIds as string[]))this.store.run('INSERT INTO page_sources VALUES (?,?)',id,source);
+      this.prepareHashes(vault,id);
+      new Domains(this.store).assess({id,title,blocks},this.resolveNames(vault));
       history.capture(vault,id,'edit');
       if(title!==page.title && (!page.title.trim()||page.title.trim()==='Untitled')) {
         const generated=this.store.get<{data:string;revision:number}>("SELECT data,revision FROM page_ai_enrichments WHERE page_id=? AND kind='title'",id);

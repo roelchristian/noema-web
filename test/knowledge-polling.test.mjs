@@ -29,3 +29,23 @@ test('Knowledge coalesces wakeups, retries failed payloads, and aborts page-swit
   f.poll.wake();assert.equal(statusCalls,3);f.poll.stop();assert.equal(signal.aborted,true);
   finish({version:'old-page',pending:true,pendingFields:['summary']});await flush();assert.equal(f.observed.length,2);assert.equal(f.timers.size,0);
 });
+
+
+test('Knowledge metadata refreshes same-revision fields and preserves newer drafts, manual assignments and page identity',async()=>{
+  const {knowledgeMetadataPage}=await import('../src/client/intelligence/knowledge-metadata.ts');
+  const domains={primaryDomainId:'mathematics',secondaryDomainIds:[],origin:'inferred',status:'inferred',revision:1};
+  const page={id:'note',vault_id:'vault',title:'Draft',revision:1,blocks:[],sourceIds:[],pageDomains:domains,summaryContentHash:'old'};
+  const metadata={id:'note',vault_id:'vault',title:'Generated',revision:1,pageDomains:{...domains,primaryDomainId:'history',revision:2},summaryContentHash:'fresh'};
+  const snapshot={source:page,metadata};
+  const overlay=knowledgeMetadataPage(page,snapshot);
+  assert.equal(overlay.summaryContentHash,'fresh');assert.equal(overlay.pageDomains.primaryDomainId,'history');
+  assert.equal(overlay.blocks,page.blocks);assert.equal(overlay.title,'Draft');assert.equal(overlay.revision,1);
+  const typing={...page,blocks:[{id:'new'}],title:'Unsaved title'};
+  assert.equal(knowledgeMetadataPage(typing,snapshot),typing,'Late metadata cannot overlay a changed local snapshot');
+  assert.equal(knowledgeMetadataPage(page,snapshot,true).summaryContentHash,undefined,'An unsaved draft cannot be presented as matching persisted knowledge');
+  const manual={...page,pageDomains:{...domains,origin:'manual',revision:3}};
+  assert.equal(knowledgeMetadataPage(manual,{source:manual,metadata}).pageDomains,manual.pageDomains,'Older inferred assignments cannot overwrite manual assignments');
+  assert.equal(knowledgeMetadataPage({...page,id:'other'},snapshot).id,'other');
+  const external=knowledgeMetadataPage(page,{source:page,metadata:{...metadata,revision:2}});
+  assert.equal(external.summaryContentHash,undefined);assert.equal(external.pageDomains.status,'needs_refresh');assert.equal(external.blocks,page.blocks);
+});

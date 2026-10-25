@@ -24,8 +24,8 @@ test('Knowledge coalesces wakeups, retries failed payloads, and aborts page-swit
   let finish,statusCalls=0,refreshes=0,signal;
   const f=fixture({status:current=>{signal=current;statusCalls++;return new Promise(resolve=>{finish=resolve;});},refresh:async()=>{refreshes++;if(refreshes===1)throw new Error('offline');}});
   f.poll.wake();f.poll.wake();assert.equal(statusCalls,1);
-  finish({version:'one',pending:false,pendingFields:[]});await flush();assert.equal(f.observed.length,0);f.tick(0);assert.equal(statusCalls,2);
-  finish({version:'one',pending:false,pendingFields:[]});await flush();assert.equal(refreshes,2,'failed payload does not consume the version');assert.equal(f.observed.length,1);
+  finish({version:'one',pending:false,pendingFields:[]});await flush();assert.equal(f.observed.length,1,'terminal status clears pending even when payload refresh fails');f.tick(0);assert.equal(statusCalls,2);
+  finish({version:'one',pending:false,pendingFields:[]});await flush();assert.equal(refreshes,2,'failed payload does not consume the version');assert.equal(f.observed.length,2);
   f.poll.wake();assert.equal(statusCalls,3);f.poll.stop();assert.equal(signal.aborted,true);
-  finish({version:'old-page',pending:true,pendingFields:['summary']});await flush();assert.equal(f.observed.length,1);assert.equal(f.timers.size,0);
+  finish({version:'old-page',pending:true,pendingFields:['summary']});await flush();assert.equal(f.observed.length,2);assert.equal(f.timers.size,0);
 });

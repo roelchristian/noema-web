@@ -26,3 +26,12 @@
 
 .reprocessing-monitor-context{margin:0 0 3px;font-size:11px;color:var(--text-muted)}
 .reprocessing-active-run{display:flex;align-items:center;gap:12px;justify-content:space-between;flex-wrap:wrap;margin:10px 0;padding:8px 12px;border:1px solid var(--line);border-radius:6px;background:var(--surface-subtle,var(--sidebar));font-size:12px}
+
+.reprocessing-setup-sheet .select-host{display:block;width:100%;margin-top:6px}
+.source-revision-manager{width:min(640px,calc(100vw - 32px));max-height:calc(100dvh - 48px);overflow:auto}
+.source-revision-list{list-style:none;margin:18px 0;padding:0;border-top:1px solid var(--line)}
+.source-revision-list>li{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 0;border-bottom:1px solid var(--line)}
+.source-revision-list>li>div{min-width:0;display:grid;gap:4px}
+.source-revision-list strong{font-size:13px;font-weight:500;overflow-wrap:anywhere}
+.source-revision-list small,.source-revision-protected{color:var(--text-muted);font-size:12px}
+.source-revision-list button{flex-shrink:0}

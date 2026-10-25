@@ -82,3 +82,16 @@ test('synthesis archive preserves actual result and frozen constituents while re
  assert.throws(()=>restoreReprocessingSynthesis({...record,promptVersion:'invented'},restored,r.id,r.baseHash,passes),/invalid source editorial/);
  assert.throws(()=>restoreReprocessingSynthesis(record,restored,r.id,r.baseHash,passes.map(p=>({...p,result:p.result+' '}))),/invalid source editorial/);
 });
+
+test('deleting a revision cascades its durable requests while retaining other revisions',async()=>{
+ const {SourceReprocessing}=await import('../src/server/modules/source-reprocessing.ts');const db=new DatabaseSync(':memory:');
+ try{
+  db.exec('PRAGMA foreign_keys=ON; CREATE TABLE source_reprocessing(id TEXT PRIMARY KEY,file_id TEXT,vault_id TEXT,status TEXT,created_at TEXT,updated_at TEXT,payload TEXT);');setupSourceReprocessingCheckpointSchema(db);
+  const store=new Store(db),service=new SourceReprocessing(store,{require:()=>({text:'Canonical source retained.'})},{},()=>{},{}),r=fixture();
+  for(const id of [r.id,'keep'])store.run('INSERT INTO source_reprocessing VALUES(?,?,?,?,?,?,?)',id,r.fileId,'vault','failed',r.createdAt,r.updatedAt,JSON.stringify({...r,id}));
+  const checkpoints=new SourceReprocessingCheckpoints(store);checkpoints.saveChunk(chunk(r));checkpoints.savePass(pass(r));checkpoints.saveSynthesis({...pass(r),register:null});checkpoints.saveRepair({...pass(r),repairId:'repair',passIndex:1,kind:'repair',originalRequestHash:'b'.repeat(64),originalResultHash:'c'.repeat(64)});
+  assert.deepEqual(service.remove('vault',r.fileId,r.id),{deleted:true});
+  for(const table of ['source_reprocessing_chunks','source_reprocessing_passes','source_reprocessing_synthesis','source_reprocessing_repairs'])assert.equal(store.get(`SELECT count(*) n FROM ${table}`).n,0);
+  assert.equal(store.get('SELECT count(*) n FROM source_reprocessing').n,1);assert.equal(store.get('SELECT id FROM source_reprocessing').id,'keep');
+ }finally{db.close();}
+});

@@ -93,6 +93,7 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
             if(parts.length===6&&parts[5]==='status'&&method==='GET')return send(200,sourceReprocessing.status(vault,id,parts[4]!));
             if(parts.length===5&&parts[4]==='capabilities'&&method==='GET')return send(200,sourceReprocessing.capabilities(vault,id));
             if(parts.length===5&&method==='GET')return send(200,sourceReprocessing.detail(vault,id,parts[4]!));
+            if(parts.length===5&&method==='DELETE')return send(200,sourceReprocessing.remove(vault,id,parts[4]!));
             if(parts.length===6&&parts[5]==='cancel'&&method==='POST')return send(200,sourceReprocessing.cancel(vault,id,parts[4]!));
             if(parts.length===6&&parts[5]==='resume'&&method==='POST')return send(202,sourceReprocessing.resume(vault,id,parts[4]!));
             if(parts.length===6&&parts[5]==='review'&&method==='POST'){const body=await readBody(req);vaults.requireOpen(vault);return send(200,sourceReprocessing.review(vault,id,parts[4]!,body));}

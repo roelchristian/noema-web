@@ -421,3 +421,22 @@ test('final AI verification rejects initial furniture proposals and clears provi
  await env.worker.tick();assert.equal(env.value.status,'completed');assert.deepEqual(env.value.furniture,[]);
  assert.equal(env.calls.length,7);assert.deepEqual(env.value.original.text,text);
 });
+
+test('revision cap includes the original and deletion makes space without deleting the source',async t=>{
+ const env=harness(t);let r=env.value;env.store.run("UPDATE source_reprocessing SET status='completed' WHERE id=?",r.id);
+ for(let i=0;i<3;i++)env.store.run('INSERT INTO source_reprocessing(id,file_id,vault_id,status,created_at,updated_at,payload) VALUES(?,?,?,?,?,?,?)','saved-'+i,r.fileId,'vault','failed',r.createdAt,r.updatedAt,JSON.stringify({...r,id:'saved-'+i,status:'failed'}));
+ assert.throws(()=>env.worker.start('vault',r.fileId,{pipelineVersion:2}),/Revision limit reached/);assert.equal(env.calls.length,0);
+ assert.throws(()=>env.worker.remove('vault',r.fileId,'original'),/original source cannot be deleted/);
+ assert.throws(()=>env.worker.remove('other-vault',r.fileId,'saved-0'),/not found/);
+ env.worker.remove('vault',r.fileId,'saved-0');assert.equal(env.store.get('SELECT count(*) n FROM source_reprocessing').n,3);
+ const next=env.worker.start('vault',r.fileId,{pipelineVersion:2});assert.equal(next.status,'queued');assert.equal(env.store.get('SELECT count(*) n FROM source_reprocessing').n,4);
+ assert.throws(()=>env.worker.remove('vault',r.fileId,next.id),/Stop processing/);
+ assert.equal(next.original.text,r.original.text);assert.equal(env.calls.length,0);
+});
+
+test('revision cap is rechecked inside the insertion transaction when history changes during snapshotting',async t=>{
+ const env=harness(t),r=env.value;env.store.run("UPDATE source_reprocessing SET status='completed' WHERE id=?",r.id);
+ const add=id=>env.store.run('INSERT INTO source_reprocessing(id,file_id,vault_id,status,created_at,updated_at,payload) VALUES(?,?,?,?,?,?,?)',id,r.fileId,'vault','completed',r.createdAt,r.updatedAt,JSON.stringify({...r,id,status:'completed'}));
+ add('saved-a');add('saved-b');const snapshot=env.worker.snapshot;env.worker.snapshot=()=>{add('racing-revision');return snapshot();};
+ assert.throws(()=>env.worker.start('vault',r.fileId,{pipelineVersion:2}),/Revision limit reached/);assert.equal(env.store.get('SELECT count(*) n FROM source_reprocessing').n,4);assert.equal(env.calls.length,0);
+});

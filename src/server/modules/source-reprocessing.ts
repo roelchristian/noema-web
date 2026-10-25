@@ -1,3 +1,4 @@
+import {sourceEditorialRevisionLimit} from '../../shared/source-reprocessing.js';
 import {gatherReprocessingEvidence,type SourceReprocessingEvidence} from './source-reprocessing-evidence.js';
 import {assertAtomicPatchGroups} from './source-reprocessing-apparatus.js';
 import {executeReconstruction,reconstructionPromptVersion,supportedReconstructionPromptVersion} from './source-reprocessing-pass.js';
@@ -170,6 +171,22 @@ export class SourceReprocessing {
    json_extract(payload,'$.report.error') AS error FROM source_reprocessing WHERE id=? AND file_id=? AND vault_id=?`,revisionId,id,vault);
   if(!status)throw new HttpError(404,'Editorial pass not found.');return status;
  }
+ private requireRevisionCapacity(vault:string,id:string){
+  const count=this.store.get<{count:number}>('SELECT count(*) AS count FROM source_reprocessing WHERE file_id=? AND vault_id=?',id,vault)!.count;
+  if(count>=sourceEditorialRevisionLimit)throw new HttpError(409,'Revision limit reached. Five versions include the original. Delete an editorial revision before creating another.');
+ }
+ remove(vault:string,id:string,revisionId:string){
+  this.requireOpen(vault);this.files.require(vault,id);
+  if(revisionId==='original')throw new HttpError(400,'The original source cannot be deleted as a revision.');
+  return this.store.transaction(()=>{
+   const row=this.store.get<{status:string}>('SELECT status FROM source_reprocessing WHERE id=? AND file_id=? AND vault_id=?',revisionId,id,vault);
+   if(!row)throw new HttpError(404,'Editorial revision not found.');
+   if(['queued','running'].includes(row.status)||this.activeRevisionId===revisionId)throw new HttpError(409,'Stop processing and wait for the revision to finish before deleting it.');
+   // Foreign-key cascades remove the revision's chunks, model passes, repairs and synthesis.
+   this.store.run('DELETE FROM source_reprocessing WHERE id=? AND file_id=? AND vault_id=?',revisionId,id,vault);
+   return {deleted:true};
+  });
+ }
  start(vault:string,id:string,body:Record<string,unknown>){
   this.requireOpen(vault);if(this.closed)throw new HttpError(503,'Editorial processing is shutting down.');
   if(body.pipelineVersion!==undefined&&body.pipelineVersion!==1&&body.pipelineVersion!==2)throw new HttpError(400,'Invalid reprocessing pipeline version.');
@@ -186,6 +203,7 @@ export class SourceReprocessing {
   if(['pending','running'].includes(file.enrichment_status))throw new HttpError(409,'Wait for original source enrichment to finish before reprocessing; it may still change math, metadata, and structure.');
   if(file.text.length>512000)throw new HttpError(413,'This beta supports up to 512,000 extracted characters per source. No partial pass was started.');
   if(this.store.get("SELECT 1 FROM source_reprocessing WHERE file_id=? AND status IN ('queued','running')",id))throw new HttpError(409,'An editorial pass for this source is already queued or running.');
+  this.requireRevisionCapacity(vault,id);
   const selection=this.intelligence.editorialSelection();
   const original=this.snapshot(vault,id),timestamp=now();
   if(sourceDocumentEntries(original.document).length>5000)throw new HttpError(413,'This beta supports at most 5,000 semantic nodes per source.');
@@ -193,6 +211,7 @@ export class SourceReprocessing {
   const revision:SourceReprocessingRevision={pipelineVersion,...(configuration?{configuration}:{}),id:randomUUID(),fileId:id,createdAt:timestamp,updatedAt:timestamp,status:'queued',acceptanceMode,acceptanceThreshold,instructions:typeof body.instructions==='string'?body.instructions:'',baseHash:sourceRevisionBaseHash(original),stale:false,patches:[],original,reprocessed:structuredClone(original),report:{completedChunkIndexes:[],concurrency:2,promptVersion,...selection,startedAt:null,finishedAt:null,durationMs:null,chunksTotal:this.chunks(original.text,original.document.physical.pages.map(p=>p.range.startOffset)).length,chunksCompleted:0,charactersTotal:original.text.length,charactersReviewed:0,inputTokens:null,outputTokens:null,reasoningTokens:null,cachedInputTokens:null,diagnostics:['Beta derivative: original extraction remains canonical. Only accepted changes appear in the reading version.'],error:null}};
   if(pipelineVersion===2){revision.furniture=[];if(planReprocessingChunks(original.text,original.document,8000,configuration?.architectureVersion===1).length>128)throw new HttpError(413,'V2 supports at most 128 reconstruction chunks.');revision.report.promptVersion=reconstructionPromptVersion;revision.report.concurrency=1;revision.report.chunksTotal=planReprocessingChunks(original.text,original.document,8000,configuration?.architectureVersion===1).length;}
   this.store.transaction(()=>{
+   this.requireRevisionCapacity(vault,id);
    this.store.run('INSERT INTO source_reprocessing (id,file_id,vault_id,status,created_at,updated_at,payload) VALUES (?,?,?,?,?,?,?)',revision.id,id,vault,revision.status,timestamp,timestamp,JSON.stringify(revision));
    if(configuration){const checkpoints=new SourceReprocessingCheckpoints(this.store);for(const chunk of planReprocessingChunks(original.text,original.document,8000,configuration?.architectureVersion===1))checkpoints.saveChunk({revisionId:revision.id,index:chunk.index,startOffset:chunk.start,endOffset:chunk.end,baseHash:revision.baseHash,evidenceHash:gatherReprocessingEvidence({text:original.text,document:original.document,start:chunk.start,end:chunk.end,options:configuration.evidence}).hash,difficulty:chunk.difficulty,difficultyReason:chunk.difficultyReason,requiredPassCount:configuration.depth==='light'?1:2,status:'pending'});}
   });return revision;

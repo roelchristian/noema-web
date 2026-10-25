@@ -171,3 +171,7 @@
 .reprocessing-history-filters>summary{padding:7px;cursor:pointer}
 .reprocessing-history-filters>div{display:flex;flex-wrap:wrap;gap:6px;padding-top:6px}
 .reprocessing-history-filters[open]{flex-basis:100%;margin-inline-start:0}
+
+.reprocessing-reading-picker .select-host{min-width:0;max-width:280px}
+.reprocessing-revision-picker .select-host,.reprocessing-layout-picker .select-host,.reprocessing-linked-group .select-host{min-width:0;max-width:100%}
+@media(max-width:650px){.reprocessing-reading-picker .select-host{flex:1;max-width:none}}

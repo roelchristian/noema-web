@@ -17,7 +17,7 @@ const fixture=()=>{
  r.acceptanceMode='review_all';r.patches=r.patches.slice(0,2).map((p,i)=>({...p,id:'patch-'+i,decision:'pending',riskReasons:['Quotation wording requires comparison with the PDF.']}));
  r.reprocessed=structuredClone(r.original);r.reprocessed.document.semantic.children=[];r.reprocessed.text='Sample reading text';return r;
 };
-async function mount(t,{initial=null,post,onReadingRevision,get,onShow=()=>{},onOriginal=()=>{},onReviewOpenChange,onReturnContext,onCompare,component=SourceReprocessing,capabilities={originalPages:false,ocr:false,externalImages:false,reason:'Native evidence is unavailable on this device.'}}={}){
+async function mount(t,{initial=null,history,remove,post,onReadingRevision,get,onShow=()=>{},onOriginal=()=>{},onReviewOpenChange,onReturnContext,onCompare,component=SourceReprocessing,capabilities={originalPages:false,ocr:false,externalImages:false,reason:'Native evidence is unavailable on this device.'}}={}){
  const env=setupDOM(t),{dom}=env;
  dom.window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};
  dom.window.HTMLDialogElement.prototype.close=function(){this.open=false;};
@@ -25,10 +25,11 @@ async function mount(t,{initial=null,post,onReadingRevision,get,onShow=()=>{},on
  t.mock.method(globalThis,'fetch',async(url,options={})=>{
   const entry={url:String(url),method:options.method??'GET',body:options.body?JSON.parse(options.body):undefined};requests.push(entry);
   let result;
-  if(entry.method==='POST'){result=await post(entry,revision);if(result)revision=result;}
+  if(entry.method==='DELETE'){result=await remove(entry,revision);if(history)history=history.filter(item=>!entry.url.endsWith('/'+item.id));if(revision&&entry.url.endsWith('/'+revision.id))revision=null;}
+  else if(entry.method==='POST'){result=await post(entry,revision);if(result)revision=result;}
   else if(entry.url.endsWith('/reprocessing/capabilities'))result=typeof capabilities==='function'?await capabilities():capabilities;
   else if(entry.url.endsWith('/intelligence'))result={model:'gpt-5-mini',reasoningEffort:'low'};
-  else if(entry.url.endsWith('/reprocessing'))result=revision?[{...revision,patchCount:revision.patches.length,pendingCount:revision.patches.length}]:[];
+  else if(entry.url.endsWith('/reprocessing'))result=history??(revision?[{...revision,patchCount:revision.patches.length,pendingCount:revision.patches.length}]:[]);
   else if(entry.url.endsWith('/status'))result={id:revision.id,status:revision.status,updatedAt:revision.updatedAt,...revision.report};
   else result=get?await get(entry,revision):revision;
   return {ok:true,json:async()=>structuredClone(result)};
@@ -473,4 +474,39 @@ test('an ineligible saved reading choice falls back to the original selector val
  const picker=document.querySelector('[aria-label="Reading version"]');await act(async()=>{picker.value=r.id;picker.dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});assert.equal(readings.at(-1),r.id);
  await env.click(env.button('Review changes (2)'));await env.click(env.button('Keep original'));
  assert.equal(readings.at(-1),null);assert.equal(picker.value,'original');
+});
+
+test('revision controls use Noema dropdowns including modal processing settings',async t=>{
+ const env=await mount(t,{initial:fixture()});
+ for(const native of document.querySelectorAll('.source-reprocessing select')){assert.equal(native.classList.contains('select-native'),true);assert.ok(native.parentElement.querySelector('.select-trigger[role="combobox"]'));}
+ await env.click(env.button('Refine text'));
+ for(const label of ['Processing depth','Review policy']){assert.ok(document.querySelector(`button.select-trigger[aria-label="${label}"]`));assert.equal(document.querySelector(`select[aria-label="${label}"]`).getAttribute('aria-hidden'),'true');}
+ assert.equal(document.activeElement.getAttribute('role'),'combobox');
+});
+
+test('five-version cap prompts deletion before setup and never starts paid work automatically',async t=>{
+ const revisions=Array.from({length:4},(_,i)=>({...fixture(),id:'revision-'+i,createdAt:`2026-10-2${i+1}T00:00:00Z`,status:'completed'}));
+ let deleted=0;const env=await mount(t,{initial:revisions[0],history:revisions,remove:async()=>{deleted++;return {deleted:true};},post:async()=>{throw Error('No automatic processing');}});
+ await env.click(env.button('Refine text'));assert.match(document.querySelector('.source-revision-manager').textContent,/Revision limit reached.*5 \/ 5/);
+ assert.equal(document.querySelector('.reprocessing-setup-sheet'),null);assert.equal(env.button('Continue to new revision').disabled,true);
+ const originalRow=document.querySelector('.source-revision-list li');assert.match(originalRow.textContent,/Original processed.*Always retained/);assert.equal(originalRow.querySelector('button'),null);
+ await env.click(env.button('Delete'));assert.equal(deleted,0);assert.match(document.querySelector('.confirmation-dialog').textContent,/permanently deletes/);
+ await env.click(env.button('Delete revision'));assert.equal(deleted,1);assert.equal(document.querySelectorAll('.source-revision-list li').length,4);assert.equal(env.button('Continue to new revision').disabled,false);
+ assert.equal(env.requests.some(request=>request.method==='POST'),false);
+ await env.click(env.button('Continue to new revision'));assert.ok(document.querySelector('.reprocessing-setup-sheet'));assert.equal(env.requests.some(request=>request.method==='POST'),false);
+});
+
+test('deleting the displayed preferred revision clears reading state and saved preference',async t=>{
+ const r={...fixture(),fileId:'f',status:'completed'},storage=new Map([['noema:source-reading:v:f',r.id]]),readings=[];
+ const descriptor=Object.getOwnPropertyDescriptor(globalThis,'localStorage');Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)}});t.after(()=>{if(descriptor)Object.defineProperty(globalThis,'localStorage',descriptor);else delete globalThis.localStorage;});
+ const env=await mount(t,{initial:r,history:[r],onReadingRevision:value=>readings.push(value?.id??null),remove:async()=>({deleted:true})});
+ assert.equal(readings.at(-1),r.id);await env.click(env.button('Manage revisions'));await env.click(env.button('Delete'));await env.click(env.button('Delete revision'));
+ assert.equal(readings.at(-1),null);assert.equal(storage.has('noema:source-reading:v:f'),false);assert.equal(document.querySelector('select[aria-label="Reading version"]').value,'original');
+ assert.equal(document.querySelector('.source-revision-list').querySelectorAll('li').length,1);
+});
+
+test('active revisions cannot be deleted and legacy over-limit histories require enough space',async t=>{
+ const revisions=Array.from({length:6},(_,i)=>({...fixture(),id:'legacy-'+i,status:i===0?'running':'failed'}));
+ const env=await mount(t,{initial:revisions[0],history:revisions});await env.click(env.button('Manage revisions'));
+ const rows=document.querySelectorAll('.source-revision-list li');assert.equal(rows[1].querySelector('button').disabled,true);assert.equal(rows[2].querySelector('button').disabled,false);assert.match(rows[1].textContent,/Stop processing/);
 });

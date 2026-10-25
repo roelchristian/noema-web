@@ -1,3 +1,4 @@
+import {Select} from '../components/Select';
 import {useEffect,useId,useRef} from 'react';
 import type {SourceProcessingDepth,SourceReviewPolicy,SourceReprocessingConfiguration} from '../../shared/source-reprocessing';
 import {intelligenceModels,type IntelligencePreferences} from '../../shared/intelligence';
@@ -29,7 +30,7 @@ export function SourceReprocessingSetup({fileId,configuration,configurationError
  useEffect(()=>{
   const element=dialog.current;if(!element)return;
   const trigger=returnFocus.current,workspace=element.closest('.source-reprocessing');
-  element.showModal();element.querySelector<HTMLSelectElement>('select')?.focus();
+  element.showModal();element.querySelector<HTMLElement>('[role="combobox"]')?.focus();
   return()=>{
    element.close();
    const target=trigger?.isConnected&&!trigger.matches(':disabled')?trigger:workspace?.querySelector<HTMLButtonElement>('.reprocessing-bar .reprocessing-loading-button:not(:disabled)');
@@ -41,8 +42,8 @@ export function SourceReprocessingSetup({fileId,configuration,configurationError
    <div className="reprocessing-setup-heading"><h2 id={titleId}>{uiText("Refine text")}</h2><button type="button" className="button small" disabled={busy} onClick={onClose}>{uiText("Cancel")}</button></div>
    <p>{uiText("Improve reading quality while preserving source meaning and page provenance.")}</p>
    {error&&<InlineNotice tone="error" title={error} announcement="assertive"/>}
-   <label>{uiText("Processing depth")}<select autoFocus aria-label={uiText("Processing depth")} disabled={busy} value={depth} onChange={event=>onDepth(event.target.value as SourceProcessingDepth)}>{(['light','balanced','deep'] as const).map(value=><option key={value} value={value}>{uiText(depthLabels[value])}</option>)}</select></label>
-   <label>{uiText("Review policy")}<select aria-label={uiText("Review policy")} disabled={busy} value={reviewPolicy} onChange={event=>onReviewPolicy(event.target.value as SourceReviewPolicy)}><option value="verified">{uiText("Apply verified changes automatically")}</option><option value="review_all">{uiText("Review everything")}</option></select></label>
+   <label>{uiText("Processing depth")}<Select autoFocus aria-label={uiText("Processing depth")} disabled={busy} value={depth} onChange={event=>onDepth(event.target.value as SourceProcessingDepth)}>{(['light','balanced','deep'] as const).map(value=><option key={value} value={value}>{uiText(depthLabels[value])}</option>)}</Select></label>
+   <label>{uiText("Review policy")}<Select aria-label={uiText("Review policy")} disabled={busy} value={reviewPolicy} onChange={event=>onReviewPolicy(event.target.value as SourceReviewPolicy)}><option value="verified">{uiText("Apply verified changes automatically")}</option><option value="review_all">{uiText("Review everything")}</option></Select></label>
    <p>{uiText("Text-preserving layout and paired footnote formatting may be applied automatically. Uncertain wording, mathematics and bibliographic changes remain for review.")}</p>
    <div className="reprocessing-configuration" role="status">{configuration?<><strong>{intelligenceModels.find(model=>model.id===configuration.model)?.label??configuration.model} · {configuration.reasoningEffort} {uiText("reasoning")}</strong><p>{uiText(depthPasses[depth])}. {uiText("Each pass is a separate model request.")}</p></>:configurationError?<InlineNotice id={`reprocessing-configuration-error-${fileId}`} tone="error" variant="compact" title={configurationError} announcement="assertive"/>:uiText("Loading AI configuration…")}</div>
    <details className="reprocessing-advanced"><DisclosureSummary>{uiText("Advanced options")}</DisclosureSummary><p>{uiText("Balanced and Deep cost at least two requests per excerpt, even when no changes are proposed.")}</p><EvidenceOptions capabilities={evidenceCapabilities} error={evidenceError} options={evidenceOptions} onChange={onEvidenceOptions} disabled={busy}/><label>{uiText("Editorial guidance (optional)")}<textarea disabled={busy} value={instructions} maxLength={4000} onChange={event=>onInstructions(event.target.value)} placeholder={uiText("For example: preserve Greek quotations; check ambiguous footnote numbering carefully.")}/></label></details>

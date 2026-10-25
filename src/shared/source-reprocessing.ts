@@ -1,3 +1,6 @@
+/** One canonical original plus at most four editorial reading versions per source file. */
+export const sourceRevisionLimit=5;
+export const sourceEditorialRevisionLimit=sourceRevisionLimit-1;
 import type {ReasoningEffort} from './intelligence.js';
 import type {SourceDocument,SourceDocumentRange} from './source-document.js';
 export type SourceAcceptanceMode='review_all'|'safe_formatting'|'balanced'|'minimal_review';

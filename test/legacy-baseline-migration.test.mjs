@@ -120,9 +120,13 @@ test('changed truncated summary stays stale on provider failure and gets a new b
   const s=fixture(longBody,async()=>{if(fails)throw new Error('Provider unavailable');return {summary:'Updated summary'};});try {
     const original=installSummary(s),current=edit(s,longBody.replaceAll('oldtail','newtail'));
     assert.deepEqual(s.coordinator.prepare('default',s.page.id,{fields:['summary']}).requestedFields,['summary']);
-    assert.deepEqual(summaryRow(s),original);
+    assert.equal(JSON.parse(summaryRow(s).data).freshness.status,'refresh_needed');
+    assert.equal(JSON.parse(summaryRow(s).data).summary,JSON.parse(original.data).summary);
+    assert.deepEqual(JSON.parse(summaryRow(s).data).baseline,JSON.parse(original.data).baseline);
     await assert.rejects(s.coordinator.run('default',current,undefined,{fields:['summary']}),/Provider unavailable/);
-    assert.deepEqual(summaryRow(s),original);
+    assert.equal(JSON.parse(summaryRow(s).data).freshness.status,'refresh_needed');
+    assert.equal(JSON.parse(summaryRow(s).data).summary,JSON.parse(original.data).summary);
+    assert.deepEqual(JSON.parse(summaryRow(s).data).baseline,JSON.parse(original.data).baseline);
     fails=false;
     await s.coordinator.run('default',current,undefined,{fields:['summary']});
     const saved=summaryRow(s),data=JSON.parse(saved.data);
@@ -174,15 +178,17 @@ test('legacy baseline assessment preserves manual domains and suppressed summari
 });
 
 
-test('complete legacy summary migration retains generating evidence across accepted small edits',()=>{
+test('complete legacy summary retains generating evidence and refreshes uncertain small edits',()=>{
   const text=Array.from({length:100},(_,i)=>`word${i}`).join(' '),s=fixture(text);try {
     const expected=summaryBaseline(s.page,()=>undefined),original=installSummary(s);
     const current=edit(s,text+' additional');
-    assert.equal(s.coordinator.prepare('default',s.page.id,{fields:['summary']}),null);
+    assert.deepEqual(s.coordinator.prepare('default',s.page.id,{fields:['summary']}).requestedFields,['summary']);
     const saved=summaryRow(s),data=JSON.parse(saved.data);
-    assert.deepEqual(data.baseline,expected);
+    assert.equal(data.freshness.status,'refresh_needed');
+    assert.equal(data.baseline.version,2);
+    assert.deepEqual(data.baseline.tokenCounts,expected.tokenCounts);
     assert.equal(data.generatedContentHash,JSON.parse(original.data).generatedContentHash);
-    assert.equal(saved.content_hash,current.summaryContentHash);
+    assert.equal(saved.content_hash,original.content_hash);
     assert.equal(saved.updated_at,original.updated_at);
     assert.equal(saved.revision,original.revision);
     assert.equal(saved.model,original.model);
@@ -217,13 +223,18 @@ test('present malformed summary baselines require refresh even when their cached
       const original=summaryRow(s);
       assert.equal(original.content_hash,s.page.summaryContentHash,name);
       assert.deepEqual(s.coordinator.prepare('default',s.page.id,{fields:['summary']}).requestedFields,['summary'],name);
-      assert.deepEqual(summaryRow(s),original,name);
+      assert.equal(JSON.parse(summaryRow(s).data).freshness.status,'refresh_needed',name);
+      assert.equal(JSON.parse(summaryRow(s).data).summary,JSON.parse(original.data).summary,name);
+      assert.deepEqual(JSON.parse(summaryRow(s).data).baseline,JSON.parse(original.data).baseline,name);
+      assert.equal(summaryRow(s).content_hash,null,name);
     }finally{s.close();}
   }
   const s=fixture('A sufficiently long source paragraph for summary enrichment.');try {
     s.enrichments.save('default',s.page.id,'summary',{summary:'Legacy summary without baseline'},s.page.revision,selection);
     const original=summaryRow(s);
     assert.equal(s.coordinator.prepare('default',s.page.id,{fields:['summary']}),null);
-    assert.deepEqual(summaryRow(s),original);
+    assert.equal(JSON.parse(summaryRow(s).data).summary,JSON.parse(original.data).summary);
+    assert.equal(JSON.parse(summaryRow(s).data).freshness.status,'generated');
+    assert.equal(summaryRow(s).content_hash,original.content_hash);
   }finally{s.close();}
 });

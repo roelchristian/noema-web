@@ -38,7 +38,9 @@
     "test/notification-workspace.test.mjs",
     "test/tagline.test.mjs",
     "test/source-annotation-mapping.test.mjs",
-    "test/writing-actions.test.mjs"
+    "test/writing-actions.test.mjs",
+    "test/domain-shortlist-multilingual.test.mjs",
+    "test/page-block-evidence.test.mjs"
   ],
   "dom": [
     "test/trash-ui.test.mjs",

@@ -199,3 +199,51 @@ test('explicit renames including Untitled survive enrichment and later autosaves
    }finally{s.close();}
  }
 });
+
+test('same-vocabulary reversal retains generating provenance and requests a refresh',async()=>{
+ const s=fixture();try {
+   const blocks=[{id:'claim',type:'paragraph',content:[{text:'The larger dogs chase the smaller cats. This note records the direction of the chase.'}]}];
+   let current=s.pages.update('default',s.page.id,{...s.page,title:'Chase observations',blocks});
+   await s.coordinator.run('default',current,undefined,{fields:['summary'],explicit:true});
+   const before=s.enrichments.list('default',current.id).find(item=>item.kind==='summary');
+   current=s.pages.update('default',current.id,{...current,blocks:[{...blocks[0],content:[{text:'The smaller cats chase the larger dogs. This note records the direction of the chase.'}]}]});
+   assert.deepEqual(s.coordinator.prepare('default',current.id,{fields:['summary']}).requestedFields,['summary']);
+   const saved=s.enrichments.list('default',current.id).find(item=>item.kind==='summary');
+   assert.equal(saved.data.generatedContentHash,before.data.generatedContentHash);
+   assert.notEqual(saved.contentHash,current.summaryContentHash);
+   assert.equal(saved.data.freshness.status,'refresh_needed');
+   assert.equal(saved.data.summary,before.data.summary);
+ }finally{s.close();}
+});
+
+test('summary-only refresh selects edits since summary generation independently of classification',async()=>{
+ const s=fixture();try {
+   await s.coordinator.run('default',s.page,undefined,{fields:['domains','summary'],explicit:true});
+   const old=s.pages.get('default',s.page.id);
+   const current=s.pages.update('default',old.id,{...old,blocks:[{...old.blocks[0],content:[{text:'Distinctive changed summary evidence: the equation is no longer valid after reversing its inequality.'}]}]});
+   await s.coordinator.run('default',current,undefined,{fields:['domains'],explicit:true});
+   await s.coordinator.run('default',current,undefined,{fields:['summary'],explicit:true});
+   const request=s.requests.at(-1);
+   assert.equal(request.options.changedEvidence.counts.modified,1);
+   assert.match(request.options.changedEvidence.passages[0].text,/Distinctive changed summary evidence/);
+   const summary=s.enrichments.list('default',current.id).find(item=>item.kind==='summary');
+   assert.equal(summary.data.coverage.changedBlocks,1);
+   assert.equal(summary.data.baseline.blockEvidence.blocks.length,1);
+ }finally{s.close();}
+});
+
+test('legacy locally advanced hash is rolled back when generating evidence is stale',async()=>{
+ const s=fixture();try {
+   await s.coordinator.run('default',s.page,undefined,{fields:['summary'],explicit:true});
+   const before=s.enrichments.list('default',s.page.id).find(item=>item.kind==='summary');
+   const current=s.pages.update('default',s.page.id,{...s.page,blocks:[{...s.page.blocks[0],content:[{text:'The assertion is not true; its direction has reversed from 20 to 10.'}]}]});
+   const legacy={...before.data,baseline:{...before.data.baseline}};delete legacy.baseline.orderedContentHash;delete legacy.baseline.semanticVersion;
+   s.store.run("UPDATE page_ai_enrichments SET content_hash=?,data=? WHERE page_id=? AND kind='summary'",current.summaryContentHash,JSON.stringify(legacy),current.id);
+   s.coordinator.configure('default',{automaticSummaries:false});
+   assert.equal(s.coordinator.prepare('default',current.id,{fields:['summary']}),null);
+   const saved=s.enrichments.list('default',current.id).find(item=>item.kind==='summary');
+   assert.equal(saved.contentHash,before.data.generatedContentHash);
+   assert.notEqual(saved.contentHash,current.summaryContentHash);
+   assert.equal(saved.data.freshness.status,'refresh_needed');
+ }finally{s.close();}
+});

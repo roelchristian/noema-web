@@ -15,7 +15,7 @@ export class AIEnrichments {
   list(vault: string, pageId: string): AIEnrichment[] {
     const page = this.pages.get(vault, pageId);
     // Only backfill legacy results when their exact generating revision is known.
-    this.store.run("UPDATE page_ai_enrichments SET content_hash=? WHERE page_id=? AND kind='summary' AND content_hash IS NULL AND revision=?",page.summaryContentHash!,pageId,page.revision);
+    this.store.run("UPDATE page_ai_enrichments SET content_hash=? WHERE page_id=? AND kind='summary' AND content_hash IS NULL AND revision=? AND COALESCE(json_extract(data,'$.freshness.status'),'')!='refresh_needed'",page.summaryContentHash!,pageId,page.revision);
     return this.store.all<EnrichmentRow>('SELECT kind,data,revision,model,reasoning_effort,updated_at,content_hash AS contentHash FROM page_ai_enrichments WHERE page_id=? ORDER BY kind', pageId)
       .map(({data, reasoning_effort, ...row}) => {
         const parsed = JSON.parse(data) as Record<string, unknown>;

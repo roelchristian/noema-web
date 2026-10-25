@@ -137,7 +137,7 @@ test('cancellation marks the reserved paid request uncertain and never advances 
 
 test('V2 publishes only AI-verified reversible furniture nominations over three physical pages',async t=>{
  const text=Array.from({length:3},(_,index)=>`<!-- Page ${index+1} -->\nRecurring journal header\nDistinct passage ${index+1}.\n`).join('');
- const env=harness(t,{text,pages:3,pageStartLines:[1,4,7],provider:request=>JSON.stringify({blocks:request.blocks,pageFurniture:request.pageBoundaryCandidates.map(({blockId,quote,kind})=>({blockId,quote,kind})),unresolved:false})});
+ const env=harness(t,{promptVersion:'source-reconstruction-v2-10',text,pages:3,pageStartLines:[1,4,7],provider:request=>JSON.stringify({blocks:request.blocks,pageFurniture:request.pageBoundaryCandidates.map(({blockId,quote,kind})=>({blockId,quote,kind})),unresolved:false})});
  assert.equal(env.revision.furniture.length,0);
  await env.worker.tick();const result=env.value;assert.equal(result.status,'completed');assert.equal(env.calls.length,7);
  assert.equal(result.furniture.length,3);assert.ok(result.furniture.every(candidate=>candidate.hidden===false&&candidate.text==='Recurring journal header'));assert.equal(result.original.text,text);assert.equal(result.reprocessed.text,text);
@@ -417,7 +417,7 @@ for(const depth of ['balanced','deep'])test(`${depth} uses a bounded AI pass to 
 
 test('final AI verification rejects initial furniture proposals and clears provisional chunk annotations',async t=>{
  const text=Array.from({length:3},(_,i)=>`<!-- Page ${i+1} -->\nRecurring journal header\nDistinct body ${i+1}.\n`).join('');
- const env=harness(t,{text,pages:3,pageStartLines:[1,4,7],provider:request=>JSON.stringify({blocks:request.blocks,pageFurniture:request.kind==='verify'?[]:request.pageBoundaryCandidates.map(({blockId,quote,kind})=>({blockId,quote,kind}))})});
+ const env=harness(t,{promptVersion:'source-reconstruction-v2-10',text,pages:3,pageStartLines:[1,4,7],provider:request=>JSON.stringify({blocks:request.blocks,pageFurniture:request.kind==='verify'?[]:request.pageBoundaryCandidates.map(({blockId,quote,kind})=>({blockId,quote,kind}))})});
  // Previously seeded suggestions must not survive the verification decision.
  const r=env.value;r.furniture=[{id:'old-provisional',startOffset:17,endOffset:41,page:1,text:text.slice(17,41),kind:'header',hidden:false,reason:'Provisional'}];
  env.store.run('UPDATE source_reprocessing SET payload=? WHERE id=?',JSON.stringify(r),r.id);
@@ -522,4 +522,39 @@ test('Balanced preserves pending proposals when optional uncertainty quotations 
  assert.ok(env.value.report.diagnostics.some(message=>/Unverified uncertainty evidence/.test(message)));
  const raw=env.checkpoints.passes(env.revision.id)[0].result;assert.ok(JSON.parse(raw).blocks[0].text.includes('reconstructed'));
  await assertRecoveryArchive(env);
+});
+
+
+for(const explicit of [true,false])test(`Balanced explicitly reviews bibliography and alternating running headers (${explicit?'classified':'omissions audited'})`,async t=>{
+ const pages=[
+  '<!-- Page 1 -->\n\nSYNTHETIC GROUP THEORY\n\nADA EXAMPLE\n\nThe first argument cites [1].\n\n',
+  '<!-- Page 2 -->\n\n2\n\nADA EXAMPLE\n\nAn independent proof continues on this page.\n\n',
+  '<!-- Page 3 -->\n\nSYNTHETIC GROUP THEORY\n\n3\n\nFor another proof see [1].\n\nREFERENCES\n\n[1] A. Writer, Related group theory, Journal 12 (2024), 1-9.\n',
+ ];
+ const text=pages.join(''),pageStartLines=pages.map((_,index)=>pages.slice(0,index).join('').split('\n').length);
+ const env=harness(t,{text,pages:3,pageStartLines,provider:request=>{
+  assert.ok(Array.isArray(request.furnitureReviewCandidates));assert.ok(Array.isArray(request.canonicalBibliographicReferences));
+  if(request.kind==='verify'&&request.chunkIndex===0){assert.equal(request.furnitureReviewCandidates.length,0,'primary title and byline remain substantive');assert.equal(request.canonicalBibliographicReferences[0].label,'1');}
+  const candidates=explicit&&request.kind==='verify'?request.furnitureReviewCandidates:[];
+  return JSON.stringify({blocks:request.blocks.map(block=>({...block,text:candidates.some(candidate=>candidate.blockId===block.id)?'# '+block.text:block.text})),diagnostics:[],unresolved:false,uncertainties:[],correctionReviews:[],pageFurniture:candidates.map(item=>({blockId:item.blockId,quote:item.quote,kind:item.kind})),furnitureReviews:candidates.map(item=>({id:item.id,outcome:'classified',explanation:'This exact continuation-page running header is corroborated by primary metadata and its printed physical page counter.'})),referenceReviews:explicit&&request.kind==='verify'?request.canonicalBibliographicReferences.map(ref=>({label:ref.label,outcome:'linked',explanation:'The bracketed citation matches its unique printed References entry; it is a bibliographic citation, not a footnote.'})):[]});
+ }});
+ await env.worker.tick();const result=env.value;assert.equal(result.status,'completed');assert.equal(result.report.chunksCompleted,3);assert.equal(result.patches.length,0,'tagging preserves complete canonical text, including model-formatted furniture paragraphs');
+ assert.ok(env.prompts.some(prompt=>prompt.includes('alternating author/title headers')));assert.ok(env.prompts.some(prompt=>prompt.includes('Bibliographic citations are not footnotes')));
+ if(explicit){
+  assert.equal(result.furniture.length,4);assert.deepEqual(result.furniture.map(item=>item.page),[2,2,3,3]);assert.ok(result.furniture.every(item=>!item.hidden));
+  assert.ok(result.report.validationDiagnostics.some(message=>message.includes('Bibliographic reference [1]: linked')));
+  assert.ok(!result.report.validationDiagnostics.some(message=>message.includes('missing or invalid explicit')));
+ }else{
+  assert.equal(result.furniture.length,0,'omitted model annotation cannot silently classify source text');
+  assert.ok(result.report.validationDiagnostics.some(message=>message.includes('missing or invalid explicit classification')));
+  assert.ok(result.report.validationDiagnostics.some(message=>message.includes('missing or invalid explicit identification')));
+ }
+});
+
+test('v2-10 cached policy keeps its original request fields before apparatus review was introduced',async t=>{
+ const text='<!-- Page 1 -->\nSYNTHETIC GROUP THEORY\nADA EXAMPLE\nBody cites [1].\n\n<!-- Page 2 -->\n2\nADA EXAMPLE\nBody.\n\nREFERENCES\n[1] A. Writer, Related work.';
+ const env=harness(t,{promptVersion:'source-reconstruction-v2-10',text,pages:2,pageStartLines:[1,6],provider:request=>{
+  assert.equal(request.furnitureReviewCandidates,undefined);assert.equal(request.canonicalBibliographicReferences,undefined);return echo(request);
+ }});
+ await env.worker.tick();assert.equal(env.value.status,'completed');assert.ok(env.prompts.every(prompt=>!prompt.includes('furnitureReviewCandidates')));
 });

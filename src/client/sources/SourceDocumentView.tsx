@@ -1,7 +1,8 @@
 import {Fragment,useMemo,type RefObject,type ReactNode} from 'react';
 import type {SourceHighlight} from '../../shared/source-reading';
 import {sourceDocumentEntries,sourceNodeLocator,type SourceDocument} from '../../shared/source-document';
-import {SourceFootnoteDefinitions,SourceReaderInline,sourceReaderBlocks} from './SourceReaderText';
+import {SourceBibliography,SourceFootnoteDefinitions,SourceReaderInline,sourceReaderBlocks} from './SourceReaderText';
+import {discoverSourceBibliography} from '../../shared/source-bibliography';
 import {t as uiText} from '../i18n';
 
 export type SourceViewEntry=ReturnType<typeof sourceDocumentEntries>[number];
@@ -43,6 +44,7 @@ interface Props {
 }
 /** One typography and heading hierarchy for canonical and editorial presentations. */
 export function SourceDocumentView({article,coordinateHash,fileId,name,text,entries,selected,annotations,structureLabels,hiddenNodeIds,furnitureKind,endnotes=false,highlights=[],canonicalNode,onSelect,changeForNode,onReview,children}:Props){
+ const bibliography=useMemo(()=>discoverSourceBibliography(text),[text]);
  const definitions=useMemo(()=>new Set([...text.matchAll(/^[ \t]*\[\^([^\]\n]+)\]:/gm)].map(match=>match[1]!)),[text]);
  const content=useMemo(()=>entries.map(entry=>({entry,blocks:entry.node.text===undefined?null:sourceReaderBlocks({text:entry.node.text,kind:entry.node.kind,footnotePrefix:fileId,startOffset:entry.node.range.startOffset,highlights})})),[entries,fileId,highlights]);
  const fallback=useMemo(()=>entries.length?null:sourceReaderBlocks({text,footnotePrefix:fileId,highlights}),[entries.length,text,fileId,highlights]);
@@ -62,7 +64,7 @@ export function SourceDocumentView({article,coordinateHash,fileId,name,text,entr
    </section>;
  };
  let previousPage:number|null=null;
- return <SourceFootnoteDefinitions value={definitions}><article ref={article} className="source-reader-document" data-source-coordinate-hash={coordinateHash} data-annotations={annotations} aria-label={name}>
+ return <SourceBibliography value={bibliography}><SourceFootnoteDefinitions value={definitions}><article ref={article} className="source-reader-document" data-source-coordinate-hash={coordinateHash} data-annotations={annotations} aria-label={name}>
   {entries.length?content.map(item=>{
    const {node}=item.entry,page=node.range.startPage;
    const pageBreak=page!==null&&previousPage!==null&&page>previousPage;
@@ -74,5 +76,5 @@ export function SourceDocumentView({article,coordinateHash,fileId,name,text,entr
   }):text.trim()?<div className="source-reader-text">{endnotes?fallback?.body:fallback?.inline}</div>:<p className="source-reader-status">{uiText('No readable text was extracted from this attachment.')}</p>}
   {endnotes&&(noteEntries.length>0||!!fallback?.notes.length)&&<section className="source-reader-endnotes" aria-label={uiText('Endnotes')}><h2>{uiText('Endnotes')}</h2>{noteEntries.map(item=>renderPassage(item,true))}{fallback&&<div className="source-reader-text">{fallback.notes}</div>}</section>}
   {children}
- </article></SourceFootnoteDefinitions>;
+ </article></SourceFootnoteDefinitions></SourceBibliography>;
 }

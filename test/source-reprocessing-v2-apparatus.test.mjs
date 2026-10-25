@@ -249,3 +249,40 @@ test('block ledger exposes incomplete bounded coverage rather than silently drop
  assert.equal(coverage.total,60);assert.ok(coverage.omitted>0);assert.ok(tasks.length<=32);assert.ok(JSON.stringify(tasks).length<12100);
  assert.match(auditCorrectionLedger(ledger,{blocks:chunk.blocks},chunk)[0],/coverage incomplete/);
 });
+
+test('numbered bibliography links preserve printed labels and exclude math, code, links, and footnotes',async()=>{
+ const {discoverSourceBibliography}=await import('../src/shared/source-bibliography.ts');
+ const text='See [1] and [2]. Equation $[1]$ and code `[1]` are not citations. Link [1](https://example.test) and note[^1].\n\nREFERENCES\n\n[1] First author, First article, 2020.\n[2] Second author, Second article, 2021.';
+ const found=discoverSourceBibliography(text);
+ assert.deepEqual(found.entries.map(entry=>entry.label),['1','2']);assert.deepEqual(found.citations.map(citation=>citation.label),['1','2']);
+ for(const citation of found.citations){assert.equal(text.slice(citation.startOffset,citation.endOffset),`[${citation.label}]`);assert.equal(text.slice(citation.entryStartOffset,citation.entryStartOffset+3),`[${citation.label}]`);}
+ assert.deepEqual(discoverSourceBibliography('A numbered list:\n[1] One ordinary item.\nSee [1].').entries,[]);
+ assert.deepEqual(discoverSourceBibliography('Items:\n[1] First item.\n[2] Second item.\n\nREFERENCES\n[1] First article.\n[2] Second article.').citations,[]);
+ assert.deepEqual(discoverSourceBibliography('See [1].\n\nREFERENCES\n[1] First.\n[1] Duplicate.').citations,[]);
+ assert.match(discoverSourceBibliography('See [1].\n\nREFERENCES\n[1] First.\n[1] Duplicate.').diagnostics[0],/multiple entries/);
+});
+
+test('bibliographic reference hints retain exact cross-chunk source evidence and require explicit classification',async()=>{
+ const {canonicalBibliographicReferences,bibliographicReferencesForChunk,auditBibliographicReferences}=await import('../src/server/modules/source-reprocessing-references.ts');
+ const text='See [1] for more proofs.\n\nREFERENCES\n\n[1] Example Author, A reference title, 2020.';
+ const split=text.indexOf('REFERENCES'),chunks=[{index:0,start:0,end:split,blocks:[{id:'body',text:text.slice(0,split),start:0,end:split}]},{index:1,start:split,end:text.length,blocks:[{id:'references',text:text.slice(split),start:split,end:text.length}]}];
+ const hints=canonicalBibliographicReferences(chunks);assert.equal(hints.length,1);assert.equal(hints[0].label,'1');assert.equal(hints[0].entry.blockId,'references');assert.equal(hints[0].citations[0].blockId,'body');
+ for(const ref of [hints[0].entry,...hints[0].citations])assert.equal(text.slice(ref.start,ref.end),ref.quote);
+ assert.equal(bibliographicReferencesForChunk(hints,chunks[0])[0].entry.blockId,'references');
+ assert.match(auditBibliographicReferences(hints,{},chunks[0])[0],/missing or invalid/);
+ assert.match(auditBibliographicReferences(hints,{blocks:chunks[0].blocks,referenceReviews:[{label:'1',outcome:'linked',explanation:'The printed citation points to the unique numbered bibliography entry.'}]},chunks[0])[0],/linked/);
+ assert.match(auditBibliographicReferences(hints,{referenceReviews:[{label:'1',outcome:'ambiguous',explanation:'The target requires source review.'}]},chunks[0])[0],/ambiguous/);
+});
+
+
+test('linked bibliography verdict cannot hide dropped citations or conversion into footnotes',async()=>{
+ const {canonicalBibliographicReferences,auditBibliographicReferences}=await import('../src/server/modules/source-reprocessing-references.ts');
+ const text='See [1] and again [1].\n\nREFERENCES\n\n[1] An Author, A reference title, 2020.';
+ const document={physical:{pages:[{number:1,range:{startOffset:0,endOffset:text.length}}]}},chunk=planReprocessingChunks(text,document)[0],hints=canonicalBibliographicReferences([chunk]);
+ const reviews=[{label:'1',outcome:'linked',explanation:'The citation and bibliography are linked.'}];
+ const response=value=>({blocks:chunk.blocks.map(block=>({...block,text:value(block.text)})),referenceReviews:reviews});
+ assert.ok(auditBibliographicReferences(hints,response(value=>value),chunk).every(value=>value.includes('linked —')));
+ for(const replace of [value=>value.replace('See [1]','See [^1]'),value=>value.replace('See [1]','See'),value=>value.replace('[1] An Author','[^1]: An Author'),value=>value.replace('See [1]','See $[1]$'),value=>value.replace('See [1]','See `[1]`'),value=>value.replace('See [1]','See [1](https://example.test)')]){
+  assert.ok(auditBibliographicReferences(hints,response(replace),chunk).some(value=>value.includes('missing or converted')));
+ }
+});

@@ -76,6 +76,15 @@ test('Balanced corrections schema preserves legacy metadata and requires explici
  await ai.reeditSource(input,'Legacy metadata',signal,undefined,'blocksWithMetadata');
  assert.equal(bodies[1].text.format.name,'source_reconstruction_metadata');assert.ok(!bodies[1].text.format.schema.required.includes('correctionReviews'));
 });
+test('Balanced apparatus schema requires explicit bibliography and furniture dispositions',async()=>{
+ const bodies=[],ai=new Intelligence(new Secrets(),async(_url,options)=>{bodies.push(JSON.parse(options.body));return completed('{"blocks":[]}');});ai.save({apiKey:key});
+ await ai.reeditSource(JSON.stringify({blocks:[{id:'canonical',text:'References'}]}),'Review apparatus',new AbortController().signal,undefined,'blocksWithApparatus');
+ const format=bodies[0].text.format;assert.equal(format.name,'source_reconstruction_apparatus');
+ assert.ok(format.schema.required.includes('referenceReviews'));assert.ok(format.schema.required.includes('furnitureReviews'));
+ assert.deepEqual(format.schema.properties.referenceReviews.items.properties.outcome.enum,['linked','ambiguous']);
+ assert.deepEqual(format.schema.properties.furnitureReviews.items.properties.outcome.enum,['classified','retained']);
+ assert.deepEqual(format.schema.properties.blocks.items.properties.id.enum,['canonical']);
+});
 test('editorial metadata schema binds response count and identifiers to canonical blocks',async()=>{
  const bodies=[],ai=new Intelligence(new Secrets(),async(_url,options)=>{bodies.push(JSON.parse(options.body));return completed('{"blocks":[],"metadata":[]}');});ai.save({apiKey:key});
  await ai.reeditSource(JSON.stringify({blocks:[{id:'first',text:'One'},{id:'second',text:'Two'}]}),'Edit',new AbortController().signal,undefined,'blocksWithMetadata');

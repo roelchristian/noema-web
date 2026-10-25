@@ -91,3 +91,46 @@ test('apparatus fallback retains furniture and metadata for independent canonica
  assert.deepEqual(result.metadata,response.metadata);assert.deepEqual(result.pageFurniture,response.pageFurniture);
  assert.deepEqual(result.diagnostics,response.diagnostics);assert.equal(result.unresolved,true);assert.deepEqual(response,snapshot);
 });
+
+test('short alternating running title and author headers require exact metadata and physical counters',()=>{
+ const {text,document}=fixture([
+  '<!-- Page 1 -->\n\nON FINITE STRUCTURES\n\nADA EXAMPLE\n\nThe opening statement is substantive.\n',
+  '<!-- Page 2 -->\n\n2\n\nADA EXAMPLE\n\nA second theorem and its proof remain body content.\n',
+  '<!-- Page 3 -->\n\nON FINITE STRUCTURES\n\n3\n\nA final proof and references remain body content.\n'
+ ]);
+ assert.deepEqual(repeatedPageFurniturePatterns(text,document),[]);
+ const items=repeatedPageFurniturePatterns(text,document,{shortRunningHeaders:true});
+ assert.deepEqual(items.map(item=>[item.page,item.text]),[[2,'2'],[2,'ADA EXAMPLE'],[3,'ON FINITE STRUCTURES'],[3,'3']]);
+ assert.ok(items.every(item=>item.kind==='header'&&!item.hidden&&text.slice(item.startOffset,item.endOffset)===item.text));
+ assert.ok(items.every(item=>item.page!==1));
+});
+
+test('short joined counter and metadata headers retain separate exact fragments for AI review',async()=>{
+ const {text,document}=fixture(['ON FINITE STRUCTURES\nADA EXAMPLE\nOpening body.\n','2 ADA EXAMPLE\nContinuation body.\n','ON FINITE STRUCTURES 3\nClosing body.\n']);
+ const items=repeatedPageFurniturePatterns(text,document,{shortRunningHeaders:true});
+ assert.deepEqual(items.map(item=>[item.page,item.text]),[[2,'2'],[2,'ADA EXAMPLE'],[3,'ON FINITE STRUCTURES'],[3,'3']]);
+ const {parsePageFurniture}=await import('../src/server/modules/source-reprocessing-furniture.ts');
+ for(const chunk of planReprocessingChunks(text,document)){
+  const nominated=items.filter(item=>item.startOffset>=chunk.start&&item.endOffset<=chunk.end);
+  const proposed=nominated.map(item=>({blockId:chunk.blocks.find(block=>block.start<=item.startOffset&&block.end>=item.endOffset).id,quote:item.text,kind:item.kind}));
+  assert.equal(parsePageFurniture({pageFurniture:proposed},chunk,text,document,items).candidates.length,nominated.length);
+ }
+});
+
+test('counter proximity cannot nominate uncorroborated text, theorem labels or wrong page numbers',()=>{
+ const cases=[
+  ['A PRIMARY TITLE\nADA EXAMPLE\nOpening body.\n','2\nAn unrelated section\nBody.\n'],
+  ['A PRIMARY TITLE\nADA EXAMPLE\nOpening body.\n','99\nADA EXAMPLE\nBody.\n'],
+  ['Theorem 1\nADA EXAMPLE\nOpening body.\n','2\nTheorem 1\nBody.\n'],
+  ['A PRIMARY TITLE\nADA EXAMPLE\nOpening body.\n','ADA EXAMPLE\nBody mentions 2 here.\n'],
+  ['A PRIMARY TITLE\nADA EXAMPLE\nOpening body.\n','2 ADA EXAMPLE adjacent substantive text\nBody.\n']
+ ];
+ for(const pages of cases){const {text,document}=fixture(pages);assert.deepEqual(repeatedPageFurniturePatterns(text,document,{shortRunningHeaders:true}),[]);}
+});
+
+test('primary title and byline stay substantive even when later running headers repeat three times',()=>{
+ const pages=['A PRIMARY TITLE\nADA EXAMPLE\nOpening body.\n',...Array.from({length:3},(_,i)=>`A PRIMARY TITLE\n${i+2}\nContinuation body ${i+2}.\n`)];
+ const {text,document}=fixture(pages),items=repeatedPageFurniturePatterns(text,document,{shortRunningHeaders:true});
+ assert.ok(items.every(item=>item.page!==1));
+ assert.equal(items.filter(item=>item.text==='A PRIMARY TITLE').length,3);
+});

@@ -1,12 +1,14 @@
 import {t as uiText} from '../i18n';
-import {createContext,Fragment,useContext,type ReactNode} from 'react';
+import {createContext,Fragment,useContext,useMemo,type ReactNode} from 'react';
 import {safeHref} from '../../shared/domain';
 import type {SourceHighlight} from '../../shared/source-reading';
+import {discoverSourceBibliography} from '../../shared/source-bibliography';
 import {renderMath} from '../editor/math';
 
 type ReaderProps={text:string;startOffset?:number;highlights?:SourceHighlight[];footnotePrefix?:string};
 export const SourceFootnoteDefinitions=createContext<ReadonlySet<string>|null>(null);
-const expressions=/(`+)([\s\S]*?)\1|\[([^\]]+)\]\(([^\s)]+)\)|\*\*([^*]+)\*\*|__([^_]+)__|~~([^~]+)~~|\*([^*]+)\*|_([^_]+)_|(?<!\\)\$\$([\s\S]+?)(?<!\\)\$\$|(?<!\\)\\\[([\s\S]+?)(?<!\\)\\\]|(?<![\\$])\$(?![\s$])((?:\\.|[^$\n\\])+?)(?<![\s\\])\$(?![$\d])|(?<!\\)\\\(([^\n]*?)(?<!\\)\\\)|(?<!\\)\[\^([^\]\n]+)\](?!:)/g;
+export const SourceBibliography=createContext<ReturnType<typeof discoverSourceBibliography>|null>(null);
+const expressions=/(`+)([\s\S]*?)\1|\[([^\]]+)\]\(([^\s)]+)\)|\*\*([^*]+)\*\*|__([^_]+)__|~~([^~]+)~~|\*([^*]+)\*|_([^_]+)_|(?<!\\)\$\$([\s\S]+?)(?<!\\)\$\$|(?<!\\)\\\[([\s\S]+?)(?<!\\)\\\]|(?<![\\$])\$(?![\s$])((?:\\.|[^$\n\\])+?)(?<![\s\\])\$(?![$\d])|(?<!\\)\\\(([^\n]*?)(?<!\\)\\\)|(?<!\\)\[\^([^\]\n]+)\](?!:)|(?<!\\)\[(\d{1,4})\](?![(:])/g;
 
 function activeHighlight(highlights:SourceHighlight[],start:number,end:number) {
   // Latest-created wins when highlights overlap, independent of query ordering.
@@ -30,7 +32,7 @@ function MathLeaf({source,display,start,end,highlights}:{source:string;display:b
 }
 /** Raw offsets belong to the immutable imported text, including Markdown delimiters. */
 export function SourceReaderInline({text,startOffset=0,highlights=[],footnotePrefix='source-footnote'}:ReaderProps) {
-  const definitions=useContext(SourceFootnoteDefinitions);
+  const definitions=useContext(SourceFootnoteDefinitions),bibliography=useContext(SourceBibliography);
   const parts:ReactNode[]=[];
   const plain=(value:string,offset:number)=>{
     // Decode escaped table pipes and style printed checkboxes without changing raw positions.
@@ -61,6 +63,11 @@ export function SourceReaderInline({text,startOffset=0,highlights=[],footnotePre
       const missing=definitions!==null&&!definitions.has(label);
       const missingLabel=uiText("Footnote {value0}: definition missing from this reading version",{value0:label});
       node=<sup className="source-reader-footnote-reference">{missing?<span title={missingLabel} aria-label={missingLabel} data-source-start={offset} data-source-end={offset+match[0].length} data-source-atomic="true">{label.replace(/^p\d+-/, '')}?</span>:<a href={`#${target}`} data-footnote-reference={target} data-source-start={offset} data-source-end={offset+match[0].length} data-source-atomic="true" aria-label={uiText("Footnote {value0}",{value0: label})} onClick={event=>{event.preventDefault();const note=document.getElementById(target);if(note){window.dispatchEvent(new Event('noema:before-reading-jump'));note.scrollIntoView({block:'center'});note.focus({preventScroll:true});}}}>{label.replace(/^p\d+-/, '')}</a>}</sup>;
+    } else if(match[15]!==undefined) {
+      const label=match[15],entry=bibliography?.entries.find(item=>item.label===label&&item.startOffset===offset),citation=bibliography?.citations.find(item=>item.label===label&&item.startOffset===offset);
+      const target=`${footnotePrefix}-bibliography-${encodeURIComponent(label)}`;
+      const content=<TextLeaf text={match[0]} start={offset} highlights={highlights}/>;
+      node=entry?<span id={target} tabIndex={-1} className="source-reader-bibliography-label" aria-label={uiText('Reference {value0}',{value0:label})}>{content}</span>:citation?<a href={`#${target}`} data-bibliographic-reference={target} aria-label={uiText('Go to reference {value0}',{value0:label})} onClick={event=>{event.preventDefault();const reference=document.getElementById(target);if(reference){window.dispatchEvent(new Event('noema:before-reading-jump'));reference.scrollIntoView({block:'center'});reference.focus({preventScroll:true});}}}>{content}</a>:content;
     } else {
       const source=(match[10]??match[11]??match[12]??match[13]??'').trim();
       node=<MathLeaf source={source} display={match[10]!==undefined||match[11]!==undefined} start={offset} end={offset+match[0].length} highlights={highlights}/>;
@@ -175,6 +182,11 @@ export function sourceReaderBlocks({text,kind,startOffset=0,highlights=[],footno
 
 
 export function SourceReaderText(props:ReaderProps&{kind?:string}) {
+  const inherited=useContext(SourceBibliography);
+  const local=useMemo(()=>{
+    const found=discoverSourceBibliography(props.text),offset=props.startOffset??0;
+    return {...found,entries:found.entries.map(entry=>({...entry,startOffset:entry.startOffset+offset,endOffset:entry.endOffset+offset})),citations:found.citations.map(citation=>({...citation,startOffset:citation.startOffset+offset,endOffset:citation.endOffset+offset,entryStartOffset:citation.entryStartOffset+offset}))};
+  },[props.text,props.startOffset]);
   const blocks=sourceReaderBlocks(props);
-  return props.kind==='code'?<>{blocks.inline}</>:<div className="source-reader-text">{blocks.inline}</div>;
+  return <SourceBibliography value={inherited??local}>{props.kind==='code'?<>{blocks.inline}</>:<div className="source-reader-text">{blocks.inline}</div>}</SourceBibliography>;
 }

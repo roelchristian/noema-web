@@ -179,7 +179,7 @@ test('Balanced separates contextual OCR proposals from approval and explicitly p
    const calls=[];const intelligence={reeditSource:async(request,prompt,_signal,_onRequest,shape)=>{
     const value=JSON.parse(request);calls.push(value.kind??'synthesis');
     if(!value.blocks){assert.equal(value.proposalPolicy,'reviewable-corrections-v1');return JSON.stringify({observations:[]});}
-    assert.equal(shape,'blocksWithCorrections');assert.match(prompt,/distinguish proposing a correction from approving it/);assert.match(prompt,/never normalize every occurrence/);assert.ok(value.correctionLedger.length>0);
+    assert.equal(shape,'blocksWithApparatus');assert.match(prompt,/distinguish proposing a correction from approving it/);assert.match(prompt,/never normalize every occurrence/);assert.ok(value.correctionLedger.length>0);
     const blocks=value.blocks.map(block=>({...block,text:scenario.before?block.text.replace(scenario.before,scenario.after):block.text}));
     const uncertainties=scenario.before?[{blockId:value.blocks[0].id,nature:'Suspected OCR index substitution',readings:[scenario.before,scenario.after],evidence:[{blockId:value.blocks[0].id,quote:scenario.before}],resolutionNeed:'Inspect the source-page glyph.'}]:[];
     return JSON.stringify({blocks,uncertainties,unresolved:!!uncertainties.length,diagnostics:[],correctionReviews:value.kind==='verify'?value.correctionLedger.map(entry=>({id:entry.id,outcome:scenario.outcome,explanation:scenario.explanation})):[]});

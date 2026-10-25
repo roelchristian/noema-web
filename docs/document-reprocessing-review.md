@@ -55,3 +55,9 @@ Balanced and Deep distinguish contextual correction proposals from approval. A l
 A bounded correction ledger nominates conflicting indexed notation and reported uncertainties with exact canonical locations. Verification receives separate tasks for affected local blocks plus document context and records each outcome as proposed, retained with explanation, or source required. Different indexed objects can be intentional; nominations do not authorize normalization. The final audit flags missing outcomes and proposed outcomes without corresponding substantive edits. These checks measure review coverage, not mathematical truth.
 
 Invalid optional uncertainty quotations are excluded without reverting otherwise valid proposals. Affected blocks and linked footnote patch groups require manual review. Legacy prompt versions retain their prior behavior and provider schema; new synthesis policy inputs are hash-bound and reproduced during archive restoration.
+
+## Numbered bibliography and short running headers (prompt v2-11)
+
+Balanced/Deep supply exact numbered bibliography entry/citation pairs as read-only context and require explicit reference-review outcomes. Numbered bibliography labels remain distinct from footnotes. The reader derives local navigation from unique bracketed entries under a References/Bibliography heading without changing source text or offsets; ambiguous duplicate labels remain unlinked.
+
+Short-document header nominations support alternating title/author fragments next to matching physical page counters when exact first-page metadata corroborates them. First-page titles and bylines remain substantive. Explicit furniture outcomes are audited, and only source-validated classified fragments become reversible furniture annotations. Classified furniture-only blocks retain canonical wording and paragraph presentation so formatting cannot break the hide-furniture control.

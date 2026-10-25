@@ -643,3 +643,17 @@ test('hunk approval submits all pending hunk changes in one revision-checked req
  await env.click(env.button('Review changes (2)'));await env.click(env.button('Apply changes (2)'));
  const posts=env.requests.filter(entry=>entry.method==='POST');assert.equal(posts.length,1);assert.equal(posts[0].body.updatedAt,r.updatedAt);assert.deepEqual(posts[0].body.decisions,[{patchId:'patch-0',decision:'accepted'},{patchId:'patch-1',decision:'accepted'}]);
 });
+
+test('numbered bibliography citations jump to exact entries without becoming footnotes',async t=>{
+ const {SourceReaderText}=await import('../src/client/sources/SourceReaderText.tsx');
+ const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
+ const text='A supporting result appears in [1].\n\nREFERENCES\n\n[1] A. Writer, A result, Journal (2020).';
+ await act(async()=>root.render(React.createElement(SourceReaderText,{text,footnotePrefix:'bibliography-test',startOffset:20})));
+ const link=document.querySelector('a[data-bibliographic-reference]');assert.ok(link);assert.equal(link.textContent,'[1]');
+ assert.equal(link.querySelector('[data-source-start]').dataset.sourceStart,String(20+text.indexOf('[1]')));
+ const target=document.getElementById(link.getAttribute('href').slice(1));assert.ok(target);assert.equal(target.textContent,'[1]');
+ let jumped=false;target.scrollIntoView=()=>{jumped=true;};await act(async()=>link.click());assert.equal(jumped,true);assert.equal(document.activeElement,target);
+ assert.equal(document.querySelector('sup,.source-reader-footnote'),null);assert.equal(document.querySelector('.source-reader-text').textContent,text.replace(/\n+/g,''));
+ await act(async()=>root.render(React.createElement(SourceReaderText,{text:'Ordinary [1], math $[1]$, and code `[1]` have no bibliography.'})));
+ assert.equal(document.querySelector('a[data-bibliographic-reference]'),null);
+});

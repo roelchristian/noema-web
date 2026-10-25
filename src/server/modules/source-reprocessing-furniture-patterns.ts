@@ -11,7 +11,7 @@ const plausible=(text:string)=>text.length>0&&text.length<=240&&!/^\s*(?:\[\^|\d
 
 /** Repeated source fragments nominate metadata for AI review. Numeric templates
  * vary only an explicitly printed physical-page counter; case IDs and dates stay exact. */
-export function repeatedPageFurniturePatterns(text:string,document:SourceDocument):PageFurnitureCandidate[]{
+export function repeatedPageFurniturePatterns(text:string,document:SourceDocument,options:{shortRunningHeaders?:boolean}={}):PageFurnitureCandidate[]{
  const pages:Page[]=document.physical.pages.map(page=>{
   const raw=text.slice(page.range.startOffset,page.range.endOffset),marker=/^\s*<!--\s*Page\s+\d+\s*-->\s*/i.exec(raw),bodyStart=page.range.startOffset+(marker?.[0].length??0);
   const lines=[...text.slice(bodyStart,page.range.endOffset).matchAll(/[^\r\n]+/g)].flatMap(match=>{
@@ -51,6 +51,46 @@ export function repeatedPageFurniturePatterns(text:string,document:SourceDocumen
   }
   if(new Set(matches.map(item=>item.page)).size<3)continue;
   for(const {page,line} of matches){const item=make(line,page,kind,'Printed physical-page counter and exact surrounding text corroborated at the physical page edge on at least three pages; requires AI review.');result.set(item.id,item);}
+ }
+ if(options.shortRunningHeaders&&pages.length>1){
+  // A short article can alternate its title and author rather than repeat either
+  // line on three pages. Require exact first-page corroboration AND an actual
+  // physical-page counter beside the fragment; edge proximity alone is not evidence.
+  const first=pages[0]!,metadata=first.lines.slice(0,3).filter(line=>plausible(line.text)&&/[\p{L}]/u.test(line.text)&&!/^\s*(?:theorem|lemma|corollary|proposition|definition|proof|example|remark|exercise|section|chapter)\b/i.test(line.text));
+  const number=(page:Page,line:Line)=>{
+   const match=/^(?:Page[ \t]+)?(\d+)(?:[ \t]*(?:\/|of)[ \t]*(\d+))?[.]?$/i.exec(line.text);
+   return !!match&&Number(match[1])===page.number&&(match[2]===undefined||Number(match[2])===total);
+  };
+  for(const page of pages.slice(1)){
+   const edge=page.lines.slice(0,2);
+   for(const original of metadata){
+    for(const [index,line] of edge.entries()){
+     let header:Line|undefined,counter:Line|undefined;
+     if(line.text===original.text&&edge[1-index]&&number(page,edge[1-index]!)){header=line;counter=edge[1-index];}
+     else{
+      // Retain separate exact ranges when extraction joins the title/byline and
+      // counter into one line. Neither range may absorb adjacent substantive text.
+      const counterText=`(?:Page[ \t]+)?${page.number}(?:[ \t]*(?:/|of)[ \t]*${total})?`;
+      const prefix=new RegExp(`^(${counterText})[ \t]+(${escaped(original.text)})$`,'i').exec(line.text);
+      const suffix=new RegExp(`^(${escaped(original.text)})[ \t]+(${counterText})$`,'i').exec(line.text);
+      const match=prefix??suffix;
+      if(match){
+       const fragment=prefix?match[2]!:match[1]!,printed=prefix?match[1]!:match[2]!;
+       // Metadata spelling is exact source evidence, never case-folded matching.
+       if(fragment!==original.text)continue;
+       const at=line.text.indexOf(fragment),pageAt=prefix?0:line.text.length-printed.length;
+       header={text:fragment,start:line.start+at,end:line.start+at+fragment.length};
+       counter={text:printed,start:line.start+pageAt,end:line.start+pageAt+printed.length};
+      }
+     }
+     if(!header||!counter)continue;
+     const reason='Exact first-page title/byline fragment beside the matching physical-page counter on a continuation page; requires independent AI review. The original title/byline stays substantive.';
+     for(const fragment of [header,counter]){const item=make(fragment,page.number,'header',reason);result.set(item.id,item);}
+    }
+   }
+  }
+  // Repeated running titles do not make the primary title/byline disappear.
+  for(const item of result.values())if(item.page===first.number&&metadata.some(line=>line.start===item.startOffset&&line.end===item.endOffset))result.delete(item.id);
  }
  return [...result.values()].sort((a,b)=>a.startOffset-b.startOffset).slice(0,2000);
 }

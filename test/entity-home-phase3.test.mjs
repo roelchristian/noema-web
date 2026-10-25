@@ -2,6 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import React,{act} from 'react';
 import {setupEntityDOM} from './helpers/entity-dom.mjs';
+import {setupPresentationMenu,choosePresentationMode} from './helpers/presentation-menu.mjs';
 import {EntityHome} from '../src/client/knowledge/EntityHome.tsx';
 import {SourceViewer} from '../src/client/sources/SourceViewer.tsx';
 import {entityTypes} from '../src/shared/domain.ts';
@@ -87,7 +88,8 @@ test('switching away aborts source discovery and ignores late evidence', async t
 
 
 test('source viewer preserves stale evidence without trusting a matching file hash',async t=>{
- await fixture(t,async({props,root})=>{
+ await fixture(t,async({props,root,dom})=>{
+  setupPresentationMenu(dom);
   const reference={id:'historical',sourceId:'source',fileId:'file',startLine:1,endLine:1,sourceHash:'hash',excerpt:'Saved historical passage.',stale:true,startOffset:0,endOffset:25};
   t.mock.method(globalThis,'fetch',async()=>({ok:true,json:async()=>({id:'file',entity_id:'source',name:'Research',status:'ready',admitted:1,textHash:'hash'})}));
   let mode='standard',exits=0;
@@ -97,8 +99,8 @@ test('source viewer preserves stale evidence without trusting a matching file ha
   assert.equal(document.querySelector('.source-viewer-passage mark').textContent,'Saved historical passage.');
   assert.equal(document.querySelector('[data-cited-node]'),null);
   const savedPassage=document.querySelector('.source-viewer-passage');
-  await act(async()=>document.querySelector('#source-viewer [aria-label="Subtle"]').click());assert.equal(mode,'subtle');
-  await act(async()=>document.querySelector('#source-viewer [aria-label="Focus"]').click());assert.equal(mode,'focus');
+  await choosePresentationMode('#source-viewer','Subtle');assert.equal(mode,'subtle');
+  await choosePresentationMode('#source-viewer','Focus');assert.equal(mode,'focus');
   await act(async()=>document.querySelector('#source-viewer [aria-label="Exit Focus"]').click());assert.equal(mode,'subtle');assert.equal(exits,1);
   assert.equal(document.querySelector('.source-viewer-passage'),savedPassage);
  });

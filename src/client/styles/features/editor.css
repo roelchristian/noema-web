@@ -3279,6 +3279,12 @@
   overflow-wrap: anywhere;
   user-select: text;
 }
+/* Persian prose reads right to left; the separate Latin reading aid stays LTR. */
+.page:is(:lang(fa), [lang="Farsi" i], [lang="Persian" i]):not(:lang(fa-Latn)) .block:not(.code):not(.math) .block-content {
+  direction: rtl;
+  unicode-bidi: plaintext;
+  text-align: start;
+}
 .block[data-transliteration-layout] > .bullet-marker {
   position: absolute;
   inset-inline-start: 0;

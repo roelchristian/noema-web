@@ -123,3 +123,41 @@ test('Cyrillic glides use j while y vowels, Latin text and Glagolitic retain y',
   assert.equal(transliterate('Яна Юрий май сыр'),'Jana Jurij maj syr');
   assert.equal(transliterate('ya ye yo yu yi ⱓ ⱖ ⱗ ⱙ'),'ya ye yo yu yi yu yo yę yǫ');
 });
+
+
+test('Armenian handles its alphabet, vowel digraphs, ligatures and capitalization',()=>{
+ assert.equal(transliterate('Հայաստան Երևան հայերեն ու Ու ՈՒ','hy'),'Hayastan Erevan hayeren u U U');
+ assert.equal(transliterate('ԲԱՐԵՎ և ﬓ ﬔ ﬕ ﬖ ﬗ'),'BAREV ev mn me mi vn mkh');
+ assert.equal(transliterate('ա բ գ դ ե զ է ը թ ժ ի լ խ ծ կ հ ձ ղ ճ մ յ ն շ ո չ պ ջ ռ ս վ տ ր ց ւ փ ք օ ֆ'),'a b g d e z ē ě tʿ ž i l kh c k h dz gh č m y n š o čʿ p j ṛ s v t r cʿ w pʿ kʿ ō f');
+ assert.equal(transliterate('Հայաստան։ «բարև» 123'),'Hayastan։ «barev» 123');
+ assert.equal(transliterate('ու́'.normalize('NFD')),'ú');
+});
+
+test('Farsi transliterates spelling, explicit vowel marks, hamza and presentation forms',()=>{
+ assert.equal(transliterate('سلام فارسی پ چ ژ گ ک ی','fa'),'slām fārsy p č ž g k y');
+ assert.equal(transliterate('سَلَام شَدّ آب کِتاب مُدّ دُور شِیر','Farsi'),'salām šadd āb ketāb modd dūr šīr');
+ assert.equal(transliterate('می‌روم کتاب‌ها ك ي ﺳﻼﻡ'),'myʹrvm ktābʹhā k y slām');
+ assert.equal(transliterate('سـلام ء أ إ ؤ ئ ۀ ع'),'slām ʾ ʾ ʾ ʾ ʾ hʾ ʿ');
+ const source='آب کِتاب شَدّ';assert.equal(transliterate(source.normalize('NFD'),'fa-IR'),transliterate(source,'fa'));
+ assert.equal(transliterate('سلام، فارسی؟ ۱۲۳'),'slām، fārsy؟ ۱۲۳');
+ assert.equal(transliterate('Latin café A‌B 日本語'),'Latin café A‌B 日本語');
+});
+
+test('Tajik includes all six additional letters and retains Cyrillic j glides',()=>{
+ for(const language of ['tg','tg-Cyrl','tg-TJ','Tajik',' tajik ']){
+  assert.equal(transliterate('Тоҷикистон Ҷумҳурӣ ғ ӣ қ ӯ ҳ ҷ',language),'Tojikiston Jumhurī gh ī q ū h j');
+  assert.equal(transliterate('Ғ Ӣ Қ Ӯ Ҳ Ҷ ҒӢҚӮҲҶ',language),'Gh Ī Q Ū H J GHĪQŪHJ');
+  assert.equal(transliterate('Юсуф Қайроққум Роштқалъа ы',language),'Jusuf Qajroqqum Roštqalʾa y');
+  assert.equal(transliterate('ӣ ӯ'.normalize('NFD'),language),'ī ū');
+ }
+ assert.equal(transliterate('ҷ ъ','ru'),'č ʺ');
+});
+
+test('new script projections include entity labels and retain code, maths and source content',()=>{
+ for(const [language,text,expected] of [['hy','Հայաստան','Hayastan'],['fa','سلام','slām'],['tg','Тоҷикистон','Tojikiston']]){
+  const block={id:'projection',type:'paragraph',content:[{text:text+' '},{entityId:'entity'},{text:' '+text,code:true},{text:' '+text,math:true},{text:' [ref]',sourceReference:{id:'r'}}]};
+  const entities=[{id:'entity',name:text}],original=structuredClone({block,entities});
+  assert.equal(blockTransliteration(block,entities,language),expected+' '+expected+' '+text+' '+text);
+  assert.deepEqual({block,entities},original);
+ }
+});

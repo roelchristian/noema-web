@@ -21,7 +21,7 @@ test('six formats include a source-grounded critique and preserve scope across f
   assert.match(sourcePagePrompt('').instructions,/Never add outside factual claims or invented examples/);
 });
 
-for(const selectedLanguage of ['English','current-ui'])test(`dialog submits familiarity and source scope with ${selectedLanguage}, remembers them, and shows six formats`,async()=>{
+for(const selectedLanguage of ['English','current-ui','Armenian','Farsi','Tajik'])test(`dialog submits familiarity and source scope with ${selectedLanguage}, remembers them, and shows six formats`,async()=>{
   const dom=new JSDOM('<div id="mount"></div>',{url:'http://localhost',pretendToBeVisual:true});
   dom.window.matchMedia=query=>({media:query,matches:false,addEventListener(){},removeEventListener(){}});
   const keys=['window','document','Node','Element','HTMLElement','HTMLSelectElement','HTMLInputElement','MutationObserver','Event','CustomEvent','localStorage','IS_REACT_ACT_ENVIRONMENT'];
@@ -53,13 +53,14 @@ for(const selectedLanguage of ['English','current-ui'])test(`dialog submits fami
     const toggle=document.querySelector('[role="switch"]');assert.equal(toggle.getAttribute('aria-checked'),'false');
     await click(toggle);assert.equal(toggle.getAttribute('aria-checked'),'true');
     await act(async()=>document.querySelector('form').dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true})));
-    assert.equal(submitted.options.language,selectedLanguage==='current-ui'?'en':'English');
+    assert.equal(submitted.options.language,selectedLanguage==='current-ui'?'en':selectedLanguage);
     assert.equal(submitted.options.format,'critique');assert.equal(submitted.options.familiarity,'expert');assert.equal(submitted.options.beyondSources,true);assert.deepEqual(Object.keys(submitted.options).sort(),['beyondSources','detail','familiarity','format','language']);
     const summary=document.querySelector('[aria-label="Submitted request"]');
     assert.ok(summary,'Submitted selections appear while generation is running');
-    assert.deepEqual([...summary.querySelectorAll('dd')].map(node=>node.querySelector('.source-page-format-name')?.textContent??node.textContent),['Critique','Oxford Don','Standard','English','Expert','Include AI background knowledge']);
+    assert.deepEqual([...summary.querySelectorAll('dd')].map(node=>node.querySelector('.source-page-format-name')?.textContent??node.textContent),['Critique','Oxford Don','Standard',selectedLanguage==='current-ui'?'English':selectedLanguage,'Expert','Include AI background knowledge']);
     assert.equal(document.querySelectorAll('.source-page-controls select, .source-page-format, .source-page-controls [role="switch"], .source-page-controls textarea').length,0,'The original form is removed during generation');
     assert.ok(document.querySelector('.source-page-dialog.has-preview'));
+    assert.equal(document.querySelector('.source-page-preview').getAttribute('dir'),'auto');
     await act(async()=>{
       streamController.enqueue(new TextEncoder().encode(JSON.stringify({type:'review',draft:{id:'draft',title:'Critique',blocks:[],focus:'Focus on evidence',options:submitted.options}})+'\n'));
       streamController.close();
@@ -137,7 +138,7 @@ test('selected language is an explicit trusted instruction even for a Spanish so
 });
 
 test('added output languages resolve to canonical tags and Greek variants keep their instructions',()=>{
-  const added={'Old Church Slavonic':'cu','Bulgarian':'bg','Albanian':'sq','Sardinian':'sc','Dutch':'nl','Swedish':'sv','Danish':'da','Turkish':'tr','Russian':'ru','Ukrainian':'uk','Greek':'el','Greek (Modern, Polytonic)':'el-polyton','Coptic':'cop','Greek (Koine)':'grc','Swahili':'sw','Syriac':'syr','Old English':'ang','Middle English':'enm','Catalan':'ca','Occitan':'oc'};
+  const added={'Armenian':'hy','Farsi':'fa','Tajik':'tg','Old Church Slavonic':'cu','Bulgarian':'bg','Albanian':'sq','Sardinian':'sc','Dutch':'nl','Swedish':'sv','Danish':'da','Turkish':'tr','Russian':'ru','Ukrainian':'uk','Greek':'el','Greek (Modern, Polytonic)':'el-polyton','Coptic':'cop','Greek (Koine)':'grc','Swahili':'sw','Syriac':'syr','Old English':'ang','Middle English':'enm','Catalan':'ca','Occitan':'oc'};
   for(const [name,tag] of Object.entries(added)){
     assert.ok(sourcePageLanguages.includes(name));assert.equal(pageLanguage(name),tag);
     assert.ok(sourcePagePrompt(JSON.stringify({generation_options:{language:name}})).instructions.startsWith(`OUTPUT LANGUAGE: Write the complete page in ${tag}.`));
@@ -146,4 +147,14 @@ test('added output languages resolve to canonical tags and Greek variants keep t
   assert.match(sourcePagePrompt(JSON.stringify({generation_options:{language:'Greek (Koine)'}})).instructions,/use Koine Greek/);
   assert.match(sourcePagePrompt(JSON.stringify({generation_options:{language:'Old Church Slavonic'}})).instructions,/use Old Church Slavonic vocabulary and grammar/);
   assert.equal(sourcePageLanguages.filter(language=>language==='Danish').length,1);
+});
+
+
+test('Armenian, Farsi and Tajik generation use their native scripts and canonical language tags',()=>{
+ for(const [language,tag,script] of [['Armenian','hy','use Armenian script'],['Farsi','fa','use Persian (Farsi) in Perso-Arabic script'],['Tajik','tg','use Tajik in Cyrillic script']]){
+  assert.equal(pageLanguage(language),tag);
+  assert.ok(sourcePagePrompt(JSON.stringify({generation_options:{language}})).instructions.includes(script));
+  assert.equal(normalizeSourcePageOptions({language}).language,language);
+ }
+ assert.equal(pageLanguage('Persian'),'fa');assert.equal(pageLanguage('fa-IR'),'fa-IR');assert.equal(pageLanguage('tg-Cyrl'),'tg-Cyrl');
 });

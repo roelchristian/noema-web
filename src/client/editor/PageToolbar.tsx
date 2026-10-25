@@ -100,7 +100,7 @@ export function PageToolbar({ onArchive, onRestore, onHistory, onRename, entitie
       {id:'reveal',group:uiText("Navigation"),label:uiText("Reveal in sidebar"),icon:'folder',onSelect:onRevealInSidebar},
       ...(onForward?[{id:'forward',group:uiText("Navigation"),label:uiText("Go forward"),icon:'chevron',disabled:forwardDisabled,onSelect:onForward}]:[]),
       ...(tocAvailable&&onToggleToc?[{id:'contents',group:uiText("Navigation"),label:uiText("Table of contents"),icon:'view-list',checked:tocVisible,onSelect:onToggleToc}]:[]),
-      {id:'transliteration',group:uiText("Navigation"),label:uiText("Transliteration"),icon:'culture',description:uiText("Greek, Cyrillic, Coptic and Glagolitic · Latin letters, no AI"),checked:transliteration!=='off',onSelect:()=>toggleTransliteration(transliterationKey)},
+      {id:'transliteration',group:uiText("Navigation"),label:uiText("Transliteration"),icon:'culture',description:uiText("Greek, Cyrillic, Armenian, Farsi, Coptic and Glagolitic · Latin letters, no AI"),checked:transliteration!=='off',onSelect:()=>toggleTransliteration(transliterationKey)},
       {id:'editing',group:uiText("Editing"),label:uiText("Editing"),icon:'edit',children:[
         {id:'undo',label:uiText("Undo"),icon:'undo',shortcut:"⌘Z / Ctrl+Z",disabled:editingDisabled||!canUndo,onSelect:onUndo},
         {id:'redo',label:uiText("Redo"),icon:'redo',shortcut:"⌘⇧Z / Ctrl+Y",disabled:editingDisabled||!canRedo,onSelect:onRedo},

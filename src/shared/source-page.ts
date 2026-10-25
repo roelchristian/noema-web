@@ -1,7 +1,7 @@
 import type {Block,Page} from './domain.js';
 
 export const sourcePageBlockTypes=['paragraph','heading1','heading2','bullet','numbered','quote','code','math'] as const;
-export const sourcePageLanguages = ['Albanian','Bulgarian','Catalan','Coptic','Czech','Danish','Dutch','English','French','German','Greek','Greek (Modern, Polytonic)','Greek (Koine)','Japanese','Latin','Mandarin Chinese (Simplified)','Mandarin Chinese (Traditional)','Middle English','Occitan','Old Church Slavonic','Old English','Polish','Portuguese','Russian','Sardinian','Spanish','Swahili','Swedish','Syriac','Tagalog','Turkish','Ukrainian'] as const;
+export const sourcePageLanguages = ['Albanian','Armenian','Bulgarian','Catalan','Coptic','Czech','Danish','Dutch','English','Farsi','French','German','Greek','Greek (Modern, Polytonic)','Greek (Koine)','Japanese','Latin','Mandarin Chinese (Simplified)','Mandarin Chinese (Traditional)','Middle English','Occitan','Old Church Slavonic','Old English','Polish','Portuguese','Russian','Sardinian','Spanish','Swahili','Swedish','Syriac','Tagalog','Tajik','Turkish','Ukrainian'] as const;
 /** Original Noema prompts; presets share the same source verification and output rules. */
 export const sourcePageFormats = {
   briefing: {label:'Briefing', description:'Key ideas and takeaways', prompt:'Create a concise briefing of this source. Open with its central message, then explain the main findings or arguments, supporting evidence, and important qualifications. End with a short set of key takeaways. Attribute claims to the source and preserve disagreements; do not invent recommendations.'},

@@ -23,7 +23,7 @@ function textIndex(host:HTMLElement):TextIndex {
   const words:Word[]=[];
   // Keep offsets stable while ignoring legacy citation placeholders and editor caret spacers.
   const prose=text.replace(/\[ref\]/gi,match=>' '.repeat(match.length)).replace(/\u200b/g,' ');
-  for(const match of prose.matchAll(/[\p{L}\p{M}\p{N}]+(?:[ʹʺ'’][\p{L}\p{M}\p{N}]+)*[ʹʺ]?/gu)){
+  for(const match of prose.matchAll(/[\p{L}\p{M}\p{N}]+(?:[ʹʺʿʾ'’\u200c\u200d][\p{L}\p{M}\p{N}]+)*[ʹʺʿʾ]?/gu)){
     words.push({start:match.index,end:match.index+match[0].length});
   }
   return {nodes,words};

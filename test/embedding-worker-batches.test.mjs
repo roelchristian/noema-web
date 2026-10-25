@@ -264,7 +264,7 @@ test('smaller durable per-job batch limits also constrain cross-Page packing',as
 
 
 test('cross-Page typed permanent failures stop each member after one dispatch and survive forced discovery',async t=>{
- for(const status of [400,401,403])await t.test(String(status),async t=>{
+ for(const status of [400,401,403,404,423])await t.test(String(status),async t=>{
   const f=pageBatchFixture(t),pages=[f.add(1),f.add(2)];
   f.setHandler(()=>{throw new GenerationProviderError(status,'Safe terminal failure');});
   await f.worker.tick();
@@ -273,6 +273,7 @@ test('cross-Page typed permanent failures stop each member after one dispatch an
    assert.equal(job.status,'failed');assert.equal(job.attempts,1);
    f.index.enqueue(f.vault,page.id,'retry',0,true);
   }
+  const activity=f.activity.list(null).items[0];assert.equal(activity.status,'failed');assert.equal(activity.httpStatus,status);
   await f.worker.tick();assert.equal(f.requests.length,1);
   assert.equal(f.store.get('SELECT count(*) AS n FROM embedding_retry_blocks WHERE vault_id=?',f.vault).n,2);
  });
@@ -331,5 +332,24 @@ test('cancelled source passage batches retain skipped status without terminal re
   assert.ok(f.store.all('SELECT status,attempts FROM source_passage_embedding_jobs WHERE source_id=?',source.id).every(job=>job.status==='skipped'&&job.attempts===1));
   assert.equal(f.store.get("SELECT count(*) AS n FROM embedding_retry_blocks WHERE kind='source' AND vault_id=?",f.vault).n,0);
   assert.equal(f.store.get('SELECT count(*) AS n FROM source_passage_embeddings').n,0);
+ });
+});
+
+test('source provider availability status codes are terminal request failures rather than local availability waits',async t=>{
+ const {SourceFiles}=await import('../src/server/modules/source-files.ts');
+ const {SourcePassages}=await import('../src/server/modules/source-passages.ts');
+ for(const status of [404,423])await t.test(String(status),async t=>{
+  const f=pageBatchFixture(t),text='# Algebra\n\nA source about algebraic fields and multiplicative inverses.';
+  const file=new SourceFiles(f.store).add(f.vault,'provider-availability.md',Buffer.from(text));
+  const source=new Knowledge(f.store).create(f.vault,{name:'Provider availability',type:'source',attachmentIds:[file.id]});
+  f.store.run("UPDATE source_files SET status='ready',admitted=1,text=? WHERE id=?",text,file.id);
+  f.store.run('UPDATE entities SET inactive=0 WHERE id=?',source.id);new SourcePassages(f.store).synchronize(f.vault);
+  f.worker.enqueueExisting(f.vault,{mode:'missing'});
+  f.setHandler(()=>{throw new GenerationProviderError(status,'Safe provider request rejection');});await f.worker.tick();
+  const jobs=f.store.all('SELECT status,attempts FROM source_passage_embedding_jobs WHERE source_id=?',source.id);assert.ok(jobs.length);
+  assert.ok(jobs.every(job=>job.status==='failed'&&job.attempts===1));
+  assert.equal(f.activity.list(null).items[0].status,'failed');
+  assert.ok(f.store.get("SELECT 1 FROM embedding_retry_blocks WHERE kind='source' AND vault_id=?",f.vault));
+  f.worker.enqueueExisting(f.vault,{mode:'missing'});await f.worker.tick();assert.equal(f.requests.length,1);
  });
 });

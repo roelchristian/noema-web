@@ -266,7 +266,8 @@ export class Embeddings {
    if(this.closed)return;
    const policy=aiRetryPolicy(error);
    const code=error instanceof HttpError?error.status:502;
-   this.finishActivity(activityId,code===404||code===423?'skipped':'failed',code);
+   const providerFailure=!!error&&typeof error==='object'&&'providerStatus' in error;
+   this.finishActivity(activityId,!providerFailure&&(code===404||code===423)?'skipped':'failed',code);
    for(const {job} of batch) {
     // Cancellation belongs to this member; it must not gain retry blocks or
     // attempts from a failed request that still contains unaffected Pages.
@@ -281,8 +282,8 @@ export class Embeddings {
     if(error instanceof EmbeddingAdmissionError) {
      this.store.run("UPDATE embedding_jobs SET status='queued',started_at=NULL,next_attempt_at=?,error='Waiting for embedding capacity.' WHERE id=? AND status='running'",new Date(Date.now()+error.retryAfterMs).toISOString(),job.id);continue;
     }
-    if(code===423){this.store.run("UPDATE embedding_jobs SET status='queued',next_attempt_at=?,error='Waiting for vault to unlock.' WHERE id=? AND status='running'",now(),job.id);continue;}
-    if(code===404){this.finish(job.id,'skipped','Page is unavailable.');continue;}
+    if(code===423&&!providerFailure){this.store.run("UPDATE embedding_jobs SET status='queued',next_attempt_at=?,error='Waiting for vault to unlock.' WHERE id=? AND status='running'",now(),job.id);continue;}
+    if(code===404&&!providerFailure){this.finish(job.id,'skipped','Page is unavailable.');continue;}
     this.retryState.record(job.segment_id!,job.vault_id,job.content_hash,error,dispatchedConfiguration);
     const attempts=job.attempts+(admitted?1:0);
     if(policy.retryable&&attempts<3)this.store.run("UPDATE embedding_jobs SET status='queued',next_attempt_at=?,error='Embedding service unavailable. Automatic retry scheduled.' WHERE id=? AND status='running'",new Date(Date.now()+Math.max(policy.retryAfterMs,30000*2**Math.max(0,attempts-1))).toISOString(),job.id);

@@ -12,6 +12,7 @@ import {Embeddings} from '../src/server/modules/embeddings.ts';
 import {PageSegments} from '../src/server/modules/page-segments.ts';
 import {PageSegmentIndex} from '../src/server/modules/page-segment-index.ts';
 import {Intelligence} from '../src/server/modules/intelligence.ts';
+import {AIActivityLog} from '../src/server/modules/ai-activity.ts';
 
 const vector=Array.from({length:1536},(_,i)=>i%2?-0.022552490234375:0.051544189453125);
 async function fixture(t,count) {
@@ -169,4 +170,90 @@ test('automatic source discovery uses bounded passage history lookups as failed 
  assert.ok(!details.some(detail=>/SCAN (?:j|latest)\b/.test(detail)),details.join('\n'));
  assert.equal(f.store.get("SELECT count(*) AS n FROM source_passage_embedding_jobs WHERE passage_id=? AND status='queued'",passages[0].id).n,0,'A terminal failure must remain suppressed');
  assert.equal(f.store.get("SELECT count(*) AS n FROM source_passage_embedding_jobs WHERE passage_id=? AND status='queued'",passages[1].id).n,1,'An unrelated missing passage must still queue');
+});
+
+function pageBatchFixture(t) {
+ const db=openDatabase(':memory:'),store=new Store(db),knowledge=new Knowledge(store),pages=new Pages(store,knowledge),vaults=new Vaults(store);
+ const requests=[];let handler;
+ const ai={status:()=>({configured:true}),embedBatch:async(inputs,onRequest)=>{
+  requests.push(inputs);onRequest?.(inputs.reduce((sum,input)=>sum+Buffer.byteLength(input),0));
+  if(handler)await handler(inputs);
+  return {embeddings:inputs.map(input=>[input.length,...vector.slice(1)]),tokens:inputs.length*7};
+ }};
+ const activity=new AIActivityLog(store),worker=new Embeddings(store,pages,knowledge,vaults,ai,activity),segments=new PageSegments(store),index=new PageSegmentIndex(store);
+ worker.saveSettings('default',{automatic:false});segments.synchronize('default');
+ const vault=vaults.create({name:'Cross-page batches'}).id;worker.saveSettings(vault,{automatic:false});
+ t.after(()=>{worker.close();db.close();});
+ function add(i,target=vault,text='An algebraic structure with multiplicative inverses. '+'.'.repeat(i)) {
+  let page=pages.create(target,{title:`Batch page ${i}`});
+  page=pages.update(target,page.id,{...page,blocks:[{id:`body-${i}`,type:'paragraph',content:[{text}]}]});
+  segments.synchronize(target,page.id);index.enqueue(target,page.id,'backfill',0);return page;
+ }
+ return {db,store,pages,vaults,vault,worker,index,activity,requests,add,setHandler(value){handler=value;}};
+}
+
+test('100 single-segment Pages use seven cross-Page requests with individual identities and unchanged token volume',async t=>{
+ const f=pageBatchFixture(t);for(let i=0;i<100;i++)f.add(i);
+ for(let i=0;i<7;i++)await f.worker.tick();
+ assert.deepEqual(f.requests.map(inputs=>inputs.length),[16,16,16,16,16,16,4]);
+ assert.equal(f.store.get("SELECT count(*) AS n FROM embedding_jobs WHERE vault_id=? AND status='completed'",f.vault).n,100);
+ assert.equal(f.store.get('SELECT sum(tokens) AS n FROM embedding_jobs WHERE vault_id=?',f.vault).n,700);
+ for(const row of f.store.all('SELECT s.input,b.vector FROM page_segments s JOIN page_segment_embeddings b ON b.segment_id=s.id WHERE s.vault_id=?',f.vault))assert.equal(JSON.parse(row.vector)[0],row.input.length);
+});
+
+test('completed batch reconciles its own unchanged Pages ahead of more than 16 unrelated dirty Pages',async t=>{
+ const f=pageBatchFixture(t),page=f.add(1);let release;
+ f.setHandler(()=>new Promise(resolve=>{release=resolve;}));const pending=f.worker.tick();assert.ok(release);
+ for(let i=0;i<20;i++){
+  let unrelated=f.pages.create(f.vault,{title:`Unrelated ${i}`});
+  unrelated=f.pages.update(f.vault,unrelated.id,{...unrelated,blocks:[{id:'body',type:'paragraph',content:[{text:'Unrelated dirty algebraic content.'}]}]});
+  f.store.run("UPDATE page_index_dirty SET next_attempt_at='2000-01-01' WHERE page_id=?",unrelated.id);
+ }
+ f.pages.update(f.vault,page.id,{...page});f.worker.onSave(f.vault,page.id);
+ release();await pending;
+ assert.equal(f.store.get('SELECT status FROM embedding_jobs WHERE page_id=?',page.id).status,'completed');
+ assert.equal(f.store.get('SELECT count(*) AS n FROM page_segment_embeddings b JOIN page_segments s ON s.id=b.segment_id WHERE s.page_id=?',page.id).n,1);
+ assert.equal(f.requests.length,1);
+ assert.equal(f.store.get('SELECT count(*) AS n FROM page_index_dirty WHERE vault_id=?',f.vault).n,20,'Only completed batch Pages need reconciliation');
+});
+
+test('cross-Page completion preserves unaffected members when one Page changes or is cancelled',async t=>{
+ for(const action of ['edit','cancel','delete','archive'])await t.test(action,async t=>{
+  const f=pageBatchFixture(t),first=f.add(1),second=f.add(2);let release;
+  f.setHandler(()=>new Promise(resolve=>{release=resolve;}));const pending=f.worker.tick();assert.ok(release);
+  await f.worker.tick();assert.equal(f.requests.length,1,'Concurrent tick must not launch duplicate work');
+  assert.equal(f.activity.list(null).items[0].objectId,null,'Cross-Page request must not be attributed to its first Page');
+  if(action==='edit')f.pages.update(f.vault,first.id,{...first,title:'Changed title'});
+  if(action==='cancel')f.worker.invalidate(f.vault,first.id);
+  if(action==='delete')f.pages.delete(f.vault,first.id);
+  if(action==='archive')f.store.run("UPDATE pages SET archived_at='2026-01-01' WHERE id=?",first.id);
+  release();await pending;
+  assert.equal(f.store.get('SELECT status FROM embedding_jobs WHERE page_id=?',second.id).status,'completed');
+  assert.notEqual(f.store.get('SELECT status FROM embedding_jobs WHERE page_id=?',first.id).status,'completed');
+  assert.equal(f.store.get('SELECT count(*) AS n FROM page_segment_embeddings b JOIN page_segments s ON s.id=b.segment_id WHERE s.page_id=?',second.id).n,1);
+ });
+});
+
+test('cross-Page packing keeps vaults isolated, rejects incompatible jobs, and enforces the aggregate byte cap',async t=>{
+ const f=pageBatchFixture(t),other=f.vaults.create({name:'Other batch vault'}).id;
+ f.worker.saveSettings(other,{automatic:false});
+ for(let i=0;i<20;i++)f.add(i,f.vault,'field. '.repeat(1000));
+ f.add(99,other);const incompatible=f.add(100,f.vault);
+ f.store.run("UPDATE embedding_jobs SET model='incompatible-model' WHERE page_id=?",incompatible.id);
+ for(let i=0;i<10;i++)await f.worker.tick();
+ for(const inputs of f.requests){
+  assert.ok(inputs.length<=16);assert.ok(inputs.reduce((sum,input)=>sum+Buffer.byteLength(input),0)<=64000);
+  assert.ok(inputs.every(input=>input.startsWith('Batch page 99\n'))||inputs.every(input=>!input.startsWith('Batch page 99\n')),'No request mixes vaults');
+ }
+ assert.equal(f.store.get('SELECT status FROM embedding_jobs WHERE page_id=?',incompatible.id).status,'skipped');
+ assert.equal(f.store.get("SELECT count(*) AS n FROM embedding_jobs WHERE status='completed'").n,21);
+});
+
+test('smaller durable per-job batch limits also constrain cross-Page packing',async t=>{
+ const f=pageBatchFixture(t);for(let i=0;i<17;i++)f.add(i);
+ f.store.run('UPDATE embedding_jobs SET batch_max_inputs=4 WHERE vault_id=?',f.vault);
+ for(let i=0;i<5;i++)await f.worker.tick();
+ assert.deepEqual(f.requests.map(inputs=>inputs.length),[4,4,4,4,1]);
+ assert.equal(f.store.get("SELECT count(*) AS n FROM embedding_jobs WHERE vault_id=? AND status='completed'",f.vault).n,17);
+ assert.ok(f.store.all('SELECT batch_max_inputs FROM embedding_jobs WHERE vault_id=?',f.vault).every(job=>job.batch_max_inputs===4));
 });

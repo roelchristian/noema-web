@@ -46,10 +46,10 @@ test('setup Escape and controls respect an in-flight start',async t=>{
  await env.render({...props,busy:false});await act(async()=>document.querySelector('dialog').dispatchEvent(new env.dom.window.Event('cancel',{cancelable:true})));
  assert.equal(closes,1);
 });
-test('monitor separates stage progress from completed coverage and current activity',async t=>{
+test('monitor shows workflow progress separately from completed coverage and current activity',async t=>{
  const r=revision();r.pipelineVersion=2;r.status='running';r.updatedAt=new Date(Date.now()-45000).toISOString();r.report.stage='verifying';r.report.stageProgress={completed:3,total:5};r.report.chunksCompleted=2;r.report.chunksTotal=5;r.report.excerpts=[{index:3,status:'running',activePass:2,requiredPassCount:2,attempts:1,durationMs:0}];
  await mount(t,SourceReprocessingProgress,progressProps(r));
- const progress=document.querySelector('[aria-label="Completed excerpt coverage"]');assert.equal(progress.value,2);assert.equal(progress.max,5);
+ const progress=document.querySelector('[aria-label="Overall revision progress"]');assert.equal(progress.value,65);assert.equal(progress.max,100);
  assert.match(document.querySelector('.reprocessing-monitor-main').textContent,/Verifying excerpts · Stage 3 of 4.*2 of 5 excerpts completed.*Checking excerpt 4 · Pass 2 of 2 · Last update 45 seconds ago/s);
  assert.equal(document.querySelector('.reprocessing-monitor-details').open,false);
  assert.match(document.querySelector('[data-reprocessing-stage="verifying"]').textContent,/3 \/ 5 items processed in this stage/);
@@ -84,4 +84,37 @@ test('setup Escape key stays inside the sheet while native cancellation closes i
 
 test('setup returns to processing status when its recovery opener disappears after starting',async t=>{
  const env=await mount(t,SourceReprocessingSetup,setupProps());document.querySelector('#trigger').remove();await act(async()=>env.root.unmount());assert.equal(document.activeElement.id,'fallback');
+});
+
+test('workflow bar advances through all four stages and only reaches 100 on completion',async t=>{
+ const r=revision();r.pipelineVersion=2;r.status='running';r.report.chunksCompleted=0;r.report.chunksTotal=4;
+ const env=await mount(t,SourceReprocessingProgress,progressProps(r));
+ const progress=()=>document.querySelector('[aria-label="Overall revision progress"]');
+ for(const [stage,start,middle,end] of [['reconstructing',0,12.5,25],['understanding',25,37.5,50],['verifying',50,62.5,75],['auditing',75,87.5,99]]){
+  for(const [completed,expected] of [[0,start],[1,middle],[2,end]]){
+   r.report.stage=stage;r.report.stageProgress={completed,total:2};
+   await env.render(progressProps({...r}));assert.equal(progress().value,expected,`${stage}: ${completed}/2`);
+  }
+ }
+ r.report.chunksCompleted=4;await env.render(progressProps({...r,status:'completed'}));assert.equal(progress().value,100);
+ await env.render(progressProps({...r,status:'interrupted'}));assert.equal(progress().value,99);
+});
+test('light revisions share progress across only their two applicable stages',async t=>{
+ const r=revision();r.pipelineVersion=2;r.configuration={depth:'light'};r.status='running';r.report.stage='reconstructing';r.report.stageProgress={completed:1,total:2};
+ const env=await mount(t,SourceReprocessingProgress,progressProps(r));
+ assert.equal(document.querySelector('progress').value,25);assert.match(document.querySelector('.reprocessing-monitor-main').textContent,/Stage 1 of 2/);
+ r.report.stage='auditing';r.report.stageProgress={completed:0,total:1};await env.render(progressProps({...r}));
+ assert.equal(document.querySelector('progress').value,50);assert.match(document.querySelector('.reprocessing-monitor-main').textContent,/Stage 2 of 2/);
+});
+test('evidence preparation contributes progress even before the first AI stage and retains it when stopped',async t=>{
+ const r=revision();r.pipelineVersion=2;r.status='running';delete r.report.stage;r.report.evidencePreparation={state:'collecting',preparedChunks:1,totalChunks:2};
+ const env=await mount(t,SourceReprocessingProgress,progressProps(r));
+ const progress=()=>document.querySelector('[aria-label="Overall revision progress"]');assert.equal(progress().value,10);
+ await env.render(progressProps({...r,status:'interrupted'}));assert.equal(progress().value,10);
+ r.report.evidencePreparation={state:'completed',preparedChunks:2,totalChunks:2};r.report.stage='reconstructing';r.report.stageProgress={completed:0,total:2};
+ await env.render(progressProps({...r}));assert.equal(progress().value,20);
+});
+test('legacy excerpt coverage remains available without stage information',async t=>{
+ const r=revision();r.pipelineVersion=1;r.status='running';r.report.chunksCompleted=1;r.report.chunksTotal=3;
+ await mount(t,SourceReprocessingProgress,progressProps(r));const progress=document.querySelector('[aria-label="Completed excerpt coverage"]');assert.equal(progress.value,1);assert.equal(progress.max,3);
 });

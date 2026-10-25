@@ -179,7 +179,7 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,onTogg
       setCopied(true);clearTimeout(copyTimer.current);copyTimer.current=setTimeout(()=>setCopied(false),2500);
     }catch{onError('Unable to copy the citation. Clipboard access may be unavailable.');}
   }
-  return <section className={'source-reader'+(inspectorOpen||activityOpen?' has-inspector':'')+(reviewOpen?' has-review-drawer':'')+(reviewEvidence?' has-review-evidence':'')} data-reader-width={display.width} data-reader-typography={display.typography} aria-label={uiText("Source reading view")}>
+  return <section className={'source-reader document-frame'+(inspectorOpen||activityOpen?' has-inspector':'')+(reviewOpen?' has-review-drawer':'')+(reviewEvidence?' has-review-evidence':'')} data-reader-width={display.width} data-reader-typography={display.typography} aria-label={uiText("Source reading view")}>
     <header className="source-workspace-header"><span className="source-workspace-eyebrow"><Icon name="source"/>{uiText("Source")}{attachment&&<span className="source-reader-format">{attachment.format.toUpperCase()}</span>}</span><h1 className="page-heading source-workspace-title"><SourceReaderInline text={source.name}/></h1></header>
     <div className="source-reader-toolbar">
       <span className="source-reader-mode" title={uiText("Reading · Read-only")}><Icon name="lock"/>{uiText("Read-only")}</span>

@@ -1036,12 +1036,7 @@
   background: light-dark(#efefef, var(--surface-inset));
   color: light-dark(#242424, var(--text))
 }
-.page {
-  --document-line-width: 680px;
-  max-width: calc(var(--document-line-width) + 2 * var(--editor-page-padding-inline));
-  margin: 0 auto;
-  padding: 58px var(--editor-page-padding-inline) 50px
-}
+
 .page-eyebrow {
   font-size: 10px;
   letter-spacing: 1.5px;
@@ -1250,18 +1245,8 @@
 .editor-footer>span {
   margin: 0 5px
 }
-@media(min-width:1450px) {
-  .page {
-    padding-top: 77px
-  }
-}
-@media(max-width:1150px) {
-  .page {
-    padding: 47px var(--editor-page-padding-inline) 55px
-  }
-}
 @media(max-width:750px) {
-  .page,.library {
+  .library {
     padding: 40px 25px
   }
   #page-title {

@@ -175,10 +175,6 @@
   border: 0;
 }
 main.source-workspace > #content > .source-reader {
-  width: 100%;
-  max-width: 1240px;
-  margin: 0 auto;
-  padding: 32px 48px 64px;
   color: var(--text);
   container: source-reader / inline-size;
 }
@@ -187,7 +183,7 @@ main.source-workspace > #content > .source-reader {
 }
 .source-workspace-title {
   margin: 0;
-  font: var(--page-heading-weight) clamp(24px, 2.5vw, 32px)/1.25 var(--font-title);
+  font: var(--page-heading-weight) var(--page-heading-size)/var(--page-heading-line-height) var(--font-title);
   letter-spacing: var(--page-heading-letter-spacing);
   overflow-wrap: anywhere;
 }
@@ -200,15 +196,26 @@ main.source-workspace > #content > .source-reader {
   font-size: 13px;
   line-height: 1.7;
 }
-@media (min-width: 751px) and (max-width: 1250px) {
-  main.source-workspace > #content > .source-reader {
-    padding-inline: 32px;
-  }
+/* Annotation rails occupy the frame's side padding, leaving title and prose aligned. */
+main.source-workspace > #content > .source-reader {
+  --source-reader-address-gutter: calc(var(--editor-page-padding-inline) - 8px);
+  --source-reader-note-gutter: calc(var(--editor-page-padding-inline) - 8px);
 }
-@media (max-width: 750px) {
-  main.source-workspace > #content > .source-reader {
-    padding: 28px 20px max(48px, env(safe-area-inset-bottom));
-  }
+main.source-workspace > #content > .source-reader .source-reader-document {
+  width: 100%;
+  max-width: 100%;
+  padding-inline: 0;
+}
+main.source-workspace > #content > .source-reader .source-reader-node-address {
+  inset-inline-end: calc(100% + 8px);
+  inline-size: var(--source-reader-address-gutter);
+}
+main.source-workspace > #content > .source-reader.has-review-drawer {
+  max-width: 1240px;
+}
+main.source-workspace > #content > .source-reader.has-review-drawer > .source-workspace-header {
+  max-width: var(--document-line-width);
+  margin-inline: auto;
 }
 .source-passage-preview {
   margin: 20px 0;
@@ -2100,7 +2107,7 @@ main.source-workspace > #content > .source-reader {
   display: none;
 }
 :root[data-focus-workspace=true] main.source-workspace > #content > .source-reader {
-  max-width: calc(var(--document-line-width) + var(--source-reader-address-gutter) + var(--source-reader-note-gutter) + 96px);
+  max-width: calc(var(--document-line-width) + 2 * var(--editor-page-padding-inline));
   padding-top: 76px;
 }
 :root[data-focus-workspace=true][data-focus-target=source-viewer] #source-viewer {
@@ -2217,6 +2224,9 @@ main.source-workspace > #content > .source-reader {
 }
 .source-reader[data-reader-typography='serif'] .source-reader-document {
   font-family: var(--font-title);
+}
+main.source-workspace > #content > .source-reader[data-reader-width='wide'] {
+  --document-line-width: 960px;
 }
 .source-reader[data-reader-width='wide'] .source-reader-document {
   max-width: 100%;

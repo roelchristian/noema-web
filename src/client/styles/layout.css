@@ -1137,6 +1137,22 @@ main:has(> #content > .page) {
   flex-direction: column;
   flex: 1;
 }
+/* The editor and source reading workspace share one document frame. */
+.document-frame {
+  width: 100%;
+  max-width: calc(var(--document-line-width) + 2 * var(--editor-page-padding-inline));
+  margin: 0 auto;
+  padding: 58px var(--editor-page-padding-inline) 50px;
+}
+@media (min-width: 1450px) {
+  .document-frame { padding-top: 77px; }
+}
+@media (max-width: 1150px) {
+  .document-frame { padding-block: 47px 55px; }
+}
+@media (max-width: 750px) {
+  .document-frame { padding: 40px var(--editor-page-padding-inline); }
+}
 #content > .page {
   display: flex;
   flex-direction: column;

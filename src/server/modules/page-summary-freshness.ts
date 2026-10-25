@@ -1,5 +1,5 @@
 import {createHash} from 'node:crypto';
-import {blockEvidence,type BlockEvidence} from './page-block-evidence.js';
+import type {BlockEvidence} from './page-block-evidence.js';
 import {summaryInput} from './summary-content.js';
 import type {Page} from '../../shared/domain.js';
 import {createClassificationBaseline,type ClassificationBaseline} from './page-semantic-drift.js';
@@ -12,8 +12,8 @@ function orderedContentHash(text:string):string {
 }
 export function summaryBaseline(page:Pick<Page,'title'|'blocks'>,resolve:(id:string)=>string|undefined):SummaryBaseline {
   const classification=createClassificationBaseline(page,resolve);
-  const {version,title,tokenCounts,tokenCount,headings}=classification;
-  return {version,title,tokenCounts,tokenCount,headings,semanticVersion:1,orderedContentHash:orderedContentHash(summaryInput(page,resolve,false)),blockEvidence:blockEvidence(page,resolve)};
+  const {version,title,tokenCounts,tokenCount,headings,blockEvidence}=classification;
+  return {version,title,tokenCounts,tokenCount,headings,semanticVersion:1,orderedContentHash:orderedContentHash(summaryInput(page,resolve,false)),blockEvidence};
 }
 export function validSummaryBaseline(value:unknown):value is TokenHistogram & Pick<SummaryBaseline,'title'|'headings'> {
   if(!validTokenHistogram(value))return false;

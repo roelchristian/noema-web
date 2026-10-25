@@ -140,7 +140,8 @@ Publication was subsequently explicitly authorized for the draft PR only.
 
 Draft PR [#119](https://github.com/roelchristian/noema-web/pull/119) is stacked on
 `codex/enrichment-evidence-freshness` at
-`a4138333aa6efa9dc998bf6cc61b27f1f3813576`, including typed retry commit
+`4c9e072ab46a489728d8ecdf43a33aac7ed8837c`, including standalone retry fixes,
+typed retry commit
 `fb8db3ae4451e69168ca393cd6199b9ab1906520` and the original read snapshot commit
 `753021cb71709b508f28686386903624564481fb`.
 

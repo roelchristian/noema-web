@@ -86,7 +86,7 @@ test('setup returns to processing status when its recovery opener disappears aft
  const env=await mount(t,SourceReprocessingSetup,setupProps());document.querySelector('#trigger').remove();await act(async()=>env.root.unmount());assert.equal(document.activeElement.id,'fallback');
 });
 
-test('workflow bar advances through all four stages and only reaches 100 on completion',async t=>{
+test('workflow bar advances through all four stages and hides after completion',async t=>{
  const r=revision();r.pipelineVersion=2;r.status='running';r.report.chunksCompleted=0;r.report.chunksTotal=4;
  const env=await mount(t,SourceReprocessingProgress,progressProps(r));
  const progress=()=>document.querySelector('[aria-label="Overall revision progress"]');
@@ -96,7 +96,7 @@ test('workflow bar advances through all four stages and only reaches 100 on comp
    await env.render(progressProps({...r}));assert.equal(progress().value,expected,`${stage}: ${completed}/2`);
   }
  }
- r.report.chunksCompleted=4;await env.render(progressProps({...r,status:'completed'}));assert.equal(progress().value,100);
+ r.report.chunksCompleted=4;await env.render(progressProps({...r,status:'completed'}));assert.equal(progress(),null);assert.ok(document.querySelector('[aria-label="Processing details"]'));
  await env.render(progressProps({...r,status:'interrupted'}));assert.equal(progress().value,99);
 });
 test('light revisions share progress across only their two applicable stages',async t=>{

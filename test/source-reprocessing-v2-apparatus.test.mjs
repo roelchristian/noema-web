@@ -178,3 +178,74 @@ test('math coverage hints find unmarked notation while excluding rendered math, 
  assert.ok(found.some(item=>item.text==='A4'));assert.ok(found.some(item=>item.text==='H'));assert.ok(found.some(item=>item.text.includes('∈')));
  assert.ok(found.every(item=>item.line===1));
 });
+
+test('document correction ledger nominates indexed conflicts without globally replacing intentional notation',async()=>{
+ const {createCorrectionLedger,correctionLedgerForChunk,auditCorrectionLedger}=await import('../src/server/modules/source-reprocessing-corrections.ts');
+ const text='Let the spaces R_2 and R_3 have different dimensions.\n\nA later passage calls the first space R₂.\n\nCode `Q1 Q2` and https://example.com/T1/T2 must not create conflicts.';
+ const document={physical:{pages:[{number:1,range:{startOffset:0,endOffset:text.length}}]}},chunks=planReprocessingChunks(text,document),ledger=createCorrectionLedger(chunks,[],{scope:'family'});
+ assert.equal(ledger.length,1);assert.equal(ledger[0].kind,'notation_conflict');assert.deepEqual(ledger[0].alternatives,['R_2','R_3']);assert.match(ledger[0].reason,/intentionally differ/);
+ for(const evidence of ledger[0].evidence)assert.equal(text.slice(evidence.start,evidence.end),evidence.quote);
+ const response={blocks:chunks[0].blocks.map(({id,text})=>({id,text})),correctionReviews:[{id:ledger[0].id,outcome:'retained',explanation:'These are explicitly different spaces; their indices intentionally differ.'}]};
+ assert.match(auditCorrectionLedger(ledger,response,chunks[0]).join(' '),/retained/);assert.deepEqual(response.blocks,chunks[0].blocks.map(({id,text})=>({id,text})));
+ assert.equal(correctionLedgerForChunk(ledger,{...chunks[0],blocks:[]}).length,0);
+});
+
+test('correction ledger audits omitted outcomes and rejects markup-only claims of substantive repair',async()=>{
+ const {createCorrectionLedger,auditCorrectionLedger}=await import('../src/server/modules/source-reprocessing-corrections.ts');
+ const text='The operator M2 acts on the space.\n\nThe same operator is later written M7.';
+ const document={physical:{pages:[{number:1,range:{startOffset:0,endOffset:text.length}}]}},chunk=planReprocessingChunks(text,document)[0],ledger=createCorrectionLedger([chunk],[],{scope:'family'});
+ const blocks=chunk.blocks.map(({id,text})=>({id,text:text.replace(/M([27])/g,'$M_$1$')}));
+ assert.match(auditCorrectionLedger(ledger,{blocks},chunk).join(' '),/missing or invalid explicit outcome/);
+ const review={id:ledger[0].id,outcome:'proposed',explanation:'The later operator index appears to be an OCR substitution.'};
+ assert.match(auditCorrectionLedger(ledger,{blocks,correctionReviews:[review]},chunk).join(' '),/no corresponding substantive correction/);
+ const corrected=blocks.map(block=>({...block,text:block.text.replace('M_7','M_2')}));
+ assert.match(auditCorrectionLedger(ledger,{blocks:corrected,correctionReviews:[review]},chunk).join(' '),/proposed —/);
+ assert.match(auditCorrectionLedger(ledger,{blocks,correctionReviews:[{...review,outcome:'source_required',explanation:'Inspect the source glyph; context cannot identify which index was printed.'}]},chunk).join(' '),/source_required/);
+});
+
+test('reported OCR uncertainties enter the correction ledger only with exact canonical evidence',async()=>{
+ const {createCorrectionLedger,auditCorrectionLedger}=await import('../src/server/modules/source-reprocessing-corrections.ts');
+ const text='The scalar l is OCR damaged.',document={physical:{pages:[{number:1,range:{startOffset:0,endOffset:text.length}}]}},chunk=planReprocessingChunks(text,document)[0],block=chunk.blocks[0];
+ const uncertainty={blockId:block.id,nature:'Scalar glyph ambiguity',readings:['l','1'],evidence:[{blockId:block.id,quote:'scalar l'}]};
+ const ledger=createCorrectionLedger([chunk],[uncertainty,{...uncertainty,evidence:[{blockId:block.id,quote:'scalar 1'}]}],{scope:'family'});
+ assert.equal(ledger.length,1);assert.equal(ledger[0].kind,'reported_uncertainty');assert.equal(text.slice(ledger[0].evidence[0].start,ledger[0].evidence[0].end),'scalar l');
+ const response={blocks:[{id:block.id,text:text.replace('scalar l','scalar 1')}],correctionReviews:[{id:ledger[0].id,outcome:'proposed',explanation:'Context supports the numeral, with source confirmation still required.'}]};
+ assert.match(auditCorrectionLedger(ledger,response,chunk).join(' '),/proposed/);
+});
+
+test('late chunks retain local conflict evidence after document-wide samples fill up',async()=>{
+ const {createCorrectionLedger,correctionLedgerForChunk,auditCorrectionLedger}=await import('../src/server/modules/source-reprocessing-corrections.ts');
+ const chunks=Array.from({length:8},(_,index)=>{const text=`The notation T2 and T9 both occur in passage ${index}.`;return {index,start:index*100,end:index*100+text.length,blocks:[{id:'block-'+index,start:index*100,end:index*100+text.length,text}],difficulty:'ordinary',difficultyReason:''};});
+ const ledger=createCorrectionLedger(chunks),late=correctionLedgerForChunk(ledger,chunks[7]);assert.equal(late.length,1);
+ assert.ok(late[0].evidence.some(ref=>ref.blockId==='block-7'));assert.equal(late[0].chunkEvidence,undefined,'requests omit the document-wide internal index');assert.ok(JSON.stringify(late).length<12000);
+ const diagnostics=auditCorrectionLedger(ledger,{blocks:chunks[7].blocks.map(({id,text})=>({id,text}))},chunks[7]);assert.match(diagnostics.join(' '),/missing or invalid explicit outcome/);
+});
+
+test('unrelated indexed edits cannot claim to resolve a different notation conflict',async()=>{
+ const {createCorrectionLedger,auditCorrectionLedger}=await import('../src/server/modules/source-reprocessing-corrections.ts');
+ const text='The quantities K2 and K3 are in conflict. Another variable z_1 occurs.',document={physical:{pages:[{number:1,range:{startOffset:0,endOffset:text.length}}]}},chunk=planReprocessingChunks(text,document)[0],ledger=createCorrectionLedger([chunk],[],{scope:'family'});
+ const response={blocks:chunk.blocks.map(({id,text})=>({id,text:text.replace('z_1','z_2')})),correctionReviews:[{id:ledger[0].id,outcome:'proposed',explanation:'A correction was made elsewhere.'}]};
+ assert.match(auditCorrectionLedger(ledger,response,chunk).join(' '),/no corresponding substantive correction/);
+});
+
+test('block ledger requires separate heading and proof outcomes and remains stable through audit projection',async()=>{
+ const {createCorrectionLedger,correctionLedgerForChunk,auditCorrectionLedger}=await import('../src/server/modules/source-reprocessing-corrections.ts');
+ const text='The object M4 is under discussion.\n\nClaim. The object M1 has the stated property.\n\nProof. The object M1 has the stated property.';
+ const document={physical:{pages:[{number:1,range:{startOffset:0,endOffset:text.length}}]}},chunk=planReprocessingChunks(text,document)[0],ledger=createCorrectionLedger([chunk]),tasks=correctionLedgerForChunk(ledger,chunk);
+ assert.equal(tasks.length,3);assert.equal(new Set(tasks.map(task=>task.id)).size,3);assert.deepEqual(correctionLedgerForChunk(tasks,chunk),tasks);
+ for(const block of chunk.blocks)assert.ok(tasks.some(task=>task.targetBlockId===block.id));
+ const response={blocks:chunk.blocks.map(({id,text})=>({id,text:text.startsWith('Proof.')?text.replace('M1','M4'):text})),correctionReviews:tasks.map(task=>({id:task.id,outcome:task.targetBlockId===chunk.blocks[0].id?'retained':'proposed',explanation:'Compared the object name against document context.'}))};
+ const diagnostics=auditCorrectionLedger(ledger,response,chunk),headingTask=tasks.find(task=>task.targetBlockId===chunk.blocks[1].id),proofTask=tasks.find(task=>task.targetBlockId===chunk.blocks[2].id);
+ assert.ok(diagnostics.some(value=>value.includes(headingTask.id)&&value.includes('no corresponding substantive correction')));
+ assert.ok(diagnostics.some(value=>value.includes(proofTask.id)&&value.includes('proposed —')));
+ assert.deepEqual(auditCorrectionLedger(tasks,response,chunk),diagnostics);
+ const retained={...response,correctionReviews:tasks.map(task=>({id:task.id,outcome:'retained',explanation:'These object indices intentionally distinguish different objects.'}))};
+ assert.ok(auditCorrectionLedger(ledger,retained,chunk).every(value=>value.includes('retained')));
+});
+
+test('block ledger exposes incomplete bounded coverage rather than silently dropping local tasks',async()=>{
+ const {createCorrectionLedger,correctionLedgerForChunk,correctionLedgerCoverage,auditCorrectionLedger}=await import('../src/server/modules/source-reprocessing-corrections.ts');
+ const text=Array.from({length:60},(_,index)=>`Paragraph ${index}: object W${index%2?2:7} has a property.`).join('\n\n'),document={physical:{pages:[{number:1,range:{startOffset:0,endOffset:text.length}}]}},chunk=planReprocessingChunks(text,document)[0],ledger=createCorrectionLedger([chunk]),coverage=correctionLedgerCoverage(ledger,chunk),tasks=correctionLedgerForChunk(ledger,chunk);
+ assert.equal(coverage.total,60);assert.ok(coverage.omitted>0);assert.ok(tasks.length<=32);assert.ok(JSON.stringify(tasks).length<12100);
+ assert.match(auditCorrectionLedger(ledger,{blocks:chunk.blocks},chunk)[0],/coverage incomplete/);
+});

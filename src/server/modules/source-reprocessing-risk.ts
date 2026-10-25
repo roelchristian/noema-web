@@ -42,9 +42,10 @@ export function evaluateEditorialAcceptance(input:Input):{automatic:boolean;reas
 
 /** V2 Verified is deliberately independent of the legacy acceptance modes. The model's
  * confidence, fluency and subsequent approval never constitute original-source evidence. */
-export function evaluateV2Acceptance(input:Omit<Input,'policy'|'threshold'|'confidence'|'legacyRisks'> & {policy:'verified'|'review_all';evidence?:SourceReprocessingEvidenceSnapshot}):{automatic:boolean;reasons:string[];checks:string[]}{
+export function evaluateV2Acceptance(input:Omit<Input,'policy'|'threshold'|'confidence'|'legacyRisks'> & {policy:'verified'|'review_all';evidence?:SourceReprocessingEvidenceSnapshot;unverifiedUncertainty?:boolean}):{automatic:boolean;reasons:string[];checks:string[]}{
  const {text,document,start,end,original,replacement,category,policy}=input;
  const checks:string[]=[],reasons:string[]=[];
+ if(input.unverifiedUncertainty)return {automatic:false,reasons:['Optional uncertainty evidence failed source validation; proposed edits require manual review.'],checks};
  if(policy!=='verified')return {automatic:false,reasons:['Review all changes policy.'],checks};
  if(!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||start<0||end<=start||end>text.length||text.slice(start,end)!==original)reasons.push('Exact canonical coordinates are unavailable.');else checks.push('exact-canonical-substring');
  // These glyph substitutions are mechanical equivalents, not spelling guesses.

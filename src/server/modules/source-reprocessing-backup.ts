@@ -121,7 +121,7 @@ export function restoreReprocessingSynthesis(value:unknown,revision:SourceReproc
   const chunks=planReprocessingChunks(revision.original.text,revision.original.document,8000,configuration.architectureVersion===1);
   const frozenIndexes=data.register?array(object(data.register).constituentHashes,128).map(item=>object(item).chunkIndex):null;
   const firstPasses=passes.filter(pass=>pass.index===1&&pass.status==='completed'&&pass.validation.includes('complete-canonical-block-mapping')&&(!frozenIndexes||frozenIndexes.includes(pass.chunkIndex))).map(pass=>{const repair=repairs.filter(item=>item.chunkIndex===pass.chunkIndex&&item.passIndex===1&&item.status==='completed'&&!item.outcomeUncertain&&item.validation.includes('complete-canonical-block-mapping')).at(-1);return {chunkIndex:pass.chunkIndex,result:repair?.result??pass.result!,requestHash:repair?.requestHash??pass.requestHash};});
-  const input=createSynthesisInput({revisionId:oldRevisionId,baseHash:oldBaseHash,text:revision.original.text,title:revision.original.document.source.title,chunks,firstPasses});
+  const input=createSynthesisInput({revisionId:oldRevisionId,baseHash:oldBaseHash,preserveProposals:['source-reconstruction-v2-9','source-reconstruction-v2-10'].includes(revision.report.promptVersion),text:revision.original.text,title:revision.original.document.source.title,chunks,firstPasses});
   if(createHash('sha256').update(input.request).digest('hex')!==data.requestHash||createSynthesisReviewInput(input,data.result).requestHash!==review.requestHash)throw invalid();
  }
  if(data.register!==null){
@@ -129,7 +129,7 @@ export function restoreReprocessingSynthesis(value:unknown,revision:SourceReproc
   const register=object(data.register);if(revision.report.contextHash!==undefined&&revision.report.contextHash!==register.hash)throw invalid();const constituents=array(register.constituentHashes,128).map(object);
   const firstPasses=constituents.map(item=>{const pass=passes.find(pass=>pass.index===1&&pass.chunkIndex===item.chunkIndex&&pass.requestHash===item.requestHash)??repairs.find(repair=>repair.passIndex===1&&repair.chunkIndex===item.chunkIndex&&repair.requestHash===item.requestHash&&repair.validation.includes('complete-canonical-block-mapping'));if(!pass)throw invalid();return pass;});
   if(firstPasses.some(pass=>pass.status!=='completed'||!pass.result)||firstPasses.length!==constituents.length)throw invalid();
-  const input=createSynthesisInput({revisionId:oldRevisionId,baseHash:oldBaseHash,text:revision.original.text,title:revision.original.document.source.title,chunks,firstPasses:firstPasses.map(pass=>({chunkIndex:pass.chunkIndex,result:pass.result!,requestHash:pass.requestHash}))});
+  const input=createSynthesisInput({revisionId:oldRevisionId,baseHash:oldBaseHash,preserveProposals:['source-reconstruction-v2-9','source-reconstruction-v2-10'].includes(revision.report.promptVersion),text:revision.original.text,title:revision.original.document.source.title,chunks,firstPasses:firstPasses.map(pass=>({chunkIndex:pass.chunkIndex,result:pass.result!,requestHash:pass.requestHash}))});
   if(createHash('sha256').update(input.request).digest('hex')!==data.requestHash||JSON.stringify(register.evidenceReview?resolveReviewedSynthesis(input,data.result as string,string(object(data.review).result,128000)):parseDocumentSynthesis(input,data.result as string,{isolateInvalidObservations:register.validationPolicy==='isolate-invalid-observations-v1'}))!==JSON.stringify(register))throw invalid();
  }
  validateResponseAttempts(data);

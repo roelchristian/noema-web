@@ -98,7 +98,7 @@ interface Registrar {registerCandidate(vault:string,sourceId:string,candidate:Me
 export class SourceMetadataExtraction {
  constructor(private store:Store,private metadata:Registrar){}
  processModelCandidates(vault:string,sourceId:string,revision:SourceReprocessingRevision){
-  if(!['source-reconstruction-v2-7','source-reconstruction-v2-8'].includes(revision.report.promptVersion))return;
+  if(!['source-reconstruction-v2-7','source-reconstruction-v2-8','source-reconstruction-v2-9','source-reconstruction-v2-10'].includes(revision.report.promptVersion))return;
   const checkpoints=new SourceReprocessingCheckpoints(this.store),chunks=planReprocessingChunks(revision.original.text,revision.original.document,8000,revision.configuration?.architectureVersion===1);
   const completed=new Set(revision.report.completedChunkIndexes??[]),outputs=chunks.filter(chunk=>completed.has(chunk.index)).flatMap(chunk=>{
    const pass=checkpoints.passes(revision.id,chunk.index).filter(pass=>pass.status==='completed'&&!pass.outcomeUncertain).sort((a,b)=>b.index-a.index)[0];

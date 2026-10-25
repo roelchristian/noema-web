@@ -163,3 +163,58 @@ for(const scenario of mathVerificationCases)test(`Balanced math verification cov
   assert.ok(!r.report.validationDiagnostics.some(value=>value.includes('Possible unmarked math')));
  }finally{db.close();}
 });
+
+test('Balanced separates contextual OCR proposals from approval and explicitly preserves intentional notation',async()=>{
+ const {openDatabase}=await import('../src/server/database.ts'),{Vaults}=await import('../src/server/modules/vaults.ts'),{SourceFiles}=await import('../src/server/modules/source-files.ts');
+ const {sourceRevisionBaseHash}=await import('../src/server/modules/source-reprocessing.ts'),{processedSourceDocument}=await import('../src/server/modules/source-document.ts'),{executeReconstruction,reconstructionPromptVersion}=await import('../src/server/modules/source-reprocessing-pass.ts');
+ for(const scenario of [
+  {name:'contextual index repair',text:'The matrix $M_7$ is invertible. Its determinant is nonzero. The same matrix $M_2$ has an inverse.',before:'$M_2$',after:'$M_7$',outcome:'proposed',explanation:'The passage identifies the same matrix; 2 is a plausible extraction error for 7. A page image is needed to confirm the glyph.'},
+  {name:'intentional distinct coordinates',text:'The vector has distinct coordinates $x_1$ and $x_2$. They are independent variables.',before:null,after:null,outcome:'retained',explanation:'The indices identify explicitly distinct coordinates; both readings are intentional.'},
+  {name:'ambiguous notation requires source',text:'Compare $R_2$ with $R_3$. The damaged scan does not establish whether these labels denote distinct spaces.',before:null,after:null,outcome:'source_required',explanation:'Neither label can responsibly be changed because the passage does not identify them as the same space.'},
+ ]){
+  const db=openDatabase(':memory:');try{
+   const store=new Store(db),vault=new Vaults(store).create({name:scenario.name}),text=scenario.text,file=new SourceFiles(store).add(vault.id,'notation.txt',Buffer.from(text));
+   const r=fixture();r.fileId=file.id;r.original={text,document:processedSourceDocument({...file,text,enrichment_status:'completed'})};r.reprocessed=structuredClone(r.original);r.baseHash=sourceRevisionBaseHash(r.original);r.configuration={...r.configuration,architectureVersion:1,depth:'balanced'};r.report.promptVersion=reconstructionPromptVersion;r.report.charactersTotal=text.length;
+   store.run('INSERT INTO source_reprocessing(id,file_id,vault_id,status,created_at,updated_at,payload) VALUES(?,?,?,?,?,?,?)',r.id,file.id,vault.id,r.status,r.createdAt,r.updatedAt,JSON.stringify(r));
+   const calls=[];const intelligence={reeditSource:async(request,prompt,_signal,_onRequest,shape)=>{
+    const value=JSON.parse(request);calls.push(value.kind??'synthesis');
+    if(!value.blocks){assert.equal(value.proposalPolicy,'reviewable-corrections-v1');return JSON.stringify({observations:[]});}
+    assert.equal(shape,'blocksWithCorrections');assert.match(prompt,/distinguish proposing a correction from approving it/);assert.match(prompt,/never normalize every occurrence/);assert.ok(value.correctionLedger.length>0);
+    const blocks=value.blocks.map(block=>({...block,text:scenario.before?block.text.replace(scenario.before,scenario.after):block.text}));
+    const uncertainties=scenario.before?[{blockId:value.blocks[0].id,nature:'Suspected OCR index substitution',readings:[scenario.before,scenario.after],evidence:[{blockId:value.blocks[0].id,quote:scenario.before}],resolutionNeed:'Inspect the source-page glyph.'}]:[];
+    return JSON.stringify({blocks,uncertainties,unresolved:!!uncertainties.length,diagnostics:[],correctionReviews:value.kind==='verify'?value.correctionLedger.map(entry=>({id:entry.id,outcome:scenario.outcome,explanation:scenario.explanation})):[]});
+   }};
+   await executeReconstruction({store,revision:r,intelligence,activity:{start:()=>1,finish:()=>{}},vault:vault.id,signal:new AbortController().signal,guard:()=>{},save:()=>{},range:(start,end)=>({startOffset:start,endOffset:end,startLine:1,endLine:1}),materialize:()=>{}});
+   assert.deepEqual(calls,['reconstruct','synthesis','verify']);assert.equal(r.report.chunksCompleted,1);assert.equal(r.reprocessed.text,text,'proposals cannot silently modify the accepted reading');
+   const proposed=[...r.patches].reverse().reduce((value,patch)=>value.slice(0,patch.range.startOffset)+patch.replacement+value.slice(patch.range.endOffset),text);
+   assert.equal(proposed,scenario.before?text.replace(scenario.before,scenario.after):text);
+   assert.ok(r.patches.every(patch=>patch.decision==='pending'));assert.ok(r.report.validationDiagnostics.some(message=>message.includes(scenario.outcome)));
+   assert.ok(!r.report.validationDiagnostics.some(message=>/missing or invalid explicit outcome/.test(message)));
+   if(scenario.before)assert.ok(r.patches.some(patch=>patch.reason.includes('Contextual correction proposal')));
+  }finally{db.close();}
+ }
+});
+
+test('Balanced audits statement and proof corrections independently rather than accepting a partial family repair',async()=>{
+ const {openDatabase}=await import('../src/server/database.ts'),{Vaults}=await import('../src/server/modules/vaults.ts'),{SourceFiles}=await import('../src/server/modules/source-files.ts');
+ const {sourceRevisionBaseHash}=await import('../src/server/modules/source-reprocessing.ts'),{processedSourceDocument}=await import('../src/server/modules/source-document.ts'),{executeReconstruction,reconstructionPromptVersion}=await import('../src/server/modules/source-reprocessing-pass.ts');
+ for(const complete of [false,true]){
+  const db=openDatabase(':memory:');try{
+   const store=new Store(db),vault=new Vaults(store).create({name:'Statement-proof continuity'}),text='The matrix $M_7$ has been fixed throughout this section.\n\nTheorem 3. The same matrix $M_2$ is invertible.\n\nProof. The determinant of the same matrix $M_2$ is nonzero, which establishes its invertibility.',file=new SourceFiles(store).add(vault.id,'statement-proof.txt',Buffer.from(text));
+   const r=fixture();r.fileId=file.id;r.original={text,document:processedSourceDocument({...file,text,enrichment_status:'completed'})};r.reprocessed=structuredClone(r.original);r.baseHash=sourceRevisionBaseHash(r.original);r.configuration={...r.configuration,architectureVersion:1,depth:'balanced'};r.report.promptVersion=reconstructionPromptVersion;r.report.charactersTotal=text.length;
+   store.run('INSERT INTO source_reprocessing(id,file_id,vault_id,status,created_at,updated_at,payload) VALUES(?,?,?,?,?,?,?)',r.id,file.id,vault.id,r.status,r.createdAt,r.updatedAt,JSON.stringify(r));
+   const intelligence={reeditSource:async(request,prompt)=>{
+    const value=JSON.parse(request);if(!value.blocks)return JSON.stringify({observations:[]});
+    assert.match(prompt,/A correction made in a proof does not resolve/);assert.match(prompt,/statement\/proof referent continuity/);assert.match(prompt,/BOTH locations/);
+    const blocks=value.blocks.map(block=>({...block,text:block.text.includes('Proof.')||complete&&value.kind==='verify'?block.text.replaceAll('$M_2$','$M_7$'):block.text}));
+    const reviews=value.kind==='verify'?value.correctionLedger.map(entry=>{const target=value.blocks.find(block=>block.id===entry.targetBlockId);assert.ok(target,'ledger must identify its local task block');return {id:entry.id,outcome:target.text.includes('$M_2$')?'proposed':'retained',explanation:target.text.includes('$M_2$')?'The statement and proof identify the same fixed matrix; the index 2 is a suspected OCR error for 7, pending source confirmation.':'This occurrence names the fixed matrix consistently.'};}):[];
+    return JSON.stringify({blocks,uncertainties:[],diagnostics:[],unresolved:false,correctionReviews:reviews});
+   }};
+   await executeReconstruction({store,revision:r,intelligence,activity:{start:()=>1,finish:()=>{}},vault:vault.id,signal:new AbortController().signal,guard:()=>{},save:()=>{},range:(start,end)=>({startOffset:start,endOffset:end,startLine:1,endLine:1}),materialize:()=>{}});
+   assert.equal(r.report.chunksCompleted,1);assert.ok(r.patches.every(patch=>patch.decision==='pending'));
+   const diagnostics=r.report.validationDiagnostics.join('\n');
+   if(complete)assert.doesNotMatch(diagnostics,/marked proposed, but no corresponding substantive correction/);
+   else assert.match(diagnostics,/marked proposed, but no corresponding substantive correction/,'fixing the proof cannot satisfy the theorem task');
+  }finally{db.close();}
+ }
+});

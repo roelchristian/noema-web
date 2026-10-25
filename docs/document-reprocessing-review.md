@@ -46,3 +46,12 @@ Validation logs from this executor are in `/tmp/noema-reprocessing-{build,full-s
 No real API request, paid test, credential configuration, real vault inspection or private runtime-log inspection was performed. Live provider behavior, billing and quality therefore remain unverified. Native macOS/Safari/PDF extraction checks are outside this Linux/mock-only run. The academic regression is synthetic extracted text covering equations, multilingual quotations, decomposed Unicode, footnotes, repeated headers/citations and bibliography; it is not a claim of improved extraction accuracy.
 
 Selectors load the latest 100 persisted summaries; older revisions are retained and available by ID, with no older-revision pagination UI in this change. Nullable/missing legacy patch offsets retain the unique-exact-substring fallback and safely reject ambiguity. Automatic transport-timeout retry is intentionally withheld because provider completion/billing cannot be established. No PR, merge or deployment is part of this work.
+
+
+## Balanced correction proposals (prompt v2-10)
+
+Balanced and Deep distinguish contextual correction proposals from approval. A likely OCR repair may be proposed without independent page confirmation, with the original reading and uncertainty retained as evidence. Substantive and unresolved corrections remain pending. Existing authorized original-page images and local OCR can support review; the policy does not enable transmission or add model passes.
+
+A bounded correction ledger nominates conflicting indexed notation and reported uncertainties with exact canonical locations. Verification receives separate tasks for affected local blocks plus document context and records each outcome as proposed, retained with explanation, or source required. Different indexed objects can be intentional; nominations do not authorize normalization. The final audit flags missing outcomes and proposed outcomes without corresponding substantive edits. These checks measure review coverage, not mathematical truth.
+
+Invalid optional uncertainty quotations are excluded without reverting otherwise valid proposals. Affected blocks and linked footnote patch groups require manual review. Legacy prompt versions retain their prior behavior and provider schema; new synthesis policy inputs are hash-bound and reproduced during archive restoration.

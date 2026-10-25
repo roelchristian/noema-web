@@ -10,7 +10,7 @@ import {repairReconstructionPass} from '../src/server/modules/source-reprocessin
 import {setupSourceReprocessingVersionSchema} from '../src/server/source-reprocessing-version-schema.ts';
 import {SourceReprocessingCheckpoints} from '../src/server/modules/source-reprocessing-checkpoints.ts';
 
-function harness(t,{versioning=false,depth='balanced',text='A short synthetic scholarly passage.',pages=null,pageStartLines=[],provider=echo,synthesisProvider=()=>JSON.stringify({observations:[]}),synthesisReviewProvider=request=>JSON.stringify({reviews:request.rejected.map(issue=>({index:issue.index,classification:'unsupported',explanation:'The supplied source does not support this observation.',observation:null}))}),evidenceService,omitConfiguration=false,evidenceOptions={originalPages:false,ocr:false,allowExternalTransmission:false}}={}) {
+function harness(t,{promptVersion,versioning=false,depth='balanced',text='A short synthetic scholarly passage.',pages=null,pageStartLines=[],provider=echo,synthesisProvider=()=>JSON.stringify({observations:[]}),synthesisReviewProvider=request=>JSON.stringify({reviews:request.rejected.map(issue=>({index:issue.index,classification:'unsupported',explanation:'The supplied source does not support this observation.',observation:null}))}),evidenceService,omitConfiguration=false,evidenceOptions={originalPages:false,ocr:false,allowExternalTransmission:false}}={}) {
  const db=new DatabaseSync(':memory:');t.after(()=>db.close());
  db.exec(`CREATE TABLE source_math_documents(file_id TEXT,raw_hash TEXT,cleaned_text TEXT,uncertainty_json TEXT,algorithm_version INTEGER);
  CREATE TABLE source_reprocessing(id TEXT PRIMARY KEY,file_id TEXT,vault_id TEXT,status TEXT,created_at TEXT,updated_at TEXT,payload TEXT);
@@ -24,6 +24,7 @@ function harness(t,{versioning=false,depth='balanced',text='A short synthetic sc
  const activity={start:()=>1,request:()=>({}),finish:()=>{}};
  function service(){const result=new SourceReprocessing(store,{require:()=>file},intelligence,()=>{if(locked)throw Error('Vault is locked.');},activity,undefined,evidenceService);result.snapshot=()=>structuredClone(original);result.baseHash=()=>{if(locked)throw Error('Vault is locked.');return sourceRevisionBaseHash(original);};return result;}
  let worker=service();const revision=worker.start('vault',file.id,{pipelineVersion:2,...(omitConfiguration?{}:{configuration:{depth,reviewPolicy:'verified',evidence:evidenceOptions}})});
+ if(promptVersion){revision.report.promptVersion=promptVersion;store.run('UPDATE source_reprocessing SET payload=? WHERE id=?',JSON.stringify(revision),revision.id);}
  return {store,calls,prompts,revision,intelligence,activity,checkpoints:new SourceReprocessingCheckpoints(store),get worker(){return worker;},get value(){return JSON.parse(store.get('SELECT payload FROM source_reprocessing WHERE id=?',revision.id).payload);},restart(){locked=false;worker=service();return worker;}};
 }
 function echo(request){return JSON.stringify({blocks:request.blocks,diagnostics:[],unresolved:false});}
@@ -457,7 +458,7 @@ test('active editorial instructions permit useful corrections and supply cross-p
 test('real court reconstruction preserves all four inline footnotes, paragraph repairs and furniture together',async t=>{
  const {readFileSync}=await import('node:fs');
  const fixture=JSON.parse(readFileSync(new URL('./fixtures/court-editorial-reconstruction.json',import.meta.url),'utf8'));
- const env=harness(t,{text:fixture.text,pages:fixture.pages,pageStartLines:fixture.pageStartLines,provider:request=>{
+ const env=harness(t,{promptVersion:'source-reconstruction-v2-8',text:fixture.text,pages:fixture.pages,pageStartLines:fixture.pageStartLines,provider:request=>{
   const index=request.kind==='reconstruct'?1:request.kind==='verify'?2:3;
   const output=fixture.outputs.find(item=>item.chunkIndex===request.chunkIndex&&item.passIndex===index);
   assert.ok(output,`Recorded ${request.kind} output for chunk ${request.chunkIndex}`);return JSON.stringify(output.response);
@@ -494,7 +495,7 @@ test('queued API revisions get immutable numbers before processing and deletion 
 
 
 test('cached invalid uncertainty quotes recover locally without replaying reconstruction or accepting unsupported edits',async t=>{
- const env=harness(t,{text:'Canonical corrupted mathematical proof.\n\nIndependent paragraph.',provider:request=>{
+ const env=harness(t,{promptVersion:'source-reconstruction-v2-8',text:'Canonical corrupted mathematical proof.\n\nIndependent paragraph.',provider:request=>{
   const block=request.blocks[0];
   return JSON.stringify({blocks:request.blocks.map(value=>({...value,text:value.text.replace('corrupted','reconstructed')})),diagnostics:[],unresolved:false,uncertainties:[{blockId:block.id,nature:'OCR error',readings:['reconstructed'],evidence:[{blockId:block.id,quote:'Canonical reconstructed mathematical proof.'}],resolutionNeed:'Compare original page.'}]});
  }});
@@ -508,5 +509,17 @@ test('cached invalid uncertainty quotes recover locally without replaying recons
  env.store.run('UPDATE source_reprocessing SET status=?,payload=? WHERE id=?','failed',JSON.stringify(stopped),stopped.id);
  env.calls.length=0;env.restart();env.worker.resume('vault',stopped.fileId,stopped.id);await env.worker.tick();
  assert.equal(env.value.status,'completed');assert.deepEqual(env.calls.map(call=>call.kind),['verify']);assert.equal(env.checkpoints.passes(stopped.id)[0].result,raw);assert.equal(env.value.patches.length,0);
+ await assertRecoveryArchive(env);
+});
+
+
+test('Balanced preserves pending proposals when optional uncertainty quotations are malformed',async t=>{
+ const env=harness(t,{text:'Canonical corrupted mathematical proof.\n\nIndependent paragraph.',provider:request=>{
+  const block=request.blocks[0];
+  return JSON.stringify({blocks:request.blocks.map(value=>({...value,text:value.text.replace('corrupted','reconstructed')})),diagnostics:[],unresolved:false,correctionReviews:[],uncertainties:[{blockId:block.id,nature:'OCR error',readings:['reconstructed'],evidence:[{blockId:block.id,quote:'Canonical reconstructed mathematical proof.'}],resolutionNeed:'Compare original page.'}]});
+ }});
+ await env.worker.tick();assert.equal(env.value.status,'completed');assert.equal(env.value.patches.length,1);assert.equal(env.value.patches[0].decision,'pending');assert.equal(env.value.reprocessed.text,env.value.original.text);
+ assert.ok(env.value.report.diagnostics.some(message=>/Unverified uncertainty evidence/.test(message)));
+ const raw=env.checkpoints.passes(env.revision.id)[0].result;assert.ok(JSON.parse(raw).blocks[0].text.includes('reconstructed'));
  await assertRecoveryArchive(env);
 });

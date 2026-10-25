@@ -103,3 +103,27 @@ test('invalid uncertainty quotations retain only affected canonical blocks and n
  const unknown=retainUnverifiedUncertaintyBlocks(chunk,{...raw,uncertainties:[{...raw.uncertainties[0],blockId:'unknown'}]});assert.deepEqual(unknown.blocks,chunk.blocks.map(({id,text})=>({id,text})));
  const malformed=retainUnverifiedUncertaintyBlocks(chunk,{...raw,blocks:[{id:'wrong',text:'invented'}]});assert.equal(malformed.blocks[0].id,'wrong');
 });
+
+
+test('reviewable uncertainty policy isolates invalid evidence while preserving complete proposed blocks',async()=>{
+ const {evaluateV2Acceptance}=await import('../src/server/modules/source-reprocessing-risk.ts');
+ const {chunks,text}=fixture('Canonical corrupted S3 proof.\n\nIndependent paragraph with a clear typo.');
+ const chunk=chunks[0],block=chunk.blocks[0];
+ const raw={blocks:chunk.blocks.map(({id,text})=>({id,text:text.replace('corrupted S3','corrected S_3').replace('typo','correction')})),diagnostics:[],unresolved:false,uncertainties:[{blockId:block.id,nature:'OCR corruption',readings:['S_3'],evidence:[{blockId:block.id,quote:'Canonical corrected S_3 proof.'}],resolutionNeed:'Compare source page.'}]};
+ const snapshot=structuredClone(raw),safe=retainUnverifiedUncertaintyBlocks(chunk,raw,{preserveProposals:true});
+ assert.deepEqual(safe.blocks,raw.blocks);assert.deepEqual(safe.manualReviewBlockIds,[block.id]);assert.deepEqual(safe.uncertainties,[]);assert.equal(safe.unresolved,true);assert.match(safe.diagnostics[0],/manual review/);assert.deepEqual(raw,snapshot);
+ assert.deepEqual(parseReconstructionUncertainty(chunk,safe),[]);
+ const spoofed=retainUnverifiedUncertaintyBlocks(chunk,{...raw,uncertainties:[],manualReviewBlockIds:42},{preserveProposals:true});assert.deepEqual(spoofed.manualReviewBlockIds,[],'manual-review metadata is derived locally, never trusted from model output');
+ const unknown=retainUnverifiedUncertaintyBlocks(chunk,{...raw,uncertainties:[{...raw.uncertainties[0],blockId:'unknown'}]},{preserveProposals:true});
+ assert.deepEqual(unknown.blocks,raw.blocks);assert.deepEqual(unknown.manualReviewBlockIds,chunk.blocks.map(({id})=>id));
+ const malformed=retainUnverifiedUncertaintyBlocks(chunk,{...raw,blocks:[{id:'wrong',text:'invented'}]},{preserveProposals:true});assert.equal(malformed.blocks[0].id,'wrong','strict reconstruction mapping must still reject bad IDs');
+ const input={revisionId:'revision',baseHash:'base',text,chunks,firstPasses:[{chunkIndex:0,requestHash:'r',result:JSON.stringify(raw)}]};
+ const legacy=createSynthesisInput(input),enhanced=createSynthesisInput({...input,preserveProposals:true});
+ assert.notEqual(legacy.inputHash,enhanced.inputHash);assert.equal(JSON.parse(enhanced.request).proposalPolicy,'reviewable-corrections-v1');assert.ok(JSON.parse(enhanced.request).findings[0].candidates.some(value=>value.text.includes('corrected S_3')));
+ assert.deepEqual(JSON.parse(enhanced.request).findings[0].uncertainties,[],'invalid quotes cannot enter synthesis evidence');
+ // Even a normally automatic ligature equivalence must stay pending when its
+ // block has rejected optional evidence; typography cannot clear that review.
+ const guarded=evaluateV2Acceptance({text:'ﬁ',document:{},start:0,end:1,original:'ﬁ',replacement:'fi',category:'ocr',policy:'verified',unverifiedUncertainty:true});
+ assert.equal(guarded.automatic,false);assert.match(guarded.reasons[0],/failed source validation/);
+ const ordinary=evaluateV2Acceptance({text:'ﬁ',document:{},start:0,end:1,original:'ﬁ',replacement:'fi',category:'ocr',policy:'verified'});assert.equal(ordinary.automatic,true);
+});

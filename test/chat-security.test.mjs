@@ -69,16 +69,16 @@ test('even full debug mode receives usage accounting only, never transcript, exc
  }finally{f.close();}
 });
 
-test('Chat uses central foreground admission, neutral prompts and provider cancellation with mock transport only',async()=>{
+test('Chat uses the configured Meno persona, foreground admission and provider cancellation with mock transport only',async()=>{
  const {Intelligence,GenerationAdmissionError,GenerationCancellationError}=await import('../src/server/modules/intelligence.ts');
  const {completedResponse}=await import('./helpers/providers.ts');
  const fakeSecret={value:null,read(){return this.value;},write(value){this.value=structuredClone(value);},remove(){this.value=null;}};
  let release,calls=0,body;
  const ai=new Intelligence(fakeSecret,async(_url,options)=>{calls++;body=JSON.parse(options.body);return new Promise(resolve=>release=()=>resolve(completedResponse(JSON.stringify({claims:[{text:'Bounded claim',attribution:'supported',citationIds:['E1']}]}))));});
- ai.save({apiKey:'sk-synthetic-chat-test-never-a-real-key'});
+ ai.save({apiKey:'sk-synthetic-chat-test-never-a-real-key'});ai.savePreferences({...ai.selection(),personaId:'editor',personaExpression:'subtle'});
  const controller=new AbortController(),request={kind:'chat',input:'Bounded test evidence',instructions:'Neutral read-only Chat instructions.',signal:controller.signal};
  const running=ai.generate(request);
- assert.equal(calls,1);assert.equal(body.store,false);assert.deepEqual(body.tools,[]);assert.equal(body.instructions,'Neutral read-only Chat instructions.');assert.equal(!!body.stream,false);assert.ok(body.max_output_tokens<=8192);
+ assert.equal(calls,1);assert.equal(body.store,false);assert.deepEqual(body.tools,[]);assert.ok(body.instructions.startsWith(request.instructions));assert.match(body.instructions,/AI PERSONA: The Editor/);assert.equal(!!body.stream,false);assert.ok(body.max_output_tokens<=8192);
  await assert.rejects(()=>ai.generate({...request,signal:new AbortController().signal}),GenerationAdmissionError);assert.equal(calls,1);
  controller.abort();release();await assert.rejects(running,error=>error.status===409);
  const blocked=new AbortController();blocked.abort();await assert.rejects(()=>ai.generate({...request,signal:blocked.signal}),error=>error.status===409);assert.equal(calls,1);
@@ -109,7 +109,7 @@ test('evidence revalidation detects live edits, disallows forged coordinates and
  const stale=await f.request('evidence','POST',{evidence:[original]});assert.equal(stale.status,200);const snapshot=(await stale.json())[0];assert.equal(snapshot.status,'stale');assert.equal(snapshot.excerpt,original.excerpt);
 });
 
-test('published Personas v2 settings and explicit stray overrides never enter neutral Chat policy or provider prompts',async()=>{
+test('Chat uses configured persona settings while ignoring explicit stray persona overrides',async()=>{
  const {generationPolicy}=await import('../src/server/modules/generation-request.ts');
  const {aiPersonas,personaExpressions}=await import('../src/shared/ai-personas.ts');
  const {Intelligence}=await import('../src/server/modules/intelligence.ts');
@@ -117,13 +117,13 @@ test('published Personas v2 settings and explicit stray overrides never enter ne
  const selection={model:'gpt-5-mini',reasoningEffort:'low'},request={kind:'chat',input:'Bounded supplied evidence.',instructions:'Neutral Chat grounding instructions.',personaId:'socratic',personaVersion:2,personaExpression:'immersive'};
  for(const persona of aiPersonas)for(const personaExpression of personaExpressions){
   const policy=generationPolicy(request,{personaId:persona.id,personaExpression,standard:selection,title:selection,enrichment:selection});
-  assert.equal(policy.persona,undefined);assert.deepEqual(policy.prompt(),{instructions:request.instructions,input:request.input});assert.deepEqual(policy.selection,selection);assert.equal(policy.admission.activeSlot,'exclusive');assert.equal(policy.stream,false);
+  assert.equal(policy.persona.id,persona.id);assert.equal(policy.persona.expression,personaExpression);assert.equal(policy.prompt().input,request.input);assert.ok(policy.prompt().instructions.startsWith(request.instructions));assert.ok(policy.prompt().instructions.includes('AI PERSONA: '+persona.name));assert.deepEqual(policy.selection,selection);assert.equal(policy.admission.activeSlot,'exclusive');assert.equal(policy.stream,false);
  }
  const fakeSecret={value:null,read(){return this.value;},write(value){this.value=structuredClone(value);},remove(){this.value=null;}};
  let payload;
  const ai=new Intelligence(fakeSecret,async(_url,options)=>{payload=JSON.parse(options.body);return completedResponse(JSON.stringify({claims:[{text:'The source records a position.',attribution:'supported',citationIds:['E1']}]}));});
- ai.save({apiKey:'sk-synthetic-persona-chat-test-never-real'});ai.savePreferences({...selection,personaId:'socratic',personaExpression:'immersive'});
- await ai.generate(request);assert.equal(payload.instructions,request.instructions);assert.doesNotMatch(payload.instructions,/AI PERSONA:|Socratic|immersive/);assert.deepEqual(payload.tools,[]);assert.equal(payload.store,false);
+ ai.save({apiKey:'sk-synthetic-persona-chat-test-never-real'});ai.savePreferences({...selection,personaId:'editor',personaExpression:'subtle'});
+ await ai.generate(request);assert.ok(payload.instructions.startsWith(request.instructions));assert.match(payload.instructions,/AI PERSONA: The Editor/);assert.match(payload.instructions,/EXPRESSION: subtle/);assert.doesNotMatch(payload.instructions,/Socratic|EXPRESSION: immersive/);assert.deepEqual(payload.tools,[]);assert.equal(payload.store,false);
 });
 
 test('Chat and Persona comparison previews share foreground admission rather than independent queues',async()=>{

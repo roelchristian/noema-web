@@ -1,5 +1,7 @@
 import {createHash} from 'node:crypto';
-import type {Block} from '../../shared/domain.js';
+import type {Block,SourceFile,SourceStructureNode} from '../../shared/domain.js';
+import {isSectionKind,mergeSourceStructure} from './source-structure.js';
+import {mathSource} from './source-math-text.js';
 import {isAIExplanation} from '../../shared/semantic-blocks.js';
 import type {ChatEvidence,ChatMention,ChatScope} from '../../shared/chat.js';
 import type {PassageRetrievalResult} from '../../shared/passage-retrieval.js';
@@ -75,6 +77,8 @@ export class ChatRetrieval {
     if(passageScope&&!((row.pageReference&&passageScope.pageIds.includes(row.pageReference.pageId))||(row.reference&&passageScope.sourceIds.includes(row.reference.sourceId))))continue;
     const item=this.passage(vault,row);
     if(!item||item.status!=='current')continue;
+    // Re-check canonical identities, not merely the adapter's supplied labels.
+    if(passageScope&&!((item.pageReference&&passageScope.pageIds.includes(item.pageReference.pageId))||(item.reference&&passageScope.sourceIds.includes(item.reference.sourceId))))continue;
     const key=`${item.kind}:${row.passageId}`,previous=found.get(key);
     if(!previous||row.score>previous.score)found.set(key,{item,score:row.score});
    }
@@ -92,7 +96,14 @@ export class ChatRetrieval {
   // Pick a few facts from each entity before additional facts from the same root.
   const factOrder:ChatEvidence[]=[];
   for(let i=0;i<24;i++)for(const id of roots){const item=facts.filter(fact=>fact.objectId===id)[i];if(item)factOrder.push(item);}
-  const candidates=[...factOrder.slice(0,deep?8:6),...diverse,...factOrder.slice(deep?8:6)];
+  // Reserve the front of the evidence budget for seed passages and their exact
+  // local context, so a non-matching qualification cannot be crowded out by hits
+  // or entity metadata. Expansion is deterministic and never recursive.
+  const seeds:ChatEvidence[]=[],seedObjects=new Set<string>();
+  for(const {item} of ranked)if(!seedObjects.has(item.objectId)&&seeds.length<(deep?3:2)){seeds.push(item);seedObjects.add(item.objectId);}
+  const expanded=this.expandContext(vault,seeds,deep,check);
+  check();
+  const candidates=[...seeds,...expanded,...factOrder.slice(0,deep?8:6),...diverse,...factOrder.slice(deep?8:6)];
   for(const item of candidates){
    const key=`${item.kind}:${item.objectId}:${item.fingerprint}`;
    if(seen.has(key)||selected.length>=(deep?20:12))continue;
@@ -101,6 +112,80 @@ export class ChatRetrieval {
    seen.add(key);bytes+=size;selected.push({...item,id:`E${selected.length+1}`});
   }
   return {evidence:this.validate(vault,selected).filter(item=>item.status==='current'),passes,depth:deep?'deep':'standard'};
+ }
+ /** Fetch a small contiguous window in the seed's exact document version.
+  * Standard context stays inside its actual section; deep context may include
+  * sibling sections of the enclosing chapter. Structural positions, rather than
+  * repeated heading labels, establish boundaries. Missing ordinals stop expansion. */
+ private expandContext(vault:string,seeds:ChatEvidence[],deep:boolean,check:()=>void):ChatEvidence[]{
+  const contexts:ChatEvidence[][]=[],radius=deep?2:1;
+  for(const seed of seeds){
+   check();
+   const rows:{id:string;ordinal:number;heading:string|null}[]=[],allowed=new Set<number>();
+   let ordinal:number|undefined;
+   if(seed.reference){
+    const ref=seed.reference,anchor=this.store.get<SourcePassage>('SELECT * FROM source_passages WHERE id=? AND vault_id=? AND file_id=? AND source_id=? AND generation_id=? AND source_hash=?',ref.id,vault,ref.fileId,ref.sourceId,ref.generationId??'',ref.sourceHash);
+    if(!anchor)continue;
+    ordinal=anchor.ordinal;
+    rows.push(...this.store.all<SourcePassage>(`SELECT * FROM source_passages WHERE vault_id=? AND file_id=? AND source_id=? AND generation_id=? AND source_hash=? AND ordinal BETWEEN ? AND ? ORDER BY ordinal LIMIT 5`,vault,anchor.file_id,anchor.source_id,anchor.generation_id,anchor.source_hash,ordinal-radius,ordinal+radius));
+    const within=this.sourceBoundary(vault,anchor,deep);for(const row of rows as SourcePassage[])if(within(row))allowed.add(row.ordinal);
+   }else if(seed.pageReference){
+    const ref=seed.pageReference,anchor=this.store.get<PageSegment>('SELECT * FROM page_segments WHERE id=? AND vault_id=? AND page_id=? AND revision=? AND projection_hash=?',ref.segmentId,vault,ref.pageId,ref.revision,ref.projectionHash);
+    if(!anchor)continue;
+    ordinal=anchor.ordinal;
+    rows.push(...this.store.all<PageSegment>(`SELECT * FROM page_segments WHERE vault_id=? AND page_id=? AND revision=? AND projection_hash=? AND ordinal BETWEEN ? AND ? ORDER BY ordinal LIMIT 5`,vault,anchor.page_id,anchor.revision,anchor.projection_hash,ordinal-radius,ordinal+radius));
+    const within=this.pageBoundary(vault,anchor,deep);for(const row of rows as PageSegment[])if(within(row))allowed.add(row.ordinal);
+   }
+   if(ordinal===undefined)continue;
+   const byOrdinal=new Map(rows.map(row=>[row.ordinal,row])),neighbors:ChatEvidence[]=[];
+   for(const offset of deep?[1,-1,2,-2]:[1,-1]){
+    const direction=Math.sign(offset);let contiguous=true;
+    for(let distance=1;distance<=Math.abs(offset);distance++){
+     const row=byOrdinal.get(ordinal+direction*distance);
+     if(!row||!allowed.has(row.ordinal)){contiguous=false;break;}
+    }
+    const neighbor=byOrdinal.get(ordinal+offset);
+    if(!contiguous||!neighbor)continue;
+    check();
+    const evidence=this.passage(vault,{id:seed.objectId,title:seed.title,snippet:'',score:0,updated_at:'',passageId:neighbor.id,...(seed.reference?{reference:seed.reference}:{pageReference:seed.pageReference})});
+    if(evidence?.status==='current')neighbors.push(evidence);
+   }
+   contexts.push(neighbors);
+  }
+  // Round robin gives each selected document context before a second neighbor.
+  const output:ChatEvidence[]=[],seen=new Set(seeds.map(seed=>seed.fingerprint));
+  for(let round=0;round<radius*2;round++)for(const rows of contexts){
+   const item=rows[round];
+   if(!item||seen.has(item.fingerprint)||output.length>=(deep?6:2))continue;
+   seen.add(item.fingerprint);output.push(item);
+  }
+  check();return output;
+ }
+ private sourceBoundary(vault:string,anchor:SourcePassage,deep:boolean):(row:SourcePassage)=>boolean {
+  const rawFile=this.store.get<SourceFile>('SELECT * FROM source_files WHERE id=? AND entity_id=? AND vault_id=?',anchor.file_id,anchor.source_id,vault);
+  if(!rawFile)return ()=>false;
+  const file=mathSource(this.store,rawFile);
+  let explicit:SourceStructureNode[]=[];try{const value:unknown=JSON.parse(file.structural_nodes??'[]');if(Array.isArray(value))explicit=value as SourceStructureNode[];}catch{/* Infer conservative headings from canonical text. */}
+  const nodes=mergeSourceStructure(file.text,explicit).filter(node=>isSectionKind(node.kind));
+  const chapters=nodes.filter(node=>node.kind==='chapter'||node.level===1||/^(?:chapter|part|book)\b/i.test(node.text));
+  const candidates=deep&&chapters.some(node=>node.startLine<=anchor.start_line)?chapters:nodes;
+  const active=candidates.filter(node=>node.startLine<=anchor.start_line).at(-1),next=candidates.find(node=>node.startLine>(active?.startLine??0));
+  const start=active?.startLine??1,end=Math.min(active?.endLine??Infinity,(next?.startLine??Infinity)-1);
+  if(!nodes.length)return row=>row.heading===anchor.heading;
+  return row=>row.start_line>=start&&row.end_line<=end;
+ }
+ private pageBoundary(vault:string,anchor:PageSegment,deep:boolean):(row:PageSegment)=>boolean {
+  const page=this.store.get<{blocks:string}>('SELECT blocks FROM pages WHERE id=? AND vault_id=? AND revision=? AND deleted_at IS NULL',anchor.page_id,vault,anchor.revision);
+  if(!page)return ()=>false;
+  let blocks:Block[]=[];try{blocks=JSON.parse(page.blocks) as Block[];}catch{return ()=>false;}
+  const positions=new Map(blocks.map((block,index)=>[block.id,index]));
+  const indexes=(row:PageSegment):number[]=>{try{return (JSON.parse(row.block_ids) as string[]).map(id=>positions.get(id)??-1);}catch{return [-1];}};
+  const anchorPositions=indexes(anchor);if(!anchorPositions.length||anchorPositions.some(index=>index<0))return ()=>false;
+  const first=Math.min(...anchorPositions),headings=blocks.flatMap((block,index)=>block.type.startsWith('heading')?[{index,chapter:block.type==='heading1'}]:[]);
+  const chapters=headings.filter(heading=>heading.chapter),candidates=deep&&chapters.some(heading=>heading.index<=first)?chapters:headings;
+  const active=candidates.filter(heading=>heading.index<=first).at(-1),next=candidates.find(heading=>heading.index>(active?.index??-1)),start=active?.index??0,end=next?.index??blocks.length;
+  if(!headings.length)return row=>row.heading===anchor.heading;
+  return row=>{const selected=indexes(row);return selected.length>0&&selected.every(index=>index>=start&&index<end);};
  }
  private passage(vault:string,row:PassageRetrievalResult):ChatEvidence|null {
   if(row.reference){
@@ -139,10 +224,10 @@ export class ChatRetrieval {
   }
   const ref=item.reference;
   if(!ref||ref.sourceId!==item.objectId)return 'deleted';
-  const file=this.store.get<{text:string;status:string;admitted:number;inactive:number;name:string;active_generation_id:string|null}>(`SELECT f.text,f.status,f.admitted,e.inactive,e.name,s.active_generation_id FROM source_files f JOIN entities e ON e.id=f.entity_id AND e.vault_id=f.vault_id LEFT JOIN source_passage_state s ON s.file_id=f.id WHERE f.id=? AND f.entity_id=? AND f.vault_id=?`,ref.fileId,item.objectId,vault);
+  const file=this.store.get<SourceFile & {inactive:number;entityName:string;active_generation_id:string|null}>(`SELECT f.*,e.inactive,e.name AS entityName,s.active_generation_id FROM source_files f JOIN entities e ON e.id=f.entity_id AND e.vault_id=f.vault_id LEFT JOIN source_passage_state s ON s.file_id=f.id WHERE f.id=? AND f.entity_id=? AND f.vault_id=?`,ref.fileId,item.objectId,vault);
   if(!file||!file.admitted||file.inactive)return 'deleted';
-  if(item.pageReference!==undefined||item.factId!==undefined||item.origin!==undefined||item.revision!==undefined||item.title!==file.name||item.locator!==sourceLocator(ref)||chatFingerprint(ref)!==item.fingerprint)return 'stale';
-  if(file.status!=='ready'||hashText(file.text)!==ref.sourceHash||file.active_generation_id!==ref.generationId||this.store.get('SELECT 1 FROM source_passage_dirty WHERE file_id=?',ref.fileId))return 'stale';
+  if(item.pageReference!==undefined||item.factId!==undefined||item.origin!==undefined||item.revision!==undefined||item.title!==file.entityName||item.locator!==sourceLocator(ref)||chatFingerprint(ref)!==item.fingerprint)return 'stale';
+  if(file.status!=='ready'||hashText(mathSource(this.store,file).text)!==ref.sourceHash||file.active_generation_id!==ref.generationId||this.store.get('SELECT 1 FROM source_passage_dirty WHERE file_id=?',ref.fileId))return 'stale';
   const passage=this.store.get<SourcePassage>('SELECT * FROM source_passages WHERE file_id=? AND vault_id=? AND generation_id=? AND (stable_id=? OR id=?)',ref.fileId,vault,ref.generationId??'',ref.passageId??'',ref.id);
   return passage&&chatFingerprint(passageReference(passage))===item.fingerprint&&passage.text===item.excerpt?'current':'stale';
  }

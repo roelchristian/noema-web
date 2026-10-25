@@ -252,6 +252,8 @@
     "test/source-reprocessing-version.test.mjs",
     "test/source-reprocessing-furniture-patterns.test.mjs",
     "test/source-reading-revisions.test.mjs",
-    "test/source-page-revisions.test.mjs"
+    "test/source-page-revisions.test.mjs",
+    "test/chat-context-expansion.test.mjs",
+    "test/chat-context-security.test.mjs"
   ]
 }

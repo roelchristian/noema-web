@@ -201,6 +201,54 @@ test('explicit renames including Untitled survive enrichment and later autosaves
  }
 });
 
+test('same-vocabulary reversal retains generating provenance and requests a refresh',async()=>{
+ const s=fixture();try {
+   const blocks=[{id:'claim',type:'paragraph',content:[{text:'The larger dogs chase the smaller cats. This note records the direction of the chase.'}]}];
+   let current=s.pages.update('default',s.page.id,{...s.page,title:'Chase observations',blocks});
+   await s.coordinator.run('default',current,undefined,{fields:['summary'],explicit:true});
+   const before=storedSummary(s,current.id);
+   current=s.pages.update('default',current.id,{...current,blocks:[{...blocks[0],content:[{text:'The smaller cats chase the larger dogs. This note records the direction of the chase.'}]}]});
+   assert.deepEqual(s.coordinator.prepare('default',current.id,{fields:['summary']}).requestedFields,['summary']);
+   const saved=storedSummary(s,current.id);
+   assert.equal(saved.data.generatedContentHash,before.data.generatedContentHash);
+   assert.notEqual(saved.contentHash,current.summaryContentHash);
+   assert.equal(saved.data.freshness.status,'refresh_needed');
+   assert.equal(saved.data.summary,before.data.summary);
+ }finally{s.close();}
+});
+
+test('summary-only refresh selects edits since summary generation independently of classification',async()=>{
+ const s=fixture();try {
+   await s.coordinator.run('default',s.page,undefined,{fields:['domains','summary'],explicit:true});
+   const old=s.pages.get('default',s.page.id);
+   const current=s.pages.update('default',old.id,{...old,blocks:[{...old.blocks[0],content:[{text:'Distinctive changed summary evidence: the equation is no longer valid after reversing its inequality.'}]}]});
+   await s.coordinator.run('default',current,undefined,{fields:['domains'],explicit:true});
+   await s.coordinator.run('default',current,undefined,{fields:['summary'],explicit:true});
+   const request=s.requests.at(-1);
+   assert.equal(request.options.changedEvidence.counts.modified,1);
+   assert.match(request.options.changedEvidence.passages[0].text,/Distinctive changed summary evidence/);
+   const summary=storedSummary(s,current.id);
+   assert.equal(summary.data.coverage.changedBlocks,1);
+   assert.equal(summary.data.baseline.blockEvidence.blocks.length,1);
+ }finally{s.close();}
+});
+
+test('legacy locally advanced hash is rolled back when generating evidence is stale',async()=>{
+ const s=fixture();try {
+   await s.coordinator.run('default',s.page,undefined,{fields:['summary'],explicit:true});
+   const before=storedSummary(s,s.page.id);
+   const current=s.pages.update('default',s.page.id,{...s.page,blocks:[{...s.page.blocks[0],content:[{text:'The assertion is not true; its direction has reversed from 20 to 10.'}]}]});
+   const legacy={...before.data,baseline:{...before.data.baseline}};delete legacy.baseline.orderedContentHash;delete legacy.baseline.semanticVersion;
+   s.store.run("UPDATE page_ai_enrichments SET content_hash=?,data=? WHERE page_id=? AND kind='summary'",current.summaryContentHash,JSON.stringify(legacy),current.id);
+   s.coordinator.configure('default',{automaticSummaries:false});
+   assert.equal(s.coordinator.prepare('default',current.id,{fields:['summary']}),null);
+   const saved=storedSummary(s,current.id);
+   assert.equal(saved.contentHash,before.data.generatedContentHash);
+   assert.notEqual(saved.contentHash,current.summaryContentHash);
+   assert.equal(saved.data.freshness.status,'refresh_needed');
+ }finally{s.close();}
+});
+
 test('summary snapshot avoids catalogue and entity-name queries without unresolved mentions',async()=>{
  const s=fixture();try {
    s.knowledge.list=()=>{throw new Error('Full catalogue must not be loaded');};
@@ -268,13 +316,22 @@ test('fixed occurrence text needs no entity-name projection',async()=>{
  }finally{s.close();}
 });
 
-test('a changed passage baseline rejects a stale summary-only snapshot',async()=>{
+test('an independent classification refresh preserves the summary generating snapshot',async()=>{
  const gate=deferred(),s=fixture(()=>gate.promise);try {
    const work=s.coordinator.run('default',s.page,undefined,{fields:['summary'],explicit:true});
    const domains=new Domains(s.store);
    domains.setInferred('default',s.page.id,{primaryDomainId:'mathematics',secondaryDomainIds:[]},s.page.conceptContentHash,s.page);
-   gate.resolve({summary:'Generated from obsolete changed-passage evidence.'});
-   await assert.rejects(work,{status:409});
-   assert.equal(s.store.get("SELECT 1 FROM page_ai_enrichments WHERE page_id=? AND kind='summary'",s.page.id),undefined);
+   gate.resolve({summary:'Generated from independent summary evidence.'});
+   assert.equal((await work).summary,'Generated from independent summary evidence.'); }finally{s.close();}
+});
+
+function storedSummary(s,id) {const row=s.store.get("SELECT data,content_hash AS contentHash FROM page_ai_enrichments WHERE page_id=? AND kind='summary'",id);return {...row,data:JSON.parse(row.data)};}
+
+test('replacing the summary generating baseline rejects an obsolete summary snapshot',async()=>{
+ const gate=deferred(),s=fixture(()=>gate.promise);try {
+   const work=s.coordinator.run('default',s.page,undefined,{fields:['summary'],explicit:true});
+   s.enrichments.save('default',s.page.id,'summary',{summary:'A concurrent summary',generatedContentHash:s.page.summaryContentHash},s.page.revision,selection);
+   gate.resolve({summary:'Obsolete generated result'});await assert.rejects(work,{status:409});
+   assert.equal(storedSummary(s,s.page.id).data.summary,'A concurrent summary');
  }finally{s.close();}
 });

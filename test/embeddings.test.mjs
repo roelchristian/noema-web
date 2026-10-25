@@ -79,3 +79,49 @@ test('retry backoff stops after three attempts and never logs provider text',asy
   await f.worker.tick();assert.equal(calls,3);
  }finally{f.close();}
 });
+
+test('typed embedding auth and request failures dispatch once while capacity respects Retry-After',async()=>{
+ const {GenerationProviderError}=await import('../src/server/modules/intelligence.ts');
+ for(const status of [400,401,403,429,503]) {
+  const f=setup();try {
+   f.worker.close();f.pages.delete('default','welcome');let calls=0;
+   const ai={status:()=>({configured:true}),embedBatch:async(_inputs,onRequest)=>{onRequest?.(100);calls++;throw new GenerationProviderError(status,'Safe failure',120_000);}};
+   f.worker=new Embeddings(f.store,f.pages,new Knowledge(f.store),f.vaults,ai);
+   f.worker.onSave('default',f.page.id);new PageSegments(f.store).synchronize('default',f.page.id);new PageSegmentIndex(f.store).enqueue('default',f.page.id,'save',0);
+   f.store.run("UPDATE embedding_jobs SET next_attempt_at='2000-01-01' WHERE status='queued'");
+   const before=Date.now();await f.worker.tick();await f.worker.tick();
+   const job=f.worker.status('default').jobs.find(j=>j.pageId===f.page.id);
+   assert.equal(calls,1);assert.equal(job.attempts,1);
+   assert.equal(job.status,status===429||status===503?'queued':'failed');
+   if(job.status==='queued')assert.ok(Date.parse(job.nextAttemptAt)>=before+120_000);
+  }finally{f.close();}
+ }
+});
+
+test('deterministic embedding blocks survive forced retry and restart, and release after credential change',async()=>{
+ const {GenerationProviderError}=await import('../src/server/modules/intelligence.ts');
+ const f=setup();try {
+  f.worker.close();f.pages.delete('default','welcome');let calls=0,configuration='old key';
+  const ai={status:()=>({configured:true}),retryConfigurationIdentity:()=>configuration,embedBatch:async(_input,onRequest)=>{onRequest?.(100);calls++;throw new GenerationProviderError(401,'Replace key');}};
+  const create=()=>new Embeddings(f.store,f.pages,new Knowledge(f.store),f.vaults,ai);
+  f.worker=create();new PageSegments(f.store).synchronize('default');new PageSegmentIndex(f.store).enqueue('default',f.page.id,'retry',0,true);await f.worker.tick();
+  assert.equal(calls,1);const first=f.worker.status('default').jobs.find(j=>j.pageId===f.page.id);
+  f.worker.close();f.worker=create();f.worker.retry('default',first.id);await f.worker.tick();assert.equal(calls,1);
+  f.update('Changed substantive content with the same rejected credential should wait.');new PageSegments(f.store).synchronize('default');new PageSegmentIndex(f.store).enqueue('default',f.page.id,'retry',0,true);await f.worker.tick();assert.equal(calls,1);
+  configuration='replacement key';await f.worker.tick();assert.equal(calls,2);
+  assert.equal(f.store.get("SELECT category FROM embedding_retry_blocks WHERE kind='page'").category,'configuration');
+ }finally{f.close();}
+});
+
+test('credential replacement during an embedding dispatch requeues for the fresh key without poisoning it',async()=>{
+ const {HttpError}=await import('../src/server/validation.ts');
+ const f=setup();try {
+  f.worker.close();f.pages.delete('default','welcome');let calls=0,configuration='old key',reject;
+  const ai={status:()=>({configured:true}),retryConfigurationIdentity:()=>configuration,embedBatch:async(_input,onRequest)=>{onRequest?.(100);calls++;if(calls===1)return new Promise((_resolve,fail)=>{reject=fail;});return {embeddings:[vector],tokens:10};}};
+  f.worker=new Embeddings(f.store,f.pages,new Knowledge(f.store),f.vaults,ai);
+  new PageSegments(f.store).synchronize('default');new PageSegmentIndex(f.store).enqueue('default',f.page.id,'retry',0,true);
+  const pending=f.worker.tick();await Promise.resolve();configuration='fresh key';reject(new HttpError(409,'The credential changed or expired.'));await pending;
+  assert.equal(f.store.get('SELECT count(*) n FROM embedding_retry_blocks').n,0);
+  await f.worker.tick();assert.equal(calls,2);assert.equal(f.worker.status('default').jobs.find(j=>j.pageId===f.page.id).status,'completed');
+ }finally{f.close();}
+});

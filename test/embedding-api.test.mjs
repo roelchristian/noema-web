@@ -122,9 +122,10 @@ test('embedding API enforces client/origin protection, validates requests, and s
   assert.ok(!JSON.stringify(job).includes('sensitive upstream details'));
   const target=activityTarget(f.calls,'This eligible note exercises',page.id);
   const failed=(await call('intelligence/activity')).items.find(item=>item.action==='note_embedding'&&item.vaultId==='default'&&item.objectId===target);
-  assert.equal(failed.status,'failed');assert.equal(failed.httpStatus,502);
+  assert.equal(failed.status,'failed');assert.equal(failed.httpStatus,400);
   await call('embeddings/jobs/'+job.id+'/retry','POST',{},404,other.id);
   f.setHandler(async inputs=>embedded(inputs));
+  await call('intelligence','PUT',{apiKey:'sk-test-embedding-api-replaced-key'});
   await call('embeddings/jobs/'+job.id+'/retry','POST',{});
   await f.until(value=>value.notes.find(note=>note.pageId===page.id)?.state==='indexed');
 }));

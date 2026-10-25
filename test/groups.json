@@ -40,7 +40,9 @@
     "test/source-annotation-mapping.test.mjs",
     "test/writing-actions.test.mjs",
     "test/vector-search-cache.test.mjs",
-    "test/knowledge-polling.test.mjs"
+    "test/knowledge-polling.test.mjs",
+    "test/domain-shortlist-multilingual.test.mjs",
+    "test/page-block-evidence.test.mjs"
   ],
   "dom": [
     "test/trash-ui.test.mjs",

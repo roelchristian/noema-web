@@ -174,7 +174,7 @@ test('provider calls restrict destination, credentials, storage, output, errors,
   for(let i=0;i<4;i++)await ai.generate({kind:'validation'});
   await rejected(()=>ai.generate({kind:'summary',input:'blocked'}),429);
   const bad=new Intelligence(secrets,async()=>new Response(key,{status:401}));
-  await assert.rejects(()=>bad.generate({kind:'summary',input:'page'}),error=>error.status===502&&!error.message.includes(key));
+  await assert.rejects(()=>bad.generate({kind:'summary',input:'page'}),error=>error.status===401&&!error.message.includes(key));
   const broken=new Intelligence(secrets,async()=>{throw new Error(key);});
   await assert.rejects(()=>broken.generate({kind:'summary',input:'page'}),error=>!error.message.includes(key));
   const huge=new Intelligence(secrets,async()=>completed('a'.repeat(140000)));
@@ -489,7 +489,7 @@ test('generation modes retain timeout, output bounds, cancellation, expiry and r
         return new Response(key,{status});
       });
       failures.save({apiKey:key});
-      await assert.rejects(()=>failures.generate(request),error=>error.status===(status===429?429:502)&&!error.message.includes(key),label+' '+status);
+      await assert.rejects(()=>failures.generate(request),error=>error.status===(typeof status==='number'?status:502)&&!error.message.includes(key),label+' '+status);
     }
   }
 });
@@ -597,4 +597,45 @@ test('streamed incomplete responses retain the output-limit reason and reported 
  const ai=new Intelligence(new Secrets(),async()=>new Response('data: '+JSON.stringify({type:'response.incomplete',response:terminal})+'\n\n',{headers:{'content-type':'text/event-stream'}}));ai.save({apiKey:key});
  await assert.rejects(()=>ai.reeditSource('text','Edit',new AbortController().signal,()=>({usage:value=>usage.push(value)}),'blocks'),error=>error instanceof GenerationResponseError&&error.code==='provider_output_limit');
  assert.deepEqual(usage,[terminal.usage]);
+});
+
+test('generation and embeddings preserve safe typed provider outcomes and Retry-After',async()=>{
+  for(const status of [400,401,403,429,503])for(const kind of ['generation','embedding']) {
+    let calls=0;
+    const ai=new Intelligence(new Secrets(),async()=>{calls++;return new Response('private-provider-payload',{status,headers:{'retry-after':'45'}});});ai.save({apiKey:key});
+    await assert.rejects(()=>kind==='generation'?ai.generate({kind:'pageEnrichment',input:'A substantive page about mathematics.',options:{requestedFields:['summary']}}):ai.embed('A substantive page about mathematics.'),error=>{
+      assert.equal(error.providerStatus,status);assert.equal(error.status,status);assert.equal(error.retryAfterMs,45000);
+      assert.equal(error.retryCategory,status===401||status===403?'configuration':status===400?'request':'capacity');assert.equal(error.retryable,status>=500||status===429);
+      assert.equal(error.message.includes('private-provider-payload'),false);assert.equal(error.message.includes(key),false);return true;
+    });assert.equal(calls,1);
+  }
+});
+
+test('HTTP 200 failed responses retry only allowlisted capacity codes without leaking provider errors',async()=>{
+ for(const code of ['server_error','rate_limit_exceeded','unknown_private_code'])for(const mode of ['compact','full']) {
+  const traces=[],secrets=new Secrets();const ai=new Intelligence(secrets,async()=>Response.json({status:'failed',error:{code,message:'private rejected request payload'}}));ai.save({apiKey:key});
+  const trace={mode,request(){},headers(){},body:value=>traces.push(value),event:(_type,value)=>traces.push(value),response:value=>traces.push(value),error:value=>traces.push(value)};
+  await assert.rejects(()=>ai.generate({kind:'summary',input:'page',onRequest:()=>trace}),error=>error instanceof GenerationResponseError&&error.retryable===(code!=='unknown_private_code'));
+  assert.equal(JSON.stringify(traces).includes('private rejected request payload'),false);
+  assert.equal(JSON.stringify(traces).includes('unknown_private_code'),false);
+ }
+});
+
+test('retry configuration identity is stable after preferences persist and process restart',()=>{
+ const secrets=new Secrets();let preferences;const preferenceStore={read:()=>preferences,write:value=>{preferences=structuredClone(value);}};
+ const first=new Intelligence(secrets,undefined,undefined,preferenceStore);first.save({apiKey:key});first.savePreferences({...first.selection(),pageEnrichment:{model:'gpt-6-luna',reasoningEffort:'low'}});
+ const second=new Intelligence(secrets,undefined,undefined,preferenceStore);
+ assert.equal(first.retryConfigurationIdentity(),second.retryConfigurationIdentity());
+ const original=second.retryConfigurationIdentity();second.save({apiKey:'sk-replacement-key-fixture'});assert.notEqual(second.retryConfigurationIdentity(),original);
+});
+
+test('terminal SSE error events distinguish request and auth failures from transient capacity',async()=>{
+ for(const code of ['server_error','rate_limit_exceeded','invalid_request_error','invalid_api_key']) {
+  const ai=new Intelligence(new Secrets(),async()=>new Response('data: '+JSON.stringify({type:'error',code,message:'private SSE request detail'})+'\n\n',{headers:{'content-type':'text/event-stream'}}));ai.save({apiKey:key});
+  await assert.rejects(()=>ai.generate({kind:'summary',input:'page'}),error=>{
+   assert.equal(error instanceof GenerationResponseError,true);assert.equal(error.retryable,code==='server_error'||code==='rate_limit_exceeded');
+   assert.equal(error.retryCategory,code==='invalid_api_key'?'configuration':code==='invalid_request_error'?'request':'response');
+   assert.equal(JSON.stringify(error).includes('private SSE request detail'),false);return true;
+  });
+ }
 });

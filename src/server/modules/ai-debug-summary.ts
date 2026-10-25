@@ -20,6 +20,23 @@ export function withoutVectors(value:unknown):unknown {
   if(!value || typeof value!=='object')return value;
   return Object.fromEntries(Object.entries(value).map(([key,item])=>[key,key==='embedding'?(Array.isArray(item)?{dimensions:item.length,valid:item.every(n=>typeof n==='number'&&Number.isFinite(n))}:{dimensions:finiteNumber(record(item).dimensions)??null,valid:record(item).valid===true}):withoutVectors(item)]));
 }
+const safeProviderCodes=new Set(['server_error','rate_limit_exceeded','invalid_api_key','insufficient_quota','invalid_request_error','context_length_exceeded','content_policy_violation']);
+export function safeProviderError(value:unknown) {const code=record(value).code;return {code:typeof code==='string'&&safeProviderCodes.has(code)?code:'provider_error'};}
+export function withoutProviderErrors(value:unknown):unknown {
+  if(Array.isArray(value))return value.map(withoutProviderErrors);
+  if(!value||typeof value!=='object')return value;
+  if(record(value).type==='error')return {type:'error',...safeProviderError(value)};
+  return Object.fromEntries(Object.entries(value).map(([key,item])=>[key,key==='error'&&item?safeProviderError(item):withoutProviderErrors(item)]));
+}
+export function safeProviderBody(value:string):string {
+  try{return JSON.stringify(withoutProviderErrors(JSON.parse(value)));}catch {
+    if(value.split('\n').some(line=>line.startsWith('data:')))return value.split('\n').map(line=>{
+      if(!line.startsWith('data:')||line.slice(5).trim()==='[DONE]')return line;
+      try{return 'data: '+JSON.stringify(withoutProviderErrors(JSON.parse(line.slice(5))));}catch{return 'data: [unparsed provider event omitted]';}
+    }).join('\n');
+    return '[unparsed provider body omitted]';
+  }
+}
 const shortString = (value:unknown) => typeof value==='string'?traceExcerpt(value,256):undefined;
 const finiteNumber = (value:unknown) => typeof value==='number'&&Number.isFinite(value)?value:undefined;
 function usageSummary(value:unknown) {
@@ -47,6 +64,6 @@ export function compactResponse(value:unknown) {
   for(const item of Array.isArray(p.output)?p.output:[])for(const part of Array.isArray(item.content)?item.content:[])if(typeof part.text==='string')texts.push(part.text);
   const output=texts.join('\n');
   const vectors=Array.isArray(p.data)?p.data.slice(0,64).map((item:any,index:number)=>({index: item.index??index,dimensions:Array.isArray(item.embedding)?item.embedding.length:null,valid:Array.isArray(item.embedding)&&item.embedding.length>0&&item.embedding.every((n:unknown)=>typeof n==='number'&&Number.isFinite(n))})):undefined;
-  return {id:shortString(p.id),model:shortString(p.model),status:shortString(p.status),usage:usageSummary(p.usage),error:p.error?{code:shortString(p.error.code),type:shortString(p.error.type),message:traceExcerpt(String(p.error.message??''),2048)}:undefined,
+  return {id:shortString(p.id),model:shortString(p.model),status:shortString(p.status),usage:usageSummary(p.usage),error:p.error?safeProviderError(p.error):undefined,
     incomplete_details:p.incomplete_details?{reason:shortString(record(p.incomplete_details).reason)}:undefined,outputBytes:Buffer.byteLength(output),outputExcerpt:traceExcerpt(output),outputFingerprint:createHmac('sha256',fingerprintKey).update(output).digest('hex'),vectorCount:Array.isArray(p.data)?p.data.length:undefined,vectors};
 }

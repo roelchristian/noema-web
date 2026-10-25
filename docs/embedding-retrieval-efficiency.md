@@ -100,13 +100,17 @@ Independent review found and resolved two issues: metadata changes beyond bounde
 heading context, and stale lexical evidence across the asynchronous query wait.
 No unresolved review findings remain for the implementation present here.
 
-The separately supplied typed retry commit `fb8db3ae4451e69168ca393cd6199b9ab1906520`
-is **not integrated**: Library resolved its transfer, but the supported download
-helper returned `download failed` and produced no archive bytes. No archive hash
-verification, extraction or import was possible. Existing worker retry branches
-were preserved, but validation here does not claim the new typed retry policy.
+The typed retry commit `fb8db3ae4451e69168ca393cd6199b9ab1906520` is now
+integrated from the verified safeguards Git branch. The earlier Library transfer
+failed without writing archive bytes; subsequent explicit publication authority
+made the verified Git branch available. The combined worker preserves cross-Page
+packing, distinct-Page completion reconciliation and per-job attempt accounting,
+while terminal provider errors stop automatic retries and `Retry-After` governs
+transient retries. Local admission consumes zero attempts. Cancelled members do
+not acquire terminal retry blocks from a later failed provider response; this
+applies to both Page and source workers.
 
-## Final local validation
+## Validation before safeguards integration
 
 - `npm run test:all`: **1,810 passed, eight skipped, zero failed** (1,818 tests).
   The initial broad run exposed two obsolete singleton-provider/API activity
@@ -128,7 +132,6 @@ were preserved, but validation here does not claim the new typed retry policy.
   `git diff --check` passed.
 
 All provider tests and measurements use mocked or synthetic vectors. No real
-provider calls, pushes, pull requests, remote merges or deployments were made.
-The separately supplied retry-policy archive could not be downloaded, so these
-results cover the completed embedding/retrieval and integrated read/snapshot
-changes, not joint validation with that unavailable retry commit.
+provider calls were made. These results cover the initial embedding/retrieval and
+read/snapshot changes; combined validation with safeguards is recorded below.
+Publication was subsequently explicitly authorized for the draft PR only.

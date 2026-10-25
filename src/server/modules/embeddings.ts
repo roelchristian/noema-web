@@ -1,3 +1,5 @@
+import {EmbeddingRetryState} from './embedding-retry-state.js';
+import {aiRetryPolicy} from './ai-retry-policy.js';
 import {OpenAIResponseSizeError} from './openai-response.js';
 import {PageSegments,pageIndexPolicy} from './page-segments.js';
 import {PageSegmentIndex} from './page-segment-index.js';
@@ -33,7 +35,9 @@ export class Embeddings {
  private sourcePassages:SourcePassages;
  private sourceEmbeddings:SourcePassageEmbeddings;
  private activeActivity=new Set<string>();
+ private retryState:EmbeddingRetryState;
  constructor(private store: Store, private pages: Pages, private knowledge: Knowledge, private vaults: Vaults, private intelligence: Intelligence, private activity?: AIActivityLog) {
+  this.retryState=new EmbeddingRetryState(store,intelligence,'page');
   this.pageSegments=new PageSegments(store);
   this.pageIndex=new PageSegmentIndex(store);
   this.sourcePassages=new SourcePassages(store);
@@ -188,6 +192,11 @@ export class Embeddings {
   if(this.busy||this.closed)return;
   this.busy=true;
   try {
+   for(const changed of this.retryState.configurationChanged()) {
+    const segment=this.pageIndex.get(changed.vault,changed.id);
+    const pageId=segment?.page_id??this.store.get<{page_id:string}>('SELECT page_id FROM embedding_jobs WHERE segment_id=? AND vault_id=? LIMIT 1',changed.id,changed.vault)?.page_id;
+    if(pageId)this.pageIndex.enqueue(changed.vault,pageId,'configuration_change',0,true);
+   }
    this.discoverSources();
    if(!this.intelligence.status().configured)return;
    if(this.sourceTurn){this.sourceTurn=false;if(await this.sourceEmbeddings.tick())return;}
@@ -219,11 +228,12 @@ export class Embeddings {
    this.store.run("UPDATE embedding_jobs SET status='running',started_at=?,finished_at=NULL,error=NULL WHERE id=? AND status='queued'",now(),job.id);
    if(!job.segment_id){this.finish(job.id,'skipped','Replaced by adaptive Page segments.');this.pageSegments.synchronize(job.vault_id);this.pageIndex.enqueue(job.vault_id,job.page_id??undefined,'retry');continue;}
    if(!segment||segment.content_hash!==job.content_hash||job.model!==embeddingModel||job.dimensions!==embeddingDimensions||this.pageIndex.fresh(segment)){this.finish(job.id,'skipped','Page segment changed, is ineligible, or already indexed.');continue;}
+   if(this.retryState.blocked(segment.id,job.content_hash)){this.finish(job.id,'failed','Waiting for an input or Intelligence configuration change.');continue;}
    maxInputs=candidateMax;
    batch.push({job,segment});bytes+=Buffer.byteLength(segment.input,'utf8');
   }
   if(!batch.length)return;
-  const vault=batch[0]!.job.vault_id;
+  const vault=batch[0]!.job.vault_id,dispatchedConfiguration=this.retryState.configurationIdentity();
   try {
    this.vaults.requireOpen(vault);
    const result=await this.intelligence.embedBatch(batch.map(({segment})=>segment.input),requestBytes=>{
@@ -254,9 +264,16 @@ export class Embeddings {
    this.finishActivity(activityId,persisted?'completed':'skipped',persisted?200:409);
   }catch(error) {
    if(this.closed)return;
+   const policy=aiRetryPolicy(error);
    const code=error instanceof HttpError?error.status:502;
    this.finishActivity(activityId,code===404||code===423?'skipped':'failed',code);
    for(const {job} of batch) {
+    // Cancellation belongs to this member; it must not gain retry blocks or
+    // attempts from a failed request that still contains unaffected Pages.
+    if(this.store.get<JobRow>('SELECT status FROM embedding_jobs WHERE id=?',job.id)?.status!=='running')continue;
+    if(code===409&&this.retryState.configurationIdentity()!==dispatchedConfiguration) {
+     this.store.run("UPDATE embedding_jobs SET status='queued',started_at=NULL,next_attempt_at=?,error='Intelligence configuration changed. Waiting to retry.' WHERE id=? AND status='running'",now(),job.id);continue;
+    }
     // Shrinking is bounded by the singleton case and survives worker restarts.
     if(error instanceof OpenAIResponseSizeError&&batch.length>1) {
      this.store.run("UPDATE embedding_jobs SET status='queued',started_at=NULL,next_attempt_at=?,batch_max_inputs=?,error='Response size limit reached. Retrying a smaller batch.' WHERE id=? AND status='running'",now(),Math.ceil(batch.length/2),job.id);continue;
@@ -266,8 +283,9 @@ export class Embeddings {
     }
     if(code===423){this.store.run("UPDATE embedding_jobs SET status='queued',next_attempt_at=?,error='Waiting for vault to unlock.' WHERE id=? AND status='running'",now(),job.id);continue;}
     if(code===404){this.finish(job.id,'skipped','Page is unavailable.');continue;}
+    this.retryState.record(job.segment_id!,job.vault_id,job.content_hash,error,dispatchedConfiguration);
     const attempts=job.attempts+(admitted?1:0);
-    if((code===429||code>=500)&&attempts<3)this.store.run("UPDATE embedding_jobs SET status='queued',next_attempt_at=?,error='Embedding service unavailable. Automatic retry scheduled.' WHERE id=? AND status='running'",new Date(Date.now()+30000*2**Math.max(0,attempts-1)).toISOString(),job.id);
+    if(policy.retryable&&attempts<3)this.store.run("UPDATE embedding_jobs SET status='queued',next_attempt_at=?,error='Embedding service unavailable. Automatic retry scheduled.' WHERE id=? AND status='running'",new Date(Date.now()+Math.max(policy.retryAfterMs,30000*2**Math.max(0,attempts-1))).toISOString(),job.id);
     else this.finish(job.id,'failed',code===409?'Configure an OpenAI key in Intelligence settings.':'Embedding request failed. Check Intelligence settings and retry.');
    }
   }

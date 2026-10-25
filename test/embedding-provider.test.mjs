@@ -19,7 +19,7 @@ test('embedding provider rejects malformed vectors and sanitizes provider errors
   const ai=setup(async()=>result(payload));await assert.rejects(()=>ai.embed('note'),e=>e.status===502);
  }
  const ai=setup(async()=>new Response(key,{status:401}));
- await assert.rejects(()=>ai.embed('note'),e=>e.status===502&&!e.message.includes(key));
+ await assert.rejects(()=>ai.embed('note'),e=>e.status===401&&e.providerStatus===401&&e.retryCategory==='configuration'&&!e.message.includes(key));
  const network=setup(async()=>{throw Error(key);});
  await assert.rejects(()=>network.embed('note'),e=>e.status===502&&!e.message.includes(key));
 });

@@ -574,7 +574,7 @@ test('editorial version labels preserve assigned ordinals with gaps and retain t
  await mount(t,{initial:newer,history:[newer,r,older]});
  const options=[...document.querySelector('[aria-label="Reading version"]').options];
  for(const [id,version] of [['older','V2'],['middle','V4'],['newer','V7']]){
-  const option=options.find(option=>option.value===id);assert.ok(option);assert.ok(option.textContent.startsWith(version+' · Editorial revision · '));
+  const option=options.find(option=>option.value===id);assert.ok(option);assert.ok(option.textContent.startsWith(version+' · '));assert.ok(!option.textContent.includes('Editorial revision'));
   assert.match(option.textContent,/2026/);
  }
  const details=document.querySelector('button[aria-label="Processing details"]');assert.ok(details.querySelector('svg'));assert.equal(details.textContent,'');assert.equal(details.title,'Processing details');

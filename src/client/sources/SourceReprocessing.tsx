@@ -289,7 +289,7 @@ export function SourceReprocessing({sourceId,vaultId,fileId,visible,onShow,onOri
     <div className="reprocessing-bar">
       <label className="reprocessing-reading-picker">{uiText("Reading version")} <Select aria-label={uiText("Reading version")} value={readingChoice} onChange={event=>chooseReading(event.target.value)}>
         <option value="original">{uiText("Original processed")}{!currentReadingId?" · Preferred":""}</option>
-        {revisionOptions.filter(eligible).map(item=><option key={item.id} value={item.id}>{versionLabels.get(item.id)} · {uiText("Editorial revision")} · {new Date(item.createdAt).toLocaleString(getLocale())}{currentReadingId===item.id?" · Preferred":""}</option>)}
+        {revisionOptions.filter(eligible).map(item=><option key={item.id} value={item.id}>{versionLabels.get(item.id)} · {new Date(item.createdAt).toLocaleString(getLocale())}{currentReadingId===item.id?" · Preferred":""}</option>)}
       </Select></label>
       <button type="button" className="reprocessing-quiet-action" aria-label={uiText("Set as preferred reading version")} title={uiText("Set as preferred reading version")} disabled={requestedReadingId===currentReadingId} onClick={preferReading}>{requestedReadingId===currentReadingId?uiText("Preferred"):uiText("Set preferred")}</button>
       <button ref={reviewTrigger} type="button" disabled={!revision||revision.id!==revisionId} className="reprocessing-quiet-action" aria-expanded={visible&&tab==='review'} aria-controls={`source-review-${fileId}`} onClick={()=>{reviewInvoker.current=reviewTrigger.current;setPassagePatchIds([]);setFilter('all');setReviewStyle('diff');setTab('review');onShow();}}>{uiText("Review changes (")}{pending})</button>

@@ -290,9 +290,19 @@ test('final deterministic audit remains durable when review rematerializes a der
 });
 
 test('large scholarly audit stays within the restorable finding budget and records truncation',async t=>{
- const text=Array.from({length:1100},(_,index)=>`Reference [^${index}].\n[^${index}]: printed definition.\n\n`).join('');
- const env=harness(t,{text,provider:request=>request.kind==='synthesis'?JSON.stringify({observations:[]}):JSON.stringify({blocks:request.blocks.map(block=>({...block,text:block.text.replace(/^\[\^\d+\]: printed definition\.\n/gm,'')})),diagnostics:[],unresolved:false})});
+ // References and definitions occupy separate physical pages/chunks. Each
+ // chunk remains locally valid, so the final document-wide audit must catch loss.
+ const text='<!-- Page 1 -->\n'+Array.from({length:1100},(_,index)=>`Reference [^${index}].\n`).join('')+'<!-- Page 2 -->\n'+Array.from({length:1100},(_,index)=>`[^${index}]: printed definition.\n`).join('');
+ const env=harness(t,{text,pages:2,pageStartLines:[1,1102],provider:request=>request.kind==='synthesis'?JSON.stringify({observations:[]}):JSON.stringify({blocks:request.blocks.map(block=>({...block,text:block.text.replace(/^\[\^\d+\]: printed definition\.\n/gm,'')})),diagnostics:[],unresolved:false})});
  await env.worker.tick();assert.equal(env.value.status,'completed');const audit=env.value.report.documentAudit;assert.equal(audit.findings.length,1000);assert.match(audit.findings.at(-1),/omitted/);assert.deepEqual(env.value.report.validationDiagnostics,audit.findings);
+});
+
+
+test('newly missing footnotes fail publication and preserve the canonical reading',async t=>{
+ const text='Reference [^note].\n\n[^note]: printed definition.\n';
+ const env=harness(t,{text,provider:request=>JSON.stringify({blocks:request.blocks.map(block=>({...block,text:block.text.replace(/^\[\^note\]: printed definition\.\n/gm,'')})),diagnostics:[],unresolved:false})});
+ await env.worker.tick();assert.equal(env.value.status,'failed');assert.match(env.value.report.error,/missing or ambiguous footnote definition/);
+ assert.equal(env.value.patches.length,0);assert.equal(env.value.reprocessed.text,text);
 });
 
 

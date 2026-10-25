@@ -83,6 +83,26 @@ test('Library shows independent AI history icons and omits unrecorded contributi
   assert.doesNotMatch(generated,/AI-generated, edited/);
 });
 
+test('Library sigils expose matching descriptive tooltips and screen-reader labels',async()=>{
+  const {JSDOM}=await import('jsdom');
+  const page={id:'draft',title:'Combined',updated_at:'2026-10-17',aiStatus:'ai_generated_edited',aiReviewAccepted:true,containsAIExplanations:true};
+  const document=new JSDOM(render({pages:[page]})).window.document;
+  const icons=[...document.querySelectorAll('.page-ai-history-icon')];
+  assert.deepEqual(icons.map(icon=>icon.getAttribute('aria-label')),['AI-generated content','AI writing edits accepted','Contains AI explanations','Edited after generation']);
+  for(const icon of icons){
+    assert.equal(icon.getAttribute('role'),'img');
+    assert.equal(icon.title,icon.getAttribute('aria-label'));
+    assert.equal(icon.querySelector('svg').getAttribute('aria-hidden'),'true');
+    assert.equal(icon.querySelector('svg').getAttribute('stroke'),'currentColor');
+    assert.equal(icon.querySelector('svg').getAttribute('fill'),'none');
+  }
+  // An old ordinary status and an unrelated edit flag do not record a contribution.
+  for(const aiStatus of [undefined,'regular','regular_with_ai_explanations']){
+    const empty=new JSDOM(render({pages:[{...page,creationMethod:'manual_creation',aiStatus,aiReviewAccepted:false,containsAIExplanations:false,editedAfterGeneration:true}]})).window.document;
+    assert.equal(empty.querySelector('.page-ai-library-status'),null);
+  }
+});
+
 test('sidebar caps every page group at five and View all opens its full list', async t => {
   const {setupDOM} = await import('./helpers/dom.mjs');
   const {act} = await import('react');

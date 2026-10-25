@@ -32,7 +32,10 @@ export function detectPageFurniture(text:string,document:SourceDocument):PageFur
   // Short pure page labels are recognizable; other varying lines need words.
   const pageLabel=/^(?:page\s+)?#(?:\s*(?:\/|of|–|-)\s*#)?[.]?$/i.test(sig);
   const exactPages=exactCounts.get(item.kind+':'+item.text.trim())!;
-  if(pages.size<3||!pageLabel&&exactPages.size<3&&(sig.match(/\p{L}/gu)?.length??0)<12)return false;
+  // Numeric similarity alone must not classify ordinary sentences as furniture.
+  // Exact repetition and explicit page labels remain eligible; uncertain prose
+  // can still be classified through the separately source-checked model path.
+  if(pages.size<3||!pageLabel&&exactPages.size<3&&((sig.match(/\p{L}/gu)?.length??0)<12||/[.!?;:]$/.test(item.text.trim())))return false;
   seen.add(item.id);return true;
  }).slice(0,2000).map(item=>({...item,reason:`Repeated ${item.kind} pattern on at least three physical pages; changing numeric fields are preserved. Review before hiding.`}));
 }

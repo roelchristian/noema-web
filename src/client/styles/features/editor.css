@@ -2608,11 +2608,16 @@
 }
 .page-ai-history-icon {
   display: inline-flex;
+  align-items: center;
   flex: none;
 }
 .page-ai-history-icon > .icon {
   width: 16px;
   height: 16px;
+}
+.organization-library[data-density="compact"] .page-ai-history-icon > .icon {
+  width: 14px;
+  height: 14px;
 }
 .page-persistence-notices {
   flex: 0 0 100%;

@@ -88,7 +88,7 @@ export class PageSegmentIndex {
  /** Scan only scoring data in SQL scope; retain a bounded shortlist. */
  candidates(vault:string,vector:number[],pageIds?:string[],selection:SemanticSelection={}):SemanticCandidate[] {
   const shortlist=new SemanticShortlist(selection.limit??1000,selection.distinctOwners);
-  const rows=this.store.all<{id:string;page_id:string;vector:string}>(`SELECT s.id,s.page_id,b.vector FROM page_segments s JOIN pages p ON p.id=s.page_id JOIN page_segment_embeddings b ON b.segment_id=s.id AND b.content_hash=s.content_hash WHERE s.vault_id=? AND ${current} AND b.model=? AND b.dimensions=? ${pageIds===undefined?'':'AND s.page_id IN (SELECT value FROM json_each(?))'}`,vault,embeddingModel,embeddingDimensions,...(pageIds===undefined?[]:[JSON.stringify(pageIds)]));
+  const rows=this.store.iterate<{id:string;page_id:string;vector:string}>(`SELECT s.id,s.page_id,b.vector FROM page_segments s JOIN pages p ON p.id=s.page_id JOIN page_segment_embeddings b ON b.segment_id=s.id AND b.content_hash=s.content_hash WHERE s.vault_id=? AND ${current} AND b.model=? AND b.dimensions=? ${pageIds===undefined?'':'AND s.page_id IN (SELECT value FROM json_each(?))'}`,vault,embeddingModel,embeddingDimensions,...(pageIds===undefined?[]:[JSON.stringify(pageIds)]));
   for(const row of rows){const score=this.vectors.score(`page-segment:${row.id}`,row.vector,vector,embeddingDimensions);if(score!==undefined)shortlist.add({id:row.id,ownerId:row.page_id,kind:'page',score});}
   return shortlist.values();
  }

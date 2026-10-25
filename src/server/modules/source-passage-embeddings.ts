@@ -171,7 +171,7 @@ export class SourcePassageEmbeddings {
  }
  candidates(vault:string,queryVector:number[],sourceIds?:string[],selection:SemanticSelection={}):SemanticCandidate[] {
   const shortlist=new SemanticShortlist(selection.limit??1000,selection.distinctOwners);
-  const rows=this.store.all<{id:string;source_id:string;content_hash:string;vector:string}>(`SELECT p.id,p.source_id,p.content_hash,b.vector ${joins} JOIN source_passage_embeddings b ON b.passage_id=p.id WHERE p.vault_id=? AND ${searchable} AND ${fresh} ${sourceIds===undefined?'':'AND p.source_id IN (SELECT value FROM json_each(?))'}`,vault,embeddingModel,embeddingDimensions,...(sourceIds===undefined?[]:[JSON.stringify(sourceIds)]));
+  const rows=this.store.iterate<{id:string;source_id:string;content_hash:string;vector:string}>(`SELECT p.id,p.source_id,p.content_hash,b.vector ${joins} JOIN source_passage_embeddings b ON b.passage_id=p.id WHERE p.vault_id=? AND ${searchable} AND ${fresh} ${sourceIds===undefined?'':'AND p.source_id IN (SELECT value FROM json_each(?))'}`,vault,embeddingModel,embeddingDimensions,...(sourceIds===undefined?[]:[JSON.stringify(sourceIds)]));
   for(const row of rows){const score=this.vectors.score(`${vault}:${row.id}:${row.content_hash}`,row.vector,queryVector,embeddingDimensions);if(score!==undefined)shortlist.add({id:row.id,ownerId:row.source_id,kind:'entity',score});}
   return shortlist.values();
  }

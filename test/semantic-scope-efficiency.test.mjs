@@ -53,7 +53,7 @@ test('semantic top-k materializes only winners and navigation keeps distinct own
  }
  const score=CachedVectorSearch.prototype.score;t.mock.method(CachedVectorSearch.prototype,'score',function(...args){scored++;return score.apply(this,args);});
  const result=await f.worker.retrievePassages('default',{query:'unfindablelexicaltoken',limit:1});
- assert.equal(result.results.length,1);assert.ok(scored>100);assert.equal(materialized,100,'Only the global semantic candidate shortlist receives text and reference materialization');
+ assert.equal(result.results.length,1);assert.ok(scored>100);assert.equal(materialized,1,'Only the final semantic winner receives text and reference materialization');
  t.diagnostic(`Hybrid: candidate/scoring rows=${scored}; prior materializations=${scored}; current materializations=${materialized}; returned=1.`);
  materialized=0;scored=0;
  const navigation=await f.worker.search('default',{query:'unfindablelexicaltoken',limit:3});
@@ -61,6 +61,11 @@ test('semantic top-k materializes only winners and navigation keeps distinct own
  t.diagnostic(`Navigation: candidate/scoring rows=${scored}; prior materializations=${scored}; current materializations=${materialized}; returned=3.`);
  assert.equal(new Set(navigation.results.map(row=>`${row.kind}:${row.id}`)).size,3);
  assert.ok(navigation.results.every(row=>row.pageReference||row.reference));
+ materialized=0;
+ const overlap=await f.worker.retrievePassages('default',{query:'grace',limit:1,passageScope:{pageIds:[f.myNote.id],sourceIds:[f.primary.id]}});
+ assert.equal(overlap.results.length,1);assert.ok(overlap.results[0].lexicalRank);assert.ok(overlap.results[0].semanticRank);
+ assert.equal(overlap.results[0].score,1/(60+overlap.results[0].lexicalRank)+1/(60+overlap.results[0].semanticRank));
+ assert.ok(overlap.results[0].pageReference||overlap.results[0].reference);assert.equal(materialized,0,'Lexical evidence retains its existing snippet and anchors on overlap');
 });
 test('semantic availability and scoped results preserve stale, archive, deletion and vault boundaries',async t=>{
  const f=setup(t);

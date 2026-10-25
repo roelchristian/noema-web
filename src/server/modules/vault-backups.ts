@@ -80,6 +80,7 @@ const tables={
   source_reprocessing_repairs:{columns:'revision_id,chunk_index,pass_index,repair_id,payload',scope:'revision_id IN (SELECT id FROM source_reprocessing WHERE vault_id=? AND file_id IN (SELECT id FROM source_files WHERE entity_id IS NOT NULL))'},
   source_reprocessing_synthesis:{columns:'revision_id,payload',scope:'revision_id IN (SELECT id FROM source_reprocessing WHERE vault_id=? AND file_id IN (SELECT id FROM source_files WHERE entity_id IS NOT NULL))'},
   source_reprocessing_passes:{columns:'revision_id,chunk_index,pass_index,payload',scope:'revision_id IN (SELECT id FROM source_reprocessing WHERE vault_id=? AND file_id IN (SELECT id FROM source_files WHERE entity_id IS NOT NULL))'},
+  source_reprocessing_versions:{columns:'file_id,last_version',scope:'file_id IN (SELECT id FROM source_files WHERE vault_id=? AND entity_id IS NOT NULL)'},
   source_reprocessing:{columns:'id,file_id,status,created_at,updated_at,payload',scope:'vault_id=? AND file_id IN (SELECT id FROM source_files WHERE entity_id IS NOT NULL)'},
   source_math_documents:{columns:'file_id,raw_hash,algorithm_version,cleaned_text,uncertainty_json,updated_at',scope:'file_id IN (SELECT id FROM source_files WHERE vault_id=? AND entity_id IS NOT NULL)'},
   source_files:{columns:'id,entity_id,name,size,status,text,error,progress,pages,ocr_pages,created_at,import_method,source_url,pdf_flattened,admitted,format,page_start_lines,structural_nodes,original_filename,language,summary,generated_name,enrichment_status,contains_math',scope:'vault_id=? AND entity_id IS NOT NULL'},
@@ -418,6 +419,10 @@ export class VaultBackups {
           for(const chunk of checkpoints.chunks)insert('source_reprocessing_chunks',{revision_id:revision.id,chunk_index:chunk.index,payload:JSON.stringify(chunk)});
           for(const pass of checkpoints.passes)insert('source_reprocessing_passes',{revision_id:revision.id,chunk_index:pass.chunkIndex,pass_index:pass.index,payload:JSON.stringify(pass)});
           for(const repair of repairs)insert('source_reprocessing_repairs',{revision_id:revision.id,chunk_index:repair.chunkIndex,pass_index:repair.passIndex,repair_id:repair.repairId,payload:JSON.stringify(repair)});
+        }
+        for(const row of rows.source_reprocessing_versions){
+          const fileId=ref(restoredSourceFiles,name(row,'file_id')),last=integer(row,'last_version',1);
+          this.store.run('INSERT INTO source_reprocessing_versions(file_id,last_version) VALUES(?,?) ON CONFLICT(file_id) DO UPDATE SET last_version=max(last_version,excluded.last_version)',fileId,last);
         }
         for(const item of [...rows.source_reprocessing_chunks,...rows.source_reprocessing_passes,...rows.source_reprocessing_synthesis,...rows.source_reprocessing_repairs])if(!editorialIds.has(String(item.revision_id)))throw invalid();
         this.store.run("UPDATE entities SET inactive=CASE WHEN EXISTS (SELECT 1 FROM source_files WHERE entity_id=entities.id AND status='failed') THEN 1 ELSE 0 END WHERE vault_id=? AND type='source'",vault);

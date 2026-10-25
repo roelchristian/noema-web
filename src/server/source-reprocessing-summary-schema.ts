@@ -19,7 +19,7 @@ export function setupSourceReprocessingSummarySchema(db:DatabaseSync) {
   db.exec('DROP TRIGGER IF EXISTS source_reprocessing_summary_insert; DROP TRIGGER IF EXISTS source_reprocessing_summary_update');
   db.exec(`UPDATE source_reprocessing SET summary_json=${projection('payload')} WHERE json_type(summary_json,'$.furniture') IS NOT NULL`);
   db.exec(`CREATE TRIGGER IF NOT EXISTS source_reprocessing_summary_insert AFTER INSERT ON source_reprocessing BEGIN
-   UPDATE source_reprocessing SET summary_json=${projection('NEW.payload')} WHERE id=NEW.id;
+   UPDATE source_reprocessing SET summary_json=${projection('(SELECT payload FROM source_reprocessing WHERE id=NEW.id)')} WHERE id=NEW.id;
    END;
    CREATE TRIGGER IF NOT EXISTS source_reprocessing_summary_update AFTER UPDATE OF payload ON source_reprocessing BEGIN
    UPDATE source_reprocessing SET summary_json=${projection('NEW.payload')} WHERE id=NEW.id;

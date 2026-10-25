@@ -1,4 +1,4 @@
-import {detectPageFurniture} from './source-reprocessing-furniture.js';
+import {sourceEditorialRevisionLimit} from '../../shared/source-reprocessing.js';
 import {gatherReprocessingEvidence,type SourceReprocessingEvidence} from './source-reprocessing-evidence.js';
 import {assertAtomicPatchGroups} from './source-reprocessing-apparatus.js';
 import {executeReconstruction,reconstructionPromptVersion,supportedReconstructionPromptVersion} from './source-reprocessing-pass.js';
@@ -45,6 +45,7 @@ export function reprocessingConfiguration(value:unknown):SourceReprocessingConfi
  const supplied=value===undefined?defaultSourceReprocessingConfiguration:value;
  if(!supplied||typeof supplied!=='object'||Array.isArray(supplied))throw new HttpError(400,'Invalid reconstruction configuration.');
  const config=supplied as Record<string,unknown>,evidence=config.evidence as Record<string,unknown>|undefined;
+ if(config.substantialMath!==undefined&&typeof config.substantialMath!=='boolean')throw new HttpError(400,'Invalid substantial math content option.');
  if(!['light','balanced','deep'].includes(String(config.depth))||!['verified','review_all'].includes(String(config.reviewPolicy))||!evidence||typeof evidence!=='object'||['originalPages','ocr','allowExternalTransmission'].some(key=>typeof evidence[key]!=='boolean'))throw new HttpError(400,'Invalid reconstruction configuration.');
  return structuredClone(supplied) as SourceReprocessingConfiguration;
 }
@@ -87,8 +88,24 @@ export function materializeSourceRevision(r:SourceReprocessingRevision){
    const crossing=patches.find(p=>p.range.startOffset<=node.range.startOffset&&p.range.endOffset>node.range.startOffset);
    if(crossing){
     const heading=r.original.text.slice(node.range.startOffset).split(/\r\n?|\n/,1)[0]??'';
-    const replacement=crossing.userReplacement??crossing.replacement,at=replacement.indexOf(heading);
-    if(!heading||at<0||replacement.indexOf(heading,at+1)!==-1)throw new HttpError(400,`Editorial change cannot preserve the heading “${node.title??heading}” unambiguously. Keep its original text in the replacement.`);
+    // A diff may cover only the first character (for example T → **T).
+    // Locate the surviving heading fragment actually covered by that patch.
+    const covered=heading.slice(0,Math.max(0,crossing.range.endOffset-node.range.startOffset));
+    const fragment=node.title&&covered.startsWith(node.title)?node.title:covered;
+    const replacement=crossing.userReplacement??crossing.replacement;
+    let at=replacement.indexOf(fragment);
+    if(fragment&&at>=0&&replacement.indexOf(fragment,at+1)!==-1&&fragment===node.title){
+     // A statement label can also occur in a later prose reference. Use the
+     // same label syntax as the document builder to distinguish the heading
+     // from "Look at Example 3.2." without guessing between two headings.
+     const candidates=documentWithRawRanges(processedSourceDocument({id:source.fileId,name:source.name,format:'txt',text:replacement,structural_nodes:'[]',page_start_lines:'[]'} as SourceFile),replacement);
+     const labels=sourceDocumentEntries(candidates).filter(({node:label})=>label.kind===node.kind&&label.title===fragment).map(({node:label})=>{
+      const line=replacement.slice(label.range.startOffset).split(/\r\n?|\n/,1)[0]??'';
+      return label.range.startOffset+line.indexOf(fragment);
+     });
+     at=labels.length===1?labels[0]!: -1;
+    }else if(fragment&&at>=0&&replacement.indexOf(fragment,at+1)!==-1)at=-1;
+    if(!fragment||at<0)throw new HttpError(400,`Editorial change cannot preserve the heading “${node.title??heading}” unambiguously. Keep its original text in the replacement.`);
     start=mapped(crossing.range.startOffset)+at;
    }
    const line=text.slice(start).split(/\r\n?|\n/,1)[0]??'';
@@ -171,6 +188,22 @@ export class SourceReprocessing {
    json_extract(payload,'$.report.error') AS error FROM source_reprocessing WHERE id=? AND file_id=? AND vault_id=?`,revisionId,id,vault);
   if(!status)throw new HttpError(404,'Editorial pass not found.');return status;
  }
+ private requireRevisionCapacity(vault:string,id:string){
+  const count=this.store.get<{count:number}>('SELECT count(*) AS count FROM source_reprocessing WHERE file_id=? AND vault_id=?',id,vault)!.count;
+  if(count>=sourceEditorialRevisionLimit)throw new HttpError(409,'Revision limit reached. Five versions include the original. Delete an editorial revision before creating another.');
+ }
+ remove(vault:string,id:string,revisionId:string){
+  this.requireOpen(vault);this.files.require(vault,id);
+  if(revisionId==='original')throw new HttpError(400,'The original source cannot be deleted as a revision.');
+  return this.store.transaction(()=>{
+   const row=this.store.get<{status:string}>('SELECT status FROM source_reprocessing WHERE id=? AND file_id=? AND vault_id=?',revisionId,id,vault);
+   if(!row)throw new HttpError(404,'Editorial revision not found.');
+   if(['queued','running'].includes(row.status)||this.activeRevisionId===revisionId)throw new HttpError(409,'Stop processing and wait for the revision to finish before deleting it.');
+   // Foreign-key cascades remove the revision's chunks, model passes, repairs and synthesis.
+   this.store.run('DELETE FROM source_reprocessing WHERE id=? AND file_id=? AND vault_id=?',revisionId,id,vault);
+   return {deleted:true};
+  });
+ }
  start(vault:string,id:string,body:Record<string,unknown>){
   this.requireOpen(vault);if(this.closed)throw new HttpError(503,'Editorial processing is shutting down.');
   if(body.pipelineVersion!==undefined&&body.pipelineVersion!==1&&body.pipelineVersion!==2)throw new HttpError(400,'Invalid reprocessing pipeline version.');
@@ -187,14 +220,17 @@ export class SourceReprocessing {
   if(['pending','running'].includes(file.enrichment_status))throw new HttpError(409,'Wait for original source enrichment to finish before reprocessing; it may still change math, metadata, and structure.');
   if(file.text.length>512000)throw new HttpError(413,'This beta supports up to 512,000 extracted characters per source. No partial pass was started.');
   if(this.store.get("SELECT 1 FROM source_reprocessing WHERE file_id=? AND status IN ('queued','running')",id))throw new HttpError(409,'An editorial pass for this source is already queued or running.');
+  this.requireRevisionCapacity(vault,id);
   const selection=this.intelligence.editorialSelection();
   const original=this.snapshot(vault,id),timestamp=now();
   if(sourceDocumentEntries(original.document).length>5000)throw new HttpError(413,'This beta supports at most 5,000 semantic nodes per source.');
   if(original.text.length>512000||this.chunks(original.text,original.document.physical.pages.map(p=>p.range.startOffset)).length>128)throw new HttpError(413,'This beta supports at most 512,000 extracted characters and 128 editorial excerpts. No partial pass was started.');
   const revision:SourceReprocessingRevision={pipelineVersion,...(configuration?{configuration}:{}),id:randomUUID(),fileId:id,createdAt:timestamp,updatedAt:timestamp,status:'queued',acceptanceMode,acceptanceThreshold,instructions:typeof body.instructions==='string'?body.instructions:'',baseHash:sourceRevisionBaseHash(original),stale:false,patches:[],original,reprocessed:structuredClone(original),report:{completedChunkIndexes:[],concurrency:2,promptVersion,...selection,startedAt:null,finishedAt:null,durationMs:null,chunksTotal:this.chunks(original.text,original.document.physical.pages.map(p=>p.range.startOffset)).length,chunksCompleted:0,charactersTotal:original.text.length,charactersReviewed:0,inputTokens:null,outputTokens:null,reasoningTokens:null,cachedInputTokens:null,diagnostics:['Beta derivative: original extraction remains canonical. Only accepted changes appear in the reading version.'],error:null}};
-  if(pipelineVersion===2){revision.furniture=detectPageFurniture(original.text,original.document);if(planReprocessingChunks(original.text,original.document,8000,configuration?.architectureVersion===1).length>128)throw new HttpError(413,'V2 supports at most 128 reconstruction chunks.');revision.report.promptVersion=reconstructionPromptVersion;revision.report.concurrency=1;revision.report.chunksTotal=planReprocessingChunks(original.text,original.document,8000,configuration?.architectureVersion===1).length;}
+  if(pipelineVersion===2){revision.furniture=[];if(planReprocessingChunks(original.text,original.document,8000,configuration?.architectureVersion===1).length>128)throw new HttpError(413,'V2 supports at most 128 reconstruction chunks.');revision.report.promptVersion=reconstructionPromptVersion;revision.report.concurrency=1;revision.report.chunksTotal=planReprocessingChunks(original.text,original.document,8000,configuration?.architectureVersion===1).length;}
   this.store.transaction(()=>{
+   this.requireRevisionCapacity(vault,id);
    this.store.run('INSERT INTO source_reprocessing (id,file_id,vault_id,status,created_at,updated_at,payload) VALUES (?,?,?,?,?,?,?)',revision.id,id,vault,revision.status,timestamp,timestamp,JSON.stringify(revision));
+   revision.versionNumber=this.store.get<{version:number}>("SELECT json_extract(payload,'$.versionNumber') AS version FROM source_reprocessing WHERE id=?",revision.id)!.version;
    if(configuration){const checkpoints=new SourceReprocessingCheckpoints(this.store);for(const chunk of planReprocessingChunks(original.text,original.document,8000,configuration?.architectureVersion===1))checkpoints.saveChunk({revisionId:revision.id,index:chunk.index,startOffset:chunk.start,endOffset:chunk.end,baseHash:revision.baseHash,evidenceHash:gatherReprocessingEvidence({text:original.text,document:original.document,start:chunk.start,end:chunk.end,options:configuration.evidence}).hash,difficulty:chunk.difficulty,difficultyReason:chunk.difficultyReason,requiredPassCount:configuration.depth==='light'?1:2,status:'pending'});}
   });return revision;
  }
@@ -246,7 +282,7 @@ export class SourceReprocessing {
     r.status='completed';
    }
    catch(error){r.status=controller.signal.aborted?'interrupted':'failed';r.report.error=error instanceof Error?error.message:'Reconstruction failed.';r.report.errorCode=editorialFailure(error,controller.signal.aborted).code;}
-   finally{clearInterval(timer);r.report.finishedAt=now();r.report.durationMs=(r.report.durationMs??0)+Date.now()-started;this.save(row.vault_id,r);this.controller=null;this.activeRevisionId=null;this.running=false;}
+   finally{clearInterval(timer);if(!controller.signal.aborted&&!this.closed){try{guard();const sourceId=this.files.require(row.vault_id,r.fileId).entity_id;if(sourceId)this.metadata?.processModelCandidates(row.vault_id,sourceId,r);}catch(error){r.report.diagnostics.push('Metadata candidate reconciliation requires review: '+(error instanceof Error?error.message:String(error)));}}r.report.finishedAt=now();r.report.durationMs=(r.report.durationMs??0)+Date.now()-started;this.save(row.vault_id,r);this.controller=null;this.activeRevisionId=null;this.running=false;}
    return;
   }
   const chunks=this.chunks(r.original.text,r.original.document.physical.pages.map(p=>p.range.startOffset));

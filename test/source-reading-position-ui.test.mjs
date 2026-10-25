@@ -4,7 +4,7 @@ import React,{act} from 'react';
 import {createRoot} from 'react-dom/client';
 import {setupDOM} from './helpers/dom.mjs';
 import {createReadingAnchor} from '../src/shared/reading-continuity.ts';
-import {SourceReadingContinuity} from '../src/client/sources/SourceReadingContinuity.tsx';
+import {SourceReadingContinuity,jumpToReadingOffset} from '../src/client/sources/SourceReadingContinuity.tsx';
 
 test('source reading automatically restores a verified position and respects subsequent navigation',async t=>{
  const {dom,defer}=setupDOM(t,{html:'<div id="mount"></div><article><span data-source-start="0" data-source-end="100">'+('A passage with enough text to anchor safely. '.repeat(3))+'</span></article>'});
@@ -41,4 +41,14 @@ test('source reading automatically restores a verified position and respects sub
  await act(async()=>dom.window.dispatchEvent(new dom.window.Event('wheel')));
  await act(async()=>finish());
  assert.equal(scrolls.length,count,'late resume responses do not override deliberate navigation');
+});
+
+
+test('reading jumps locate endnotes by source offset after their display order changes',t=>{
+ const {dom}=setupDOM(t,{html:'<article><span data-source-start="0" data-source-end="10" data-source-atomic="true">Body</span><span data-source-start="30" data-source-end="40" data-source-atomic="true">Later body</span><span data-source-start="10" data-source-end="20" data-source-atomic="true">Endnote</span></article>'});
+ const leaves=[...document.querySelectorAll('span')];
+ leaves.forEach((leaf,index)=>{leaf.getBoundingClientRect=()=>({top:[100,200,900][index]});});
+ let top;dom.window.scrollBy=position=>{top=position.top;};
+ jumpToReadingOffset(document.querySelector('article'),15);assert.equal(top,876);
+ jumpToReadingOffset(document.querySelector('article'),35);assert.equal(top,176);
 });

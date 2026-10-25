@@ -51,6 +51,9 @@ export function setupSourcePassageEmbeddingSchema(db:DatabaseSync) {
  if(!db.prepare('PRAGMA table_info(source_passage_embedding_jobs)').all().some(c=>c.name==='batch_max_inputs'))db.exec('ALTER TABLE source_passage_embedding_jobs ADD COLUMN batch_max_inputs INTEGER NOT NULL DEFAULT 16 CHECK(batch_max_inputs BETWEEN 1 AND 16)');
  db.exec(`CREATE INDEX IF NOT EXISTS source_passage_jobs_queue ON source_passage_embedding_jobs(status,next_attempt_at);
  CREATE INDEX IF NOT EXISTS source_passage_jobs_source ON source_passage_embedding_jobs(source_id,created_at DESC);
+ /* Automatic discovery checks failed history per passage and its latest matching
+    attempt. Bound both correlated lookups instead of scanning all job history. */
+ CREATE INDEX IF NOT EXISTS source_passage_jobs_history ON source_passage_embedding_jobs(passage_id,generation_id,content_hash,model,dimensions,created_at DESC);
  CREATE UNIQUE INDEX IF NOT EXISTS source_passage_jobs_active ON source_passage_embedding_jobs(passage_id) WHERE status IN ('queued','running');
  UPDATE embedding_jobs SET status='skipped',finished_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),error='Replaced by passage indexing.' WHERE source_id IS NOT NULL AND status IN ('queued','running');`);
  db.exec('RELEASE source_passage_embedding_schema');

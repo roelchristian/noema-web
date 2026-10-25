@@ -174,11 +174,11 @@
   margin: 0;
   border: 0;
 }
+/* Keep all source surfaces and their local controls beneath the sticky toolbar. */
+main.source-workspace > #content {
+  isolation: isolate;
+}
 main.source-workspace > #content > .source-reader {
-  width: 100%;
-  max-width: 1240px;
-  margin: 0 auto;
-  padding: 32px 48px 64px;
   color: var(--text);
   container: source-reader / inline-size;
 }
@@ -187,7 +187,7 @@ main.source-workspace > #content > .source-reader {
 }
 .source-workspace-title {
   margin: 0;
-  font: var(--page-heading-weight) clamp(24px, 2.5vw, 32px)/1.25 var(--font-title);
+  font: var(--page-heading-weight) var(--page-heading-size)/var(--page-heading-line-height) var(--font-title);
   letter-spacing: var(--page-heading-letter-spacing);
   overflow-wrap: anywhere;
 }
@@ -200,15 +200,26 @@ main.source-workspace > #content > .source-reader {
   font-size: 13px;
   line-height: 1.7;
 }
-@media (min-width: 751px) and (max-width: 1250px) {
-  main.source-workspace > #content > .source-reader {
-    padding-inline: 32px;
-  }
+/* Annotation rails occupy the frame's side padding, leaving title and prose aligned. */
+main.source-workspace > #content > .source-reader {
+  --source-reader-address-gutter: calc(var(--editor-page-padding-inline) - 8px);
+  --source-reader-note-gutter: calc(var(--editor-page-padding-inline) - 8px);
 }
-@media (max-width: 750px) {
-  main.source-workspace > #content > .source-reader {
-    padding: 28px 20px max(48px, env(safe-area-inset-bottom));
-  }
+main.source-workspace > #content > .source-reader .source-reader-document {
+  width: 100%;
+  max-width: 100%;
+  padding-inline: 0;
+}
+main.source-workspace > #content > .source-reader .source-reader-node-address {
+  inset-inline-end: calc(100% + 8px);
+  inline-size: var(--source-reader-address-gutter);
+}
+main.source-workspace > #content > .source-reader.has-review-drawer:not(.has-revision-diff) {
+  max-width: 1240px;
+}
+main.source-workspace > #content > .source-reader.has-review-drawer:not(.has-revision-diff) > .source-workspace-header {
+  max-width: var(--document-line-width);
+  margin-inline: auto;
 }
 .source-passage-preview {
   margin: 20px 0;
@@ -1097,6 +1108,28 @@ main.source-workspace > #content > .source-reader {
 .source-reader-layout {
   min-width: 0;
 }
+/* Revision diffs use the document surface; evidence keeps the original reader mounted. */
+.source-reader.has-review-drawer.has-revision-diff .source-reader-layout {
+  display: block;
+}
+.source-reader.has-revision-diff .source-reader-content[hidden],
+.source-reader.has-revision-diff.has-review-evidence .source-reader-review-host {
+  display: none;
+}
+.source-reader.has-revision-diff .source-reader-review-host .reprocessing-reviews {
+  position: relative;
+  z-index: auto;
+  inset: auto;
+  overflow: visible;
+  max-height: none;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.source-reader.has-revision-diff .source-reader-evidence-return {
+  display: inline-flex;
+}
 .source-reader-document {
   min-width: 0;
   max-width: calc(var(--document-line-width) + var(--source-reader-address-gutter) + var(--source-reader-note-gutter));
@@ -1105,12 +1138,51 @@ main.source-workspace > #content > .source-reader {
   font: var(--document-font-size)/var(--document-line-height) var(--font-ui);
   letter-spacing: var(--document-letter-spacing);
 }
+.source-reader-page-break {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-block: 30px 22px;
+  color: var(--text-muted);
+  font: 10px/1.4 var(--font-ui);
+  user-select: none;
+}
+.source-reader-page-break::before {
+  content: '';
+  flex: 1;
+  border-block-start: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+}
+.source-reader-page-break span {
+  flex-shrink: 0;
+}
 .source-reader-passage {
   position: relative;
   margin: 0 0 20px;
   scroll-margin-top: calc(var(--workspace-toolbar-height) + 24px);
   border-radius: 3px;
   overflow-wrap: anywhere;
+}
+.source-reader-passage.is-footnote {
+  margin-block-end: 8px;
+}
+.source-reader-document .source-reader-footnote .source-reader-text p {
+  margin-block: 0 4px;
+}
+.source-reader-document .source-reader-footnote .source-reader-text p:last-child {
+  margin-block-end: 0;
+}
+.source-reader-footnote + .source-reader-footnote {
+  margin-block-start: 8px;
+}
+.source-reader-endnotes {
+  margin-block-start: 40px;
+  padding-block-start: 20px;
+  border-block-start: 1px solid var(--line);
+}
+.source-reader-endnotes > h2 {
+  margin: 0 0 20px;
+  color: var(--text-muted);
+  font: 13px/1.5 var(--font-ui);
 }
 .source-reader-passage.is-heading {
   margin-top: 28px;
@@ -1148,9 +1220,12 @@ main.source-workspace > #content > .source-reader {
 .source-reader-node-address {
   position: absolute;
   inset-inline-end: calc(100% + 16px);
-  top: 2px;
+  top: 3px;
   inline-size: 84px;
-  padding: 2px 0;
+  padding: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
   text-align: end;
   overflow-wrap: anywhere;
   color: var(--text-muted);
@@ -1166,6 +1241,13 @@ main.source-workspace > #content > .source-reader {
   min-width: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+.source-reader-checkbox {
+  display: inline-block;
+  box-sizing: border-box;
+  margin: 0;
+  vertical-align: -.05em;
+  cursor: default;
 }
 .source-reader-text p {
   margin: 0 0 14px;
@@ -2100,7 +2182,7 @@ main.source-workspace > #content > .source-reader {
   display: none;
 }
 :root[data-focus-workspace=true] main.source-workspace > #content > .source-reader {
-  max-width: calc(var(--document-line-width) + var(--source-reader-address-gutter) + var(--source-reader-note-gutter) + 96px);
+  max-width: calc(var(--document-line-width) + 2 * var(--editor-page-padding-inline));
   padding-top: 76px;
 }
 :root[data-focus-workspace=true][data-focus-target=source-viewer] #source-viewer {
@@ -2137,7 +2219,7 @@ main.source-workspace > #content > .source-reader {
 
 /* Reader display preferences change Noema's apparatus, never printed content. */
 .source-reader-display {
-  position: static;
+  position: relative;
 }
 .source-reader-display summary {
   cursor: pointer;
@@ -2149,9 +2231,13 @@ main.source-workspace > #content > .source-reader {
 .source-reader-display-panel {
   position: absolute;
   z-index: 15;
-  inset-block-start: 100%;
-  inset-inline-start: 0;
-  width: min(340px, 100%);
+  inset-block-start: calc(100% + 8px);
+  inset-inline-end: 0;
+  width: min(340px, calc(100vw - 48px));
+  max-height: calc(100dvh - 160px);
+  overflow-y: auto;
+  transform-origin: top right;
+  animation: source-reader-display-enter 140ms ease-out;
   padding: 16px;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
@@ -2159,6 +2245,13 @@ main.source-workspace > #content > .source-reader {
   box-shadow: var(--shadow-popover);
   display: grid;
   gap: 12px;
+}
+@keyframes source-reader-display-enter {
+  from { opacity: 0; transform: translateY(-4px) scale(.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .source-reader-display-panel { animation: none; }
 }
 .source-reader-display-panel label {
   justify-content: space-between;
@@ -2203,20 +2296,23 @@ main.source-workspace > #content > .source-reader {
   min-height: var(--control-target-compact);
 }
 /* Review shares the document width with corrections; retain compact passage and note rails. */
-.source-reader.has-review-drawer {
+.source-reader.has-review-drawer:not(.has-revision-diff) {
   --source-reader-address-gutter: 64px;
   --source-reader-note-gutter: 64px;
 }
-.source-reader.has-review-drawer .source-reader-node-address {
+.source-reader.has-review-drawer:not(.has-revision-diff) .source-reader-node-address {
   inline-size: 52px;
   inset-inline-end: calc(100% + 12px);
 }
-.source-reader.has-review-drawer .source-reader-change-indicator {
+.source-reader.has-review-drawer:not(.has-revision-diff) .source-reader-change-indicator {
   inset-inline-end: -28px;
   min-width: 24px;
 }
 .source-reader[data-reader-typography='serif'] .source-reader-document {
   font-family: var(--font-title);
+}
+main.source-workspace > #content > .source-reader[data-reader-width='wide'] {
+  --document-line-width: 960px;
 }
 .source-reader[data-reader-width='wide'] .source-reader-document {
   max-width: 100%;

@@ -7,14 +7,16 @@ import {Store} from '../src/server/store.ts';
 import {SourceReprocessing,sourceRevisionBaseHash} from '../src/server/modules/source-reprocessing.ts';
 import {processedSourceDocument} from '../src/server/modules/source-document.ts';
 import {repairReconstructionPass} from '../src/server/modules/source-reprocessing-pass.ts';
+import {setupSourceReprocessingVersionSchema} from '../src/server/source-reprocessing-version-schema.ts';
 import {SourceReprocessingCheckpoints} from '../src/server/modules/source-reprocessing-checkpoints.ts';
 
-function harness(t,{depth='balanced',text='A short synthetic scholarly passage.',pages=null,pageStartLines=[],provider=echo,synthesisProvider=()=>JSON.stringify({observations:[]}),synthesisReviewProvider=request=>JSON.stringify({reviews:request.rejected.map(issue=>({index:issue.index,classification:'unsupported',explanation:'The supplied source does not support this observation.',observation:null}))}),evidenceService,omitConfiguration=false,evidenceOptions={originalPages:false,ocr:false,allowExternalTransmission:false}}={}) {
+function harness(t,{promptVersion,versioning=false,depth='balanced',text='A short synthetic scholarly passage.',pages=null,pageStartLines=[],provider=echo,synthesisProvider=()=>JSON.stringify({observations:[]}),synthesisReviewProvider=request=>JSON.stringify({reviews:request.rejected.map(issue=>({index:issue.index,classification:'unsupported',explanation:'The supplied source does not support this observation.',observation:null}))}),evidenceService,omitConfiguration=false,evidenceOptions={originalPages:false,ocr:false,allowExternalTransmission:false}}={}) {
  const db=new DatabaseSync(':memory:');t.after(()=>db.close());
  db.exec(`CREATE TABLE source_math_documents(file_id TEXT,raw_hash TEXT,cleaned_text TEXT,uncertainty_json TEXT,algorithm_version INTEGER);
  CREATE TABLE source_reprocessing(id TEXT PRIMARY KEY,file_id TEXT,vault_id TEXT,status TEXT,created_at TEXT,updated_at TEXT,payload TEXT);
  CREATE TABLE source_reprocessing_chunks(revision_id TEXT,chunk_index INTEGER,payload TEXT,PRIMARY KEY(revision_id,chunk_index));
  CREATE TABLE source_reprocessing_passes(revision_id TEXT,chunk_index INTEGER,pass_index INTEGER,payload TEXT,PRIMARY KEY(revision_id,chunk_index,pass_index));`);
+ if(versioning){db.exec("CREATE TABLE source_files(id TEXT PRIMARY KEY);INSERT INTO source_files VALUES('synthetic-file')");setupSourceReprocessingVersionSchema(db);}
  const store=new Store(db),file={id:'synthetic-file',entity_id:null,name:'Synthetic',original_filename:'Synthetic',format:'txt',language:'en',source_url:null,generated_name:null,text,pages,structural_nodes:'[]',page_start_lines:JSON.stringify(pageStartLines),enrichment_status:'completed',status:'ready',admitted:1};
  const original={text,document:processedSourceDocument(file)},selection={model:'gpt-5-mini',reasoningEffort:'low'},calls=[],prompts=[];
  let locked=false;
@@ -22,6 +24,7 @@ function harness(t,{depth='balanced',text='A short synthetic scholarly passage.'
  const activity={start:()=>1,request:()=>({}),finish:()=>{}};
  function service(){const result=new SourceReprocessing(store,{require:()=>file},intelligence,()=>{if(locked)throw Error('Vault is locked.');},activity,undefined,evidenceService);result.snapshot=()=>structuredClone(original);result.baseHash=()=>{if(locked)throw Error('Vault is locked.');return sourceRevisionBaseHash(original);};return result;}
  let worker=service();const revision=worker.start('vault',file.id,{pipelineVersion:2,...(omitConfiguration?{}:{configuration:{depth,reviewPolicy:'verified',evidence:evidenceOptions}})});
+ if(promptVersion){revision.report.promptVersion=promptVersion;store.run('UPDATE source_reprocessing SET payload=? WHERE id=?',JSON.stringify(revision),revision.id);}
  return {store,calls,prompts,revision,intelligence,activity,checkpoints:new SourceReprocessingCheckpoints(store),get worker(){return worker;},get value(){return JSON.parse(store.get('SELECT payload FROM source_reprocessing WHERE id=?',revision.id).payload);},restart(){locked=false;worker=service();return worker;}};
 }
 function echo(request){return JSON.stringify({blocks:request.blocks,diagnostics:[],unresolved:false});}
@@ -132,12 +135,12 @@ test('cancellation marks the reserved paid request uncertain and never advances 
  env.restart();assert.throws(()=>env.worker.resume('vault',env.revision.fileId,env.revision.id),/uncertain/);assert.equal(env.calls.length,1);
 });
 
-test('V2 start and persisted completion retain reversible furniture candidates over three physical pages',async t=>{
+test('V2 publishes only AI-verified reversible furniture nominations over three physical pages',async t=>{
  const text=Array.from({length:3},(_,index)=>`<!-- Page ${index+1} -->\nRecurring journal header\nDistinct passage ${index+1}.\n`).join('');
- const env=harness(t,{text,pages:3,pageStartLines:[1,4,7]});
- assert.equal(env.revision.furniture.length,3);assert.ok(env.revision.furniture.every(candidate=>candidate.hidden===false&&candidate.text==='Recurring journal header'));
+ const env=harness(t,{promptVersion:'source-reconstruction-v2-10',text,pages:3,pageStartLines:[1,4,7],provider:request=>JSON.stringify({blocks:request.blocks,pageFurniture:request.pageBoundaryCandidates.map(({blockId,quote,kind})=>({blockId,quote,kind})),unresolved:false})});
+ assert.equal(env.revision.furniture.length,0);
  await env.worker.tick();const result=env.value;assert.equal(result.status,'completed');assert.equal(env.calls.length,7);
- assert.deepEqual(result.furniture,env.revision.furniture);assert.equal(result.original.text,text);assert.equal(result.reprocessed.text,text);
+ assert.equal(result.furniture.length,3);assert.ok(result.furniture.every(candidate=>candidate.hidden===false&&candidate.text==='Recurring journal header'));assert.equal(result.original.text,text);assert.equal(result.reprocessed.text,text);
  for(const candidate of result.furniture)assert.equal(text.slice(candidate.startOffset,candidate.endOffset),candidate.text);
 });
 
@@ -298,11 +301,18 @@ test('large scholarly audit stays within the restorable finding budget and recor
 });
 
 
-test('newly missing footnotes fail publication and preserve the canonical reading',async t=>{
+test('unrepaired footnotes retain the canonical excerpt with a visible warning and complete',async t=>{
  const text='Reference [^note].\n\n[^note]: printed definition.\n';
  const env=harness(t,{text,provider:request=>JSON.stringify({blocks:request.blocks.map(block=>({...block,text:block.text.replace(/^\[\^note\]: printed definition\.\n/gm,'')})),diagnostics:[],unresolved:false})});
- await env.worker.tick();assert.equal(env.value.status,'failed');assert.match(env.value.report.error,/missing or ambiguous footnote definition/);
+ await env.worker.tick();assert.equal(env.value.status,'completed');assert.equal(env.value.report.error,null);
+ assert.ok(env.value.report.diagnostics.some(message=>/Original excerpt retained/.test(message)));
+ assert.deepEqual(env.calls.map(call=>call.kind),['reconstruct','synthesis','verify','resolve']);
  assert.equal(env.value.patches.length,0);assert.equal(env.value.reprocessed.text,text);
+ assert.ok(!env.value.report.validationDiagnostics.some(message=>/missing-reference/.test(message)));
+ const audit=structuredClone(env.value.report.documentAudit),retained=env.value;retained.status='interrupted';
+ env.store.run('UPDATE source_reprocessing SET status=?,payload=? WHERE id=?','interrupted',JSON.stringify(retained),retained.id);
+ env.calls.length=0;env.restart();env.worker.resume('vault',retained.fileId,retained.id);await env.worker.tick();
+ assert.equal(env.value.status,'completed');assert.equal(env.calls.length,0);assert.deepEqual(env.value.report.documentAudit,audit);
 });
 
 
@@ -364,7 +374,7 @@ test('Balanced materializes restored paragraphs and paired printed footnotes wit
  const {sourceDocumentEntries}=await import('../src/shared/source-document.ts');const nodes=sourceDocumentEntries(result.reprocessed.document);
  assert.ok(nodes.some(({node})=>node.kind==='footnote'));assert.ok(nodes.filter(({node})=>node.kind==='paragraph').length>=2);
  await assertRecoveryArchive(env);
- assert.match(env.prompts[0],/actively restore readable paragraph boundaries/);assert.match(env.prompts.at(-1),/verification must not revert useful layout/);
+ assert.match(env.prompts[0],/systematically repair merged paragraphs/);assert.match(env.prompts.at(-1),/retain useful repairs/);
  assert.deepEqual(env.calls[0].physicalPages,{startPage:1,endPage:1});assert.equal(env.calls.length,3);
  const before=structuredClone(result.patches);result.status='interrupted';env.store.run('UPDATE source_reprocessing SET status=?,payload=? WHERE id=?','interrupted',JSON.stringify(result),result.id);
  env.restart();env.worker.resume('vault',result.fileId,result.id);await env.worker.tick();assert.equal(env.calls.length,3);assert.deepEqual(env.value.patches,before);
@@ -377,4 +387,174 @@ test('legacy reconstruction checkpoints keep their prompt and request hashes dur
  await env.worker.tick();const hash=env.checkpoints.passes(r.id)[0].requestHash;fail=false;
  env.restart();env.worker.resume('vault',r.fileId,r.id);await env.worker.tick();assert.equal(env.value.status,'completed');assert.equal(env.checkpoints.passes(r.id)[0].requestHash,hash);
  assert.equal(env.checkpoints.passes(r.id)[0].promptVersion,'source-reconstruction-v2-3');assert.equal(env.calls[0].physicalPages,undefined);assert.doesNotMatch(env.prompts[0],/actively restore/);
+});
+
+for(const depth of ['balanced','deep'])test(`${depth} uses a bounded AI pass to repair a verification-dropped footnote`,async t=>{
+ const text='Reference1.\n\n1 printed definition.\n';
+ const paired=blocks=>blocks.map(block=>({...block,text:block.text.replace('Reference1.','Reference[^p1-1].').replace('1 printed definition.','[^p1-1]: printed definition.')}));
+ const env=harness(t,{depth,text,pages:1,pageStartLines:[1],provider:request=>{
+  if(request.kind==='resolve'){
+   assert.match(request.difficultyReason,/footnote repair.*p1-1/);
+   assert.ok(request.previous.blocks.some(block=>block.text.includes('Reference[^p1-1].')));
+   assert.ok(!request.previous.blocks.some(block=>block.text.includes('[^p1-1]:')));
+  }
+  return JSON.stringify({blocks:request.kind==='verify'?paired(request.blocks).map(block=>({...block,text:block.text.replace('[^p1-1]: printed definition.','')})):paired(request.blocks),diagnostics:[],unresolved:false});
+ }});
+ await env.worker.tick();const result=env.value;
+ assert.equal(result.status,'completed');assert.equal(result.report.chunksCompleted,1);
+ assert.deepEqual(env.calls.map(call=>call.kind),['reconstruct','synthesis','verify','resolve']);
+ assert.equal(result.report.excerpts[0].requiredPassCount,3);assert.match(result.reprocessed.text,/\[\^p1-1\]: printed definition/);
+ assert.ok(!result.report.validationDiagnostics.some(message=>/missing-reference/.test(message)));
+ // Reproduce an existing failed revision: all paid responses remain durable,
+ // but the final correction has not been requested yet.
+ env.store.run('DELETE FROM source_reprocessing_passes WHERE revision_id=? AND pass_index=3',result.id);
+ result.status='failed';result.report.chunksCompleted=0;result.report.completedChunkIndexes=[];result.report.charactersReviewed=0;result.patches=[];
+ env.store.run('UPDATE source_reprocessing SET status=?,payload=? WHERE id=?','failed',JSON.stringify(result),result.id);
+ env.calls.length=0;env.restart();env.worker.resume('vault',result.fileId,result.id);await env.worker.tick();
+ assert.equal(env.value.status,'completed');assert.deepEqual(env.calls.map(call=>call.kind),['resolve']);
+ assert.equal(env.value.report.inputTokens,50);assert.match(env.value.reprocessed.text,/\[\^p1-1\]: printed definition/);
+});
+
+test('final AI verification rejects initial furniture proposals and clears provisional chunk annotations',async t=>{
+ const text=Array.from({length:3},(_,i)=>`<!-- Page ${i+1} -->\nRecurring journal header\nDistinct body ${i+1}.\n`).join('');
+ const env=harness(t,{promptVersion:'source-reconstruction-v2-10',text,pages:3,pageStartLines:[1,4,7],provider:request=>JSON.stringify({blocks:request.blocks,pageFurniture:request.kind==='verify'?[]:request.pageBoundaryCandidates.map(({blockId,quote,kind})=>({blockId,quote,kind}))})});
+ // Previously seeded suggestions must not survive the verification decision.
+ const r=env.value;r.furniture=[{id:'old-provisional',startOffset:17,endOffset:41,page:1,text:text.slice(17,41),kind:'header',hidden:false,reason:'Provisional'}];
+ env.store.run('UPDATE source_reprocessing SET payload=? WHERE id=?',JSON.stringify(r),r.id);
+ await env.worker.tick();assert.equal(env.value.status,'completed');assert.deepEqual(env.value.furniture,[]);
+ assert.equal(env.calls.length,7);assert.deepEqual(env.value.original.text,text);
+});
+
+test('revision cap includes the original and deletion makes space without deleting the source',async t=>{
+ const env=harness(t);let r=env.value;env.store.run("UPDATE source_reprocessing SET status='completed' WHERE id=?",r.id);
+ for(let i=0;i<3;i++)env.store.run('INSERT INTO source_reprocessing(id,file_id,vault_id,status,created_at,updated_at,payload) VALUES(?,?,?,?,?,?,?)','saved-'+i,r.fileId,'vault','failed',r.createdAt,r.updatedAt,JSON.stringify({...r,id:'saved-'+i,status:'failed'}));
+ assert.throws(()=>env.worker.start('vault',r.fileId,{pipelineVersion:2}),/Revision limit reached/);assert.equal(env.calls.length,0);
+ assert.throws(()=>env.worker.remove('vault',r.fileId,'original'),/original source cannot be deleted/);
+ assert.throws(()=>env.worker.remove('other-vault',r.fileId,'saved-0'),/not found/);
+ env.worker.remove('vault',r.fileId,'saved-0');assert.equal(env.store.get('SELECT count(*) n FROM source_reprocessing').n,3);
+ const next=env.worker.start('vault',r.fileId,{pipelineVersion:2});assert.equal(next.status,'queued');assert.equal(env.store.get('SELECT count(*) n FROM source_reprocessing').n,4);
+ assert.throws(()=>env.worker.remove('vault',r.fileId,next.id),/Stop processing/);
+ assert.equal(next.original.text,r.original.text);assert.equal(env.calls.length,0);
+});
+
+test('revision cap is rechecked inside the insertion transaction when history changes during snapshotting',async t=>{
+ const env=harness(t),r=env.value;env.store.run("UPDATE source_reprocessing SET status='completed' WHERE id=?",r.id);
+ const add=id=>env.store.run('INSERT INTO source_reprocessing(id,file_id,vault_id,status,created_at,updated_at,payload) VALUES(?,?,?,?,?,?,?)',id,r.fileId,'vault','completed',r.createdAt,r.updatedAt,JSON.stringify({...r,id,status:'completed'}));
+ add('saved-a');add('saved-b');const snapshot=env.worker.snapshot;env.worker.snapshot=()=>{add('racing-revision');return snapshot();};
+ assert.throws(()=>env.worker.start('vault',r.fileId,{pipelineVersion:2}),/Revision limit reached/);assert.equal(env.store.get('SELECT count(*) n FROM source_reprocessing').n,4);assert.equal(env.calls.length,0);
+});
+
+
+test('active editorial instructions permit useful corrections and supply cross-page furniture evidence with reasoning none',async t=>{
+ const text=[1,2,3].map(n=>`Case 123 ${n}/3 PT\n\nHEREBY CONSITUTES Trial Chamber III.\n\nNo. 123 ${n}/3 24 April 2026\n`).join('');
+ const starts=[1,6,11];const env=harness(t,{text,pages:3,pageStartLines:starts});
+ env.intelligence.editorialSelection().reasoningEffort='none';
+ const r=env.value;r.report.reasoningEffort='none';env.store.run('UPDATE source_reprocessing SET payload=? WHERE id=?',JSON.stringify(r),r.id);
+ await env.worker.tick();assert.equal(env.value.status,'completed');
+ for(const prompt of env.prompts.filter(prompt=>prompt.includes('You reconstruct'))){assert.match(prompt,/CONSITUTES → CONSTITUTES/);assert.match(prompt,/Raster images are optional/);assert.match(prompt,/metadata:/);assert.doesNotMatch(prompt,/Do not extract structured metadata/);assert.doesNotMatch(prompt,/Preserve every word and punctuation mark when repairing layout/);}
+ const requests=env.calls.filter(call=>call.kind==='reconstruct'||call.kind==='verify');assert.equal(requests.length,6);assert.ok(requests.every(call=>call.crossPageFurniture.some(item=>item.page!==call.physicalPages.startPage)));
+});
+
+test('real court reconstruction preserves all four inline footnotes, paragraph repairs and furniture together',async t=>{
+ const {readFileSync}=await import('node:fs');
+ const fixture=JSON.parse(readFileSync(new URL('./fixtures/court-editorial-reconstruction.json',import.meta.url),'utf8'));
+ const env=harness(t,{promptVersion:'source-reconstruction-v2-8',text:fixture.text,pages:fixture.pages,pageStartLines:fixture.pageStartLines,provider:request=>{
+  const index=request.kind==='reconstruct'?1:request.kind==='verify'?2:3;
+  const output=fixture.outputs.find(item=>item.chunkIndex===request.chunkIndex&&item.passIndex===index);
+  assert.ok(output,`Recorded ${request.kind} output for chunk ${request.chunkIndex}`);return JSON.stringify(output.response);
+ }});
+ await env.worker.tick();const result=env.value;
+ assert.equal(result.status,'completed');assert.equal(result.report.chunksCompleted,5);assert.equal(result.original.text,fixture.text);
+ for(const label of [1,2,3,4]){
+  assert.equal([...result.reprocessed.text.matchAll(new RegExp(`\\[\\^p3-${label}\\](?!:)`,'g'))].length,1,`one rendered reference for note ${label}`);
+  assert.equal([...result.reprocessed.text.matchAll(new RegExp(`^\\[\\^p3-${label}\\]:`,'gm'))].length,1,`one definition for note ${label}`);
+ }
+ assert.match(result.reprocessed.text,/\[\^p3-1\]: Pre-Trial Chamber I/);
+ assert.match(result.reprocessed.text,/\[\^p3-4\]: Presidency/);
+ assert.ok(result.reprocessed.text.includes('\n\nNOTING'));
+ assert.equal(result.furniture.length,10,'all five page headers and footers survive note recovery');
+ assert.equal(result.patches.filter(patch=>patch.category==='footnote'&&patch.decision==='pending').length,0,'pure note presentation applies automatically');
+ assert.ok(env.calls.filter(call=>call.kind==='reconstruct'||call.kind==='verify').filter(call=>call.chunkIndex===2).every(call=>call.canonicalFootnotes.length===4));
+ assert.ok(result.report.diagnostics.some(message=>message.includes('Recovered omitted canonical footnote p3-1')));
+ assert.ok(!result.report.diagnostics.some(message=>message.includes('Original excerpt retained')));
+ const {apparatusProblems}=await import('../src/server/modules/source-reprocessing-apparatus.ts');assert.deepEqual(apparatusProblems(fixture.text,result.reprocessed.text),[]);
+ const {createElement}=await import('react'),{renderToStaticMarkup}=await import('react-dom/server'),{JSDOM}=await import('jsdom');
+ const {SourceDocumentView}=await import('../src/client/sources/SourceDocumentView.tsx'),{sourceDocumentEntries}=await import('../src/shared/source-document.ts');
+ const html=renderToStaticMarkup(createElement(SourceDocumentView,{article:{current:null},fileId:'court',name:'Court decision',text:result.reprocessed.text,entries:sourceDocumentEntries(result.reprocessed.document),selected:null,annotations:'contextual',structureLabels:false,canonicalNode:id=>id,onSelect:()=>{}}));
+ const dom=new JSDOM(html);t.after(()=>dom.window.close());const references=[...dom.window.document.querySelectorAll('[data-footnote-reference]')];
+ assert.equal(references.length,4);assert.ok(references.every(reference=>dom.window.document.getElementById(reference.dataset.footnoteReference)),'every rendered superscript links to a rendered note body');
+ await assertRecoveryArchive(env);
+});
+
+test('queued API revisions get immutable numbers before processing and deletion never recycles them',async t=>{
+ const env=harness(t,{versioning:true});assert.equal(env.revision.status,'queued');assert.equal(env.revision.versionNumber,1);
+ await env.worker.tick();assert.equal(env.value.versionNumber,1);assert.equal(env.value.status,'completed');
+ env.worker.remove('vault',env.revision.fileId,env.revision.id);
+ const next=env.worker.start('vault',env.revision.fileId,{pipelineVersion:2});assert.equal(next.status,'queued');assert.equal(next.versionNumber,2);
+});
+
+
+test('cached invalid uncertainty quotes recover locally without replaying reconstruction or accepting unsupported edits',async t=>{
+ const env=harness(t,{promptVersion:'source-reconstruction-v2-8',text:'Canonical corrupted mathematical proof.\n\nIndependent paragraph.',provider:request=>{
+  const block=request.blocks[0];
+  return JSON.stringify({blocks:request.blocks.map(value=>({...value,text:value.text.replace('corrupted','reconstructed')})),diagnostics:[],unresolved:false,uncertainties:[{blockId:block.id,nature:'OCR error',readings:['reconstructed'],evidence:[{blockId:block.id,quote:'Canonical reconstructed mathematical proof.'}],resolutionNeed:'Compare original page.'}]});
+ }});
+ await env.worker.tick();assert.equal(env.value.status,'completed');assert.equal(env.value.report.chunksCompleted,1);assert.equal(env.value.patches.length,0);assert.equal(env.value.reprocessed.text,env.value.original.text);assert.ok(env.value.report.diagnostics.some(message=>/Unverified uncertainty evidence/.test(message)));
+ const pass=env.checkpoints.passes(env.revision.id)[0],raw=pass.result;
+ assert.ok(JSON.parse(raw).blocks[0].text.includes('reconstructed'));
+ // Reproduce the old stop after a durable response failed local evidence validation.
+ env.store.run('DELETE FROM source_reprocessing_passes WHERE revision_id=? AND pass_index=2',env.revision.id);
+ pass.failureKind='validation';pass.validation=['Invalid document synthesis: uncertainty evidence must quote a canonical block.'];env.checkpoints.savePass(pass);
+ const stopped=env.value;stopped.status='failed';stopped.report.chunksCompleted=0;stopped.report.completedChunkIndexes=[];stopped.patches=[];
+ env.store.run('UPDATE source_reprocessing SET status=?,payload=? WHERE id=?','failed',JSON.stringify(stopped),stopped.id);
+ env.calls.length=0;env.restart();env.worker.resume('vault',stopped.fileId,stopped.id);await env.worker.tick();
+ assert.equal(env.value.status,'completed');assert.deepEqual(env.calls.map(call=>call.kind),['verify']);assert.equal(env.checkpoints.passes(stopped.id)[0].result,raw);assert.equal(env.value.patches.length,0);
+ await assertRecoveryArchive(env);
+});
+
+
+test('Balanced preserves pending proposals when optional uncertainty quotations are malformed',async t=>{
+ const env=harness(t,{text:'Canonical corrupted mathematical proof.\n\nIndependent paragraph.',provider:request=>{
+  const block=request.blocks[0];
+  return JSON.stringify({blocks:request.blocks.map(value=>({...value,text:value.text.replace('corrupted','reconstructed')})),diagnostics:[],unresolved:false,correctionReviews:[],uncertainties:[{blockId:block.id,nature:'OCR error',readings:['reconstructed'],evidence:[{blockId:block.id,quote:'Canonical reconstructed mathematical proof.'}],resolutionNeed:'Compare original page.'}]});
+ }});
+ await env.worker.tick();assert.equal(env.value.status,'completed');assert.equal(env.value.patches.length,1);assert.equal(env.value.patches[0].decision,'pending');assert.equal(env.value.reprocessed.text,env.value.original.text);
+ assert.ok(env.value.report.diagnostics.some(message=>/Unverified uncertainty evidence/.test(message)));
+ const raw=env.checkpoints.passes(env.revision.id)[0].result;assert.ok(JSON.parse(raw).blocks[0].text.includes('reconstructed'));
+ await assertRecoveryArchive(env);
+});
+
+
+for(const explicit of [true,false])test(`Balanced explicitly reviews bibliography and alternating running headers (${explicit?'classified':'omissions audited'})`,async t=>{
+ const pages=[
+  '<!-- Page 1 -->\n\nSYNTHETIC GROUP THEORY\n\nADA EXAMPLE\n\nThe first argument cites [1].\n\n',
+  '<!-- Page 2 -->\n\n2\n\nADA EXAMPLE\n\nAn independent proof continues on this page.\n\n',
+  '<!-- Page 3 -->\n\nSYNTHETIC GROUP THEORY\n\n3\n\nFor another proof see [1].\n\nREFERENCES\n\n[1] A. Writer, Related group theory, Journal 12 (2024), 1-9.\n',
+ ];
+ const text=pages.join(''),pageStartLines=pages.map((_,index)=>pages.slice(0,index).join('').split('\n').length);
+ const env=harness(t,{text,pages:3,pageStartLines,provider:request=>{
+  assert.ok(Array.isArray(request.furnitureReviewCandidates));assert.ok(Array.isArray(request.canonicalBibliographicReferences));
+  if(request.kind==='verify'&&request.chunkIndex===0){assert.equal(request.furnitureReviewCandidates.length,0,'primary title and byline remain substantive');assert.equal(request.canonicalBibliographicReferences[0].label,'1');}
+  const candidates=explicit&&request.kind==='verify'?request.furnitureReviewCandidates:[];
+  return JSON.stringify({blocks:request.blocks.map(block=>({...block,text:candidates.some(candidate=>candidate.blockId===block.id)?'# '+block.text:block.text})),diagnostics:[],unresolved:false,uncertainties:[],correctionReviews:[],pageFurniture:candidates.map(item=>({blockId:item.blockId,quote:item.quote,kind:item.kind})),furnitureReviews:candidates.map(item=>({id:item.id,outcome:'classified',explanation:'This exact continuation-page running header is corroborated by primary metadata and its printed physical page counter.'})),referenceReviews:explicit&&request.kind==='verify'?request.canonicalBibliographicReferences.map(ref=>({label:ref.label,outcome:'linked',explanation:'The bracketed citation matches its unique printed References entry; it is a bibliographic citation, not a footnote.'})):[]});
+ }});
+ await env.worker.tick();const result=env.value;assert.equal(result.status,'completed');assert.equal(result.report.chunksCompleted,3);assert.equal(result.patches.length,0,'tagging preserves complete canonical text, including model-formatted furniture paragraphs');
+ assert.ok(env.prompts.some(prompt=>prompt.includes('alternating author/title headers')));assert.ok(env.prompts.some(prompt=>prompt.includes('Bibliographic citations are not footnotes')));
+ if(explicit){
+  assert.equal(result.furniture.length,4);assert.deepEqual(result.furniture.map(item=>item.page),[2,2,3,3]);assert.ok(result.furniture.every(item=>!item.hidden));
+  assert.ok(result.report.validationDiagnostics.some(message=>message.includes('Bibliographic reference [1]: linked')));
+  assert.ok(!result.report.validationDiagnostics.some(message=>message.includes('missing or invalid explicit')));
+ }else{
+  assert.equal(result.furniture.length,0,'omitted model annotation cannot silently classify source text');
+  assert.ok(result.report.validationDiagnostics.some(message=>message.includes('missing or invalid explicit classification')));
+  assert.ok(result.report.validationDiagnostics.some(message=>message.includes('missing or invalid explicit identification')));
+ }
+});
+
+test('v2-10 cached policy keeps its original request fields before apparatus review was introduced',async t=>{
+ const text='<!-- Page 1 -->\nSYNTHETIC GROUP THEORY\nADA EXAMPLE\nBody cites [1].\n\n<!-- Page 2 -->\n2\nADA EXAMPLE\nBody.\n\nREFERENCES\n[1] A. Writer, Related work.';
+ const env=harness(t,{promptVersion:'source-reconstruction-v2-10',text,pages:2,pageStartLines:[1,6],provider:request=>{
+  assert.equal(request.furnitureReviewCandidates,undefined);assert.equal(request.canonicalBibliographicReferences,undefined);return echo(request);
+ }});
+ await env.worker.tick();assert.equal(env.value.status,'completed');assert.ok(env.prompts.every(prompt=>!prompt.includes('furnitureReviewCandidates')));
 });

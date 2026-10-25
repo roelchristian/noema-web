@@ -1,3 +1,6 @@
+/** One canonical original plus at most four editorial reading versions per source file. */
+export const sourceRevisionLimit=5;
+export const sourceEditorialRevisionLimit=sourceRevisionLimit-1;
 import type {ReasoningEffort} from './intelligence.js';
 import type {SourceDocument,SourceDocumentRange} from './source-document.js';
 export type SourceAcceptanceMode='review_all'|'safe_formatting'|'balanced'|'minimal_review';
@@ -7,9 +10,11 @@ export type SourceReviewPolicy='verified'|'review_all';
 export interface SourceReprocessingConfiguration {
  architectureVersion?:1;
  depth:SourceProcessingDepth;reviewPolicy:SourceReviewPolicy;
+ /** Request systematic notation reconstruction, including inline mathematical identifiers. */
+ substantialMath?:boolean;
  evidence:{originalPages:boolean;ocr:boolean;allowExternalTransmission:boolean};
 }
-export const defaultSourceReprocessingConfiguration:SourceReprocessingConfiguration={depth:'balanced',reviewPolicy:'verified',evidence:{originalPages:false,ocr:false,allowExternalTransmission:false}};
+export const defaultSourceReprocessingConfiguration:SourceReprocessingConfiguration={depth:'balanced',reviewPolicy:'verified',substantialMath:false,evidence:{originalPages:false,ocr:false,allowExternalTransmission:false}};
 export const sourceReprocessingEvidencePageBytes=2*1024*1024;
 export const sourceReprocessingEvidenceRevisionBytes=24*1024*1024;
 /** Original-source evidence is stored once per chunk, separately from model passes. */
@@ -76,7 +81,7 @@ export interface SourceReprocessingReport {
  documentAudit?:{version:1;candidateHash:string;contextHash?:string;findings:string[]};
  evidencePreparation?:{state:'collecting'|'completed';preparedChunks:number;totalChunks:number};
  /** Structured publication candidates are separate from editorial text patches. */
- metadata?:{candidateCount:number;added:number;corroborated:number;requiresReview:number;cacheHit:boolean;evidenceHash:string};
+ metadata?:{modelEvidenceHash?:string;candidateCount:number;added:number;corroborated:number;requiresReview:number;cacheHit:boolean;evidenceHash:string};
  usageIncomplete?:boolean;excerpts?:SourceEditorialExcerpt[];sessionStartedAt?:string;sessionCompletedIndexes?:number[];errorCode?:string;
  promptVersion:string;model:string;reasoningEffort:ReasoningEffort;startedAt:string|null;finishedAt:string|null;durationMs:number|null;
  /** Completed excerpt indexes, including out-of-order successes. Missing means a legacy completed prefix. */
@@ -86,6 +91,8 @@ export interface SourceReprocessingReport {
  diagnostics:string[];validationDiagnostics?:string[];error:string|null;
 }
 export interface SourceReprocessingRevision {
+ /** Immutable source-local ordinal, assigned when queued; absent only in legacy archives. */
+ versionNumber?:number;
  id:string;fileId:string;createdAt:string;updatedAt:string;status:ReprocessingStatus;instructions:string;
  pipelineVersion?:1|2;configuration?:SourceReprocessingConfiguration;
  furniture?:{id:string;startOffset:number;endOffset:number;page:number;text:string;kind?:'header'|'footer';hidden:boolean;reason:string}[];

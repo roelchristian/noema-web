@@ -64,12 +64,12 @@ function acceptanceFixture(text,original,replacement,category){
  return {text,document,start,end:start+original.length,original,replacement,category,policy:'verified',evidence};
 }
 test('Verified accepts only uniquely aligned native-vs-raster mechanical OCR or soft-wrap repairs',()=>{
- const ligature=acceptanceFixture('The ﬁnal passage has enough ordinary prose for alignment.','ﬁ','fi','ocr');assert.equal(evaluateV2Acceptance(ligature).automatic,true);
+ const ligature=acceptanceFixture('The rnodern passage has enough ordinary prose for alignment.','rn','m','ocr');assert.equal(evaluateV2Acceptance(ligature).automatic,true);
  const wrap=acceptanceFixture('This ordinary prose has a soft\nwrap on the same printed line.','\n',' ','line_breaks');assert.equal(evaluateV2Acceptance(wrap).automatic,true);
  for(const mutation of [proof=>proof.independent=false,proof=>proof.lines[0].confidence=0.5,proof=>proof.lines.push({...proof.lines[0]})]){const input=structuredClone(ligature);mutation(input.evidence.pages[0].ocr);assert.equal(evaluateV2Acceptance(input).automatic,false);}
  const missing=structuredClone(ligature);delete missing.evidence.pages[0].canonicalRanges;assert.equal(evaluateV2Acceptance(missing).automatic,false);
  const hard=acceptanceFixture('This ordinary prose has a hard  \nwrap on the same printed line.','\n',' ','line_breaks');assert.equal(evaluateV2Acceptance(hard).automatic,false);
- const quote=acceptanceFixture('The “ﬁnal passage” has enough ordinary prose for alignment.','ﬁ','fi','ocr');assert.equal(evaluateV2Acceptance(quote).automatic,false);
+ const quote=acceptanceFixture('The “rnodern passage” has enough ordinary prose for alignment.','rn','m','ocr');assert.equal(evaluateV2Acceptance(quote).automatic,false);
  const wrongRegion=structuredClone(ligature);wrongRegion.evidence.pages[0].ocr.lines[0].bounds=[0.1,0.8,0.8,0.1];assert.equal(evaluateV2Acceptance(wrongRegion).automatic,false);
  const bibliography=structuredClone(ligature);bibliography.document.semantic.children.unshift({id:'refs',kind:'section',title:'Bibliography',range:{startOffset:0,endOffset:bibliography.text.length}});assert.equal(evaluateV2Acceptance(bibliography).automatic,false);
  const noGeometry=structuredClone(ligature);delete noGeometry.evidence.pages[0].canonicalRegions;assert.equal(evaluateV2Acceptance(noGeometry).automatic,false);

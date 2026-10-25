@@ -1829,10 +1829,10 @@ main.source-workspace > #content > .source-reader {
   justify-content: center
 }
 @container source-reader (min-width:1040px) {
-  .source-reader:not(.has-inspector) .source-reader-document {
+  .source-reader:not(.has-inspector):not(.has-review-drawer) .source-reader-document {
     width: calc(100% - 240px)
   }
-  .source-reader:not(.has-inspector) .source-reading-note-marker:not(.is-crowded)>button {
+  .source-reader:not(.has-inspector):not(.has-review-drawer) .source-reading-note-marker:not(.is-crowded)>button {
     width: 248px;
     height: auto;
     min-height: var(--control-target-compact);
@@ -1842,11 +1842,11 @@ main.source-workspace > #content > .source-reader {
     padding: 6px 8px;
     text-align: left
   }
-  .source-reader:not(.has-inspector) .source-reading-note-marker:not(.is-crowded)>button>.icon {
+  .source-reader:not(.has-inspector):not(.has-review-drawer) .source-reading-note-marker:not(.is-crowded)>button>.icon {
     flex: none;
     margin-top: 1px
   }
-  .source-reader:not(.has-inspector) .source-reading-note-marker:not(.is-crowded) .source-reading-note-inline-text {
+  .source-reader:not(.has-inspector):not(.has-review-drawer) .source-reading-note-marker:not(.is-crowded) .source-reading-note-inline-text {
     display: -webkit-box;
     flex: 1;
     min-width: 0;
@@ -1858,7 +1858,7 @@ main.source-workspace > #content > .source-reader {
     color: var(--text-muted);
     font: 12px/19px var(--font-ui)
   }
-  .source-reader:not(.has-inspector) .source-reading-note-marker-list {
+  .source-reader:not(.has-inspector):not(.has-review-drawer) .source-reading-note-marker-list {
     right: auto;
     left: 0
   }
@@ -2196,11 +2196,24 @@ main.source-workspace > #content > .source-reader {
 }
 .source-reader-change-indicator {
   position: absolute;
-  inset-inline-end: 0;
+  inset-inline-end: calc(-1 * var(--source-reader-note-gutter));
   inset-block-start: 0;
   color: var(--text-muted);
   min-width: var(--control-target-compact);
   min-height: var(--control-target-compact);
+}
+/* Review shares the document width with corrections; retain compact passage and note rails. */
+.source-reader.has-review-drawer {
+  --source-reader-address-gutter: 64px;
+  --source-reader-note-gutter: 64px;
+}
+.source-reader.has-review-drawer .source-reader-node-address {
+  inline-size: 52px;
+  inset-inline-end: calc(100% + 12px);
+}
+.source-reader.has-review-drawer .source-reader-change-indicator {
+  inset-inline-end: -28px;
+  min-width: 24px;
 }
 .source-reader[data-reader-typography='serif'] .source-reader-document {
   font-family: var(--font-title);
@@ -2216,14 +2229,6 @@ main.source-workspace > #content > .source-reader {
 @media (max-width: 750px) {
   .source-reader-display summary, .source-reader-display-panel button {
     min-height: var(--touch-target-size);
-  }
-}
-@media (min-width: 1200px) {
-  main.source-workspace > #content > .source-reader.has-review-drawer {
-    padding-inline-end: 480px;
-  }
-  .source-reader.has-review-drawer .source-reader-document {
-    width: 100%;
   }
 }
 

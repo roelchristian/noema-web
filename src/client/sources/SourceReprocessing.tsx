@@ -1,53 +1,31 @@
+import {createPortal} from 'react-dom';
 import {editorialDraft,saveEditorialDraft,clearEditorialDraft} from '../review/editorial-drafts';
 import {useContext} from 'react';
 import {ReviewDestination} from '../review/review-destination';
 import {getLocale} from '../i18n';
 import {t as uiText} from '../i18n';
-import {useEffect,useRef,useState} from 'react';
+import {useEffect,useLayoutEffect,useRef,useState} from 'react';
 import type {SourceEditorialPatch,SourceEditorialAttempt,SourceReprocessingRevision,SourceReprocessingSummary,SourceProcessingDepth,SourceReviewPolicy,SourceReprocessingConfiguration} from '../../shared/source-reprocessing';
 import {request} from '../api';
 import {sourceDocumentEntries} from '../../shared/source-document';
 import {intelligenceModels,supportedIntelligencePreferences,type IntelligencePreferences} from '../../shared/intelligence';
 import {DisclosureSummary} from '../components/DisclosureSummary';
 import {SourcePatchComparison,type ComparisonLayout} from './SourcePatchComparison';
-import {InlineNotice,ProgressNotice} from '../notifications';
+import {InlineNotice} from '../notifications';
+import {SourceReprocessingSetup,type EvidenceCapabilities} from './SourceReprocessingSetup';
+import {SourceReprocessingProgress} from './SourceReprocessingProgress';
 import './source-reprocessing.css';
 
-type Props={sourceId?:string;canonicalVersion?:string;vaultId:string;fileId:string;visible:boolean;onShow:()=>void;onOriginal:(nodeId?:string,focus?:boolean)=>void;onCompare?:(page:number)=>void;onReadingRevision?:(revision:SourceReprocessingRevision|null)=>void;onReviewOpenChange?:(open:boolean)=>void};
+type Props={sourceId?:string;canonicalVersion?:string;vaultId:string;fileId:string;visible:boolean;onShow:()=>void;onOriginal:(nodeId?:string,focus?:boolean)=>void;onCompare?:(page:number)=>void;onReadingRevision?:(revision:SourceReprocessingRevision|null)=>void;reviewHost?:HTMLElement|null;onReviewRevision?:(revision:SourceReprocessingRevision|null)=>void;onReturnContext?:()=>void;onEvidenceSurfaceChange?:(open:boolean)=>void;onReviewOpenChange?:(open:boolean)=>void};
 const active=(status:string)=>status==='queued'||status==='running';
 const label=(value:string)=>value.replaceAll('_',' ');
-const depthLabels={light:'Light Cleanup',balanced:'Balanced Reconstruction',deep:'Deep Restoration'};
-const depthPasses={light:'1 model request per excerpt',balanced:'Exactly 2 model requests per excerpt, plus document synthesis',deep:'2–3 model requests per excerpt, plus document synthesis; a third requires a recorded difficulty'};
 const excerptLabel=(status:string)=>({pending:'Not started',running:'Processing',completed:'Completed',failed:'Failed',interrupted:'Interrupted'}[status]??label(status));
-type EvidenceCapabilities={originalPages:boolean;ocr:boolean;externalImages:boolean;reason:string};
 function validEvidenceCapabilities(value:unknown):value is EvidenceCapabilities {
  if(!value||typeof value!=='object')return false;
  const result=value as Record<string,unknown>;return ['originalPages','ocr','externalImages'].every(key=>typeof result[key]==='boolean')&&typeof result.reason==='string';
 }
-function EvidenceOptions({capabilities,error,options,onChange,disabled}:{capabilities:EvidenceCapabilities|null;error:string;options:SourceReprocessingConfiguration['evidence'];onChange:(options:SourceReprocessingConfiguration['evidence'])=>void;disabled:boolean}){
- const imagesAvailable=!!capabilities?.originalPages&&!!capabilities.externalImages;
- const choose=(key:'ocr'|'originalPages',checked:boolean)=>onChange({...options,[key]:checked,allowExternalTransmission:false});
- return <fieldset className="reprocessing-evidence-options" disabled={disabled}><legend>{uiText("Original-source evidence")}</legend>
-  {!capabilities&&!error&&<p role="status">{uiText("Checking evidence capabilities…")}</p>}
-  {error&&<p role="status">{error}</p>}
-  <label><input type="checkbox" aria-label={uiText("Use local OCR evidence")} checked={options.ocr} disabled={!capabilities?.ocr} onChange={event=>choose('ocr',event.target.checked)}/>{uiText("Use local OCR evidence")}</label>
-  <p>{uiText("Reprocessing uses the existing extracted text. Optional local OCR reads the page images again to cross-check extraction errors and can add several minutes before AI processing. Without transmission consent, its text stays local.")}</p>
-  <label><input type="checkbox" aria-label={uiText("Compare original-page images with the model")} checked={options.originalPages} disabled={!imagesAvailable} onChange={event=>choose('originalPages',event.target.checked)}/>{uiText("Compare original-page images with the model")}</label>
-  {capabilities&&!imagesAvailable&&<p>{uiText(capabilities.originalPages?'The selected model does not support original-page images.':'Original-page images are unavailable for this source on this device.')}</p>}
-  {capabilities&&!capabilities.ocr&&<p>{uiText("Local OCR is unavailable for this source on this device.")}</p>}
-  {!!capabilities?.reason&&<p>{capabilities.reason}</p>}
-  {(options.ocr||options.originalPages)&&<><label><input type="checkbox" aria-label={uiText("Allow selected source evidence to be sent to the AI provider")} checked={options.allowExternalTransmission} onChange={event=>onChange({...options,allowExternalTransmission:event.target.checked})}/>{uiText("Allow selected source evidence to be sent to the AI provider")}</label><p>{uiText("This sends selected original-page images and/or OCR text to your configured AI provider and may increase provider charges. Consent applies to this run.")}</p></>}
-  {options.originalPages&&!options.allowExternalTransmission&&<InlineNotice tone="warning" variant="compact" title={uiText("Original-page model comparison requires transmission consent before starting.")}/>}
- </fieldset>;
-}
 function exportJSON(value:unknown,name:string){const url=URL.createObjectURL(new Blob([JSON.stringify(value,null,2)],{type:'application/json'}));const link=document.createElement('a');link.href=url;link.download=name;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 const patchBaseline=(patch:SourceEditorialPatch)=>JSON.stringify([patch.original,patch.userReplacement??patch.replacement,patch.decision]);
-function patchSnippet(patch:SourceEditorialPatch,side:'original'|'replacement'){
- const after=patch.userReplacement??patch.replacement;let at=0;
- while(at<patch.original.length&&at<after.length&&patch.original[at]===after[at])at++;
- const from=Math.max(0,at-28),text=side==='original'?patch.original:after;
- return (from?'…':'')+text.slice(from,from+110).replace(/\s+/g,' ')+(text.length>from+110?'…':'');
-}
 function PatchReview({draftKey,draftKeyFor,patch,group,sourceText,disabled,layout,onCompare,onLocate,onChoose,onDecision}:{draftKey:string;draftKeyFor:(patch:SourceEditorialPatch)=>string;patch:SourceEditorialPatch;group:SourceEditorialPatch[];sourceText:string;layout:ComparisonLayout;disabled:boolean;onCompare?:(page:number)=>void;onLocate:()=>void;onChoose:(patch:SourceEditorialPatch)=>void;onDecision:(patch:SourceEditorialPatch,decision:'accepted'|'rejected'|'pending',replacement?:string)=>Promise<void>}){
   const baseline=patchBaseline(patch);
   const restored=editorialDraft(draftKey,baseline);
@@ -75,9 +53,9 @@ function PatchReview({draftKey,draftKeyFor,patch,group,sourceText,disabled,layou
     {group.length>1&&<div className="reprocessing-linked-group"><p>{uiText("These {value0} linked changes are reviewed together. The comparison includes every part and the original text between them.",{value0:group.length})}</p><label>{uiText("Part to edit")} <select aria-label={uiText("Linked change to edit")} value={patch.id} onChange={event=>{const item=group.find(item=>item.id===event.target.value);if(item)onChoose(item);}}>{sorted.map((item,index)=><option key={item.id} value={item.id}>{index+1} · {uiText(label(item.category))} · {uiText("Line {value0}",{value0:item.range.startLine})}</option>)}</select></label></div>}
     <SourcePatchComparison original={original} replacement={proposed} layout={layout}/>
     {editing&&<label className="reprocessing-edit">{uiText("Edit suggested replacement")}<textarea aria-label={uiText("Edit suggested replacement")} disabled={disabled} value={replacement} onChange={e=>{setReplacement(e.target.value);saveEditorialDraft(draftKey,baseline,e.target.value);}}/></label>}
+    <p className="reprocessing-patch-reason">{patch.reason}</p>
     <details className="reprocessing-patch-explanation"><DisclosureSummary>{uiText("Details")}</DisclosureSummary>
       {hasRisks&&<div className="reprocessing-patch-risks"><strong>{uiText("Review carefully")}</strong><ul>{patch.riskReasons!.map(reason=><li key={reason}>{reason}</li>)}</ul></div>}
-      <p>{patch.reason}</p>
       {patch.autoAcceptance&&<><strong>{uiText("Acceptance evidence")}</strong><p>{patch.autoAcceptance.validator} · {patch.autoAcceptance.policy} · {new Date(patch.autoAcceptance.appliedAt).toLocaleString(getLocale())}</p><ul>{patch.autoAcceptance.checks.map(check=><li key={check}>{check}</li>)}</ul></>}
       {!!patch.decisionHistory?.length&&<details><DisclosureSummary>{uiText("Decision history")}</DisclosureSummary><ol>{patch.decisionHistory.map((entry,index)=><li key={index}>{new Date(entry.at).toLocaleString(getLocale())} · {entry.actor} · {entry.from} → {entry.to}{entry.previousReplacement!==undefined&&<pre>{entry.previousReplacement}</pre>}</li>)}</ol></details>}
       {patch.confidence>0&&<small className="reprocessing-confidence">{uiText("AI confidence:") + " "}{Math.round(patch.confidence*100)}%</small>}
@@ -91,48 +69,6 @@ function exportVariant(revision:SourceReprocessingRevision,variant:'original'|'r
   exportJSON({schemaVersion:1,revisionId:revision.id,fileId:revision.fileId,baseHash:revision.baseHash,variant,canonical:variant==='original',createdAt:revision.createdAt,updatedAt:revision.updatedAt,provenance:{original:`source-original-${revision.id}.json`,reprocessed:`source-reprocessed-${revision.id}.json`,fullRevision:`source-revision-${revision.id}.json`,nodeLinks:revision.nodeLinks??[],patches:revision.patches},...revision[variant]},`source-${variant}-${revision.id}.json`);
 }
 const partial=(revision:Pick<SourceReprocessingRevision,'status'|'report'>)=>!active(revision.status)&&revision.report.chunksCompleted<revision.report.chunksTotal;
-const incompleteResponse=(revision:SourceReprocessingRevision)=>/^provider_(?:output_limit|empty_output|incomplete_output)$/.test(revision.report.errorCode??'')||!!revision.report.error?.startsWith('OpenAI returned an incomplete response.');
-const configurationFailure=(revision:SourceReprocessingRevision)=>!incompleteResponse(revision)&&/config|unsupported|provider_http_(?:40[0134]|422)/.test(revision.report.errorCode??'');
-function ReprocessingProgress({revision}:{revision:SourceReprocessingRevision}){
-  const {report,status}=revision;
-  const [now,setNow]=useState(Date.now);
-  useEffect(()=>{if(!active(status))return;setNow(Date.now());const timer=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(timer);},[revision.id,status]);
-  const preparingEvidence=status==='running'&&report.evidencePreparation?.state==='collecting';
-  const sessionStarted=report.sessionStartedAt?Date.parse(report.sessionStartedAt):NaN;
-  const recent=(report.excerpts??[]).filter(excerpt=>excerpt.status==='completed').flatMap(excerpt=>excerpt.history??[]).filter(attempt=>!attempt.errorCode&&attempt.durationMs>0&&Date.parse(attempt.startedAt)>=sessionStarted).sort((a,b)=>Date.parse(b.startedAt)-Date.parse(a.startedAt)).slice(0,5);
-  const remaining=report.chunksTotal-report.chunksCompleted;
-  const seconds=recent.length?Math.max(1,Math.ceil(recent.reduce((sum,attempt)=>sum+attempt.durationMs,0)/recent.length*Math.ceil(remaining/Math.max(1,report.concurrency??1))/1000)):null;
-  const duration=seconds===null?'':seconds<60?`${seconds}s`:`${Math.floor(seconds/60)}m ${seconds%60}s`;
-  const estimate=status==='queued'?uiText("Waiting to start"):remaining<=0?uiText("Finishing up…"):seconds===null?uiText("Time estimate available after a successful excerpt in this session."):uiText("Est. time remaining: ~{value0}",{value0:duration});
-  const failed=partial(revision);
-  const stageLabels={reconstructing:'First pass · reconstructing excerpts',understanding:'Understanding document',verifying:'Verifying excerpts',auditing:'Checking document consistency'};
-  const stage=revision.pipelineVersion===2?report.stage:undefined;
-  const stageProgress=stage&&stage!=='auditing'?report.stageProgress:undefined;
-  const currentProgress=active(status)&&!preparingEvidence&&stage?stageProgress:undefined;
-  const completed=currentProgress?.completed??report.chunksCompleted;
-  const total=currentProgress?.total??report.chunksTotal;
-  const indeterminate=status==='queued'||status==='running'&&(preparingEvidence||stage==='auditing'||completed===0);
-  const runningExcerpts=(report.excerpts??[]).filter(excerpt=>excerpt.status==='running'&&(!stage||stage==='reconstructing'&&excerpt.activePass===1||stage==='verifying'&&(excerpt.activePass??0)>1));
-  const elapsed=(startedAt:string)=>{const seconds=Math.max(0,Math.floor((now-Date.parse(startedAt))/1000));return seconds<60?`${seconds}s`:`${Math.floor(seconds/60)}m ${seconds%60}s`;};
-  const stageDetail=currentProgress?`${currentProgress.completed} / ${currentProgress.total} ${uiText(stage==='understanding'?"document summaries processed":"excerpts processed in this stage")} · `:'';
-  const sessionElapsed=Number.isFinite(sessionStarted)?uiText("Elapsed: {value0}",{value0:elapsed(report.sessionStartedAt!)}):'';
-  // Stage checkpoints advance before excerpts are fully verified and published.
-  return <div className="reprocessing-progress">
-    <ProgressNotice id={`reprocessing-progress-${revision.id}`} title={status==='queued'?uiText("Queued for reprocessing"):preparingEvidence?uiText("Preparing original-source evidence locally"):status==='running'?uiText(stage?stageLabels[stage]:"Reprocessing source…"):failed?uiText("Partial revision"):status==='failed'?uiText("Processing failed"):status==='interrupted'?uiText("Processing interrupted"):uiText("Processing complete")}
-      state={failed?'interrupted':status} detail={`${stageDetail}${report.chunksCompleted} / ${report.chunksTotal} ${uiText("excerpts completed")}`}
-      value={indeterminate?undefined:completed} max={Math.max(1,total)} progressLabel={uiText("Reprocessing progress")}/>
-    {revision.pipelineVersion===2&&revision.configuration&&<p className="reprocessing-stage-summary">{uiText(depthLabels[revision.configuration.depth])} · {uiText(revision.configuration.reviewPolicy==='verified'?'Verified changes only':'Review everything')} · {uiText(depthPasses[revision.configuration.depth])}</p>}
-    {stage&&<div className="reprocessing-document-stage" data-reprocessing-stage={stage} role="status"><strong>{uiText(stageLabels[stage])}</strong>{report.stageProgress&&<span>{report.stageProgress.completed} / {report.stageProgress.total}</span>}</div>}
-    {active(status)&&runningExcerpts.length>0&&<ul className="reprocessing-active-excerpts" aria-label={uiText("Active excerpts")}>{runningExcerpts.map(excerpt=><li key={excerpt.index}>{uiText("Excerpt {value0}",{value0:excerpt.index+1})}{excerpt.startPage?` · ${excerpt.endPage&&excerpt.endPage!==excerpt.startPage?uiText("Pages {value0}–{value1}",{value0:excerpt.startPage,value1:excerpt.endPage}):uiText("Page {value0}",{value0:excerpt.startPage})}`:''}{excerpt.activePass?` · ${uiText("Running pass")} ${excerpt.activePass}`:''}{excerpt.lastAttemptAt&&Number.isFinite(Date.parse(excerpt.lastAttemptAt))?` · ${elapsed(excerpt.lastAttemptAt)}`:''}</li>)}</ul>}
-    {report.coverage&&report.coverage.incompleteChunkIndexes.length>0&&<p className="reprocessing-warning" data-reprocessing-coverage="incomplete">{uiText("Document understanding has incomplete first-pass coverage")}: {report.coverage.firstPassCompleted} / {report.coverage.totalChunks}. {uiText("Unfinished excerpts remain visible for recovery and review.")}</p>}
-    {report.evidencePreparation&&<ProgressNotice id={`reprocessing-evidence-${revision.id}`} compact title={uiText(report.evidencePreparation.state==='collecting'?"Preparing original-source evidence locally":"Original-source evidence prepared")+': '} state={report.evidencePreparation.state==='collecting'?'running':'completed'} detail={`${report.evidencePreparation.preparedChunks} / ${report.evidencePreparation.totalChunks}`} value={report.evidencePreparation.preparedChunks} max={Math.max(1,report.evidencePreparation.totalChunks)}/>}
-    {report.summaryValidation&&<div className="reprocessing-summary-validation" role="status"><strong>{uiText(report.summaryValidation.state==='reviewing'?'Checking summary quotations':'Summary quotation corrections')}</strong><p>{report.summaryValidation.issues} {uiText('quotation differences')} · {report.summaryValidation.accepted} {uiText('resolved')} · {report.summaryValidation.unresolved} {uiText('excluded from summary context')}</p><p>{uiText('Resolved quotation corrections do not block processing. Unresolved observations are excluded from summary context so verification can continue.')}</p>{report.summaryValidation.contextPreserved&&<p>{uiText('The earlier verification context is preserved. These review explanations are retained without repeating completed work.')}</p>}{report.summaryValidation.diagnostics.length>0&&<details><DisclosureSummary>{uiText('Correction details')}</DisclosureSummary><ul>{report.summaryValidation.diagnostics.map((message,index)=><li key={index}>{message}</li>)}</ul></details>}</div>}
-    {active(status)&&<small>{sessionElapsed&&<>{sessionElapsed} · </>}{preparingEvidence?uiText("Local OCR is preparing evidence before AI processing begins. First-time model initialization can take several minutes. Excerpts wait until all source evidence is ready."):revision.pipelineVersion===2?status==='queued'?uiText("Waiting to start"):uiText("Progress updates when each model request finishes. A request can take several minutes."):estimate}</small>}
-    {report.error&&<InlineNotice id={`reprocessing-error-${revision.id}`} tone={failed?'warning':'error'} title={uiText("Processing stopped")} description={(report.error.startsWith('OpenAI returned an incomplete response.')?uiText('The AI provider returned an incomplete response. Retry unfinished work with a larger response budget.'):report.error)+' '+(configurationFailure(revision)?uiText("Check the model, supported reasoning and provider access in Settings → Intelligence before retrying. Completed suggestions remain available for review."):uiText(revision.pipelineVersion===2?"Completed excerpts and review decisions are retained. Retry unfinished work to recover incomplete responses; additional AI requests may incur charges.":"Completed excerpts and review decisions are retained. Resuming processes only unfinished excerpts."))}/>}
-    {report.excerpts?.some(excerpt=>excerpt.outcomeUncertain)&&<InlineNotice id={`reprocessing-uncertain-${revision.id}`} tone="warning" variant="compact" title={uiText(revision.pipelineVersion===2?'The provider may have processed an unfinished request. It was not retried automatically. This revision cannot resume an uncertain request. Start a new revision explicitly if you want to process the source again; another charge may apply.':'The provider may have processed an unfinished request. It was not retried automatically. Resuming may send that excerpt again and incur another charge.')}/>}
-    {failed&&<p>{uiText("Coverage is incomplete. This reading version contains only accepted changes from completed excerpts.")}</p>}
-  </div>;
-}
 function ExcerptConfiguration({history}:{history?:SourceEditorialAttempt[]}){
   const attempt=history?.at(-1);
   if(!attempt?.model||!attempt.reasoningEffort)return null;
@@ -161,47 +97,62 @@ function Report({revision}:{revision:SourceReprocessingRevision}){
     <div className="reprocessing-actions"><button className="button small" onClick={()=>exportJSON(revision,`source-revision-${revision.id}.json`)}>{uiText("Export provenance + report")}</button><button className="button small" onClick={()=>exportVariant(revision,'original')}>{uiText("Original JSON")}</button><button className="button small" onClick={()=>exportVariant(revision,'reprocessed')}>{uiText("Reprocessed JSON")}</button></div>
   </details>;
 }
-export function SourceReprocessing({sourceId,vaultId,fileId,visible,onShow,onOriginal,onCompare,onReadingRevision,canonicalVersion,onReviewOpenChange}:Props){
+export function SourceReprocessing({sourceId,vaultId,fileId,visible,onShow,onOriginal,onCompare,onReadingRevision,canonicalVersion,onReviewOpenChange,reviewHost,onReviewRevision,onReturnContext,onEvidenceSurfaceChange}:Props){
   const destination=useContext(ReviewDestination);
   const reviewRun=destination?.category==='editorial'&&destination.fileId===fileId?destination.runId:undefined;
   useEffect(()=>{if(reviewRun){setRevisionId(reviewRun);setTab('review');}},[reviewRun]);
-  const [summaries,setSummaries]=useState<SourceReprocessingSummary[]>([]),[revisionId,setRevisionId]=useState(''),[revision,setRevision]=useState<SourceReprocessingRevision|null>(null),[prompt,setPrompt]=useState(false),[instructions,setInstructions]=useState(''),[depth,setDepth]=useState<SourceProcessingDepth>('balanced'),[reviewPolicy,setReviewPolicy]=useState<SourceReviewPolicy>('verified'),[filter,setFilter]=useState<'all'|'pending'|'accepted'|'rejected'|'automatic'>('pending'),[comparisonLayout,setComparisonLayout]=useState<ComparisonLayout>('auto'),[selected,setSelected]=useState<string[]>([]),[busy,setBusy]=useState(false),[error,setError]=useState(''),[reload,setReload]=useState(0),[tab,setTab]=useState<'read'|'review'>('read');
-  useEffect(()=>{onReviewOpenChange?.(visible&&tab==='review');return()=>onReviewOpenChange?.(false);},[visible,tab,onReviewOpenChange]);
-  const reviewTrigger=useRef<HTMLButtonElement>(null);
-  function closeReview(){setTab('read');reviewTrigger.current?.focus({preventScroll:true});}
+  const [summaries,setSummaries]=useState<SourceReprocessingSummary[]>([]),[revisionId,setRevisionId]=useState(''),[revision,setRevision]=useState<SourceReprocessingRevision|null>(null),[prompt,setPrompt]=useState(false),[instructions,setInstructions]=useState(''),[depth,setDepth]=useState<SourceProcessingDepth>('balanced'),[reviewPolicy,setReviewPolicy]=useState<SourceReviewPolicy>('verified'),[filter,setFilter]=useState<'all'|'pending'|'accepted'|'rejected'|'automatic'>('pending'),[comparisonLayout,setComparisonLayout]=useState<ComparisonLayout>('unified'),[selected,setSelected]=useState<string[]>([]),[busy,setBusy]=useState(false),[error,setError]=useState(''),[reload,setReload]=useState(0),[tab,setTab]=useState<'read'|'review'>('read');
+  const reviewReady=visible&&tab==='review'&&!!revision&&revision.id===revisionId;
+  useLayoutEffect(()=>{onReviewOpenChange?.(reviewReady);return()=>onReviewOpenChange?.(false);},[reviewReady,onReviewOpenChange]);
+  const reviewTrigger=useRef<HTMLButtonElement>(null),reviewPane=useRef<HTMLElement>(null);
+  const [evidenceSurface,setEvidenceSurface]=useState<'reading'|'original'|'pdf'>('reading');
+  const contextReading=useRef<string|null>(null);
+  useLayoutEffect(()=>{onEvidenceSurfaceChange?.(reviewReady&&evidenceSurface!=='reading');},[reviewReady,evidenceSurface,onEvidenceSurfaceChange]);
+  useEffect(()=>{const back=()=>returnToCorrection();window.addEventListener('noema:return-to-source-correction',back);return()=>window.removeEventListener('noema:return-to-source-correction',back);});
+  useEffect(()=>{if(!visible||tab!=='review'||evidenceSurface!=='reading')return;const frame=requestAnimationFrame(()=>reviewPane.current?.focus({preventScroll:true}));return()=>cancelAnimationFrame(frame);},[visible,tab,revision?.id,reviewHost,evidenceSurface]);
+  useEffect(()=>{onReviewRevision?.(reviewReady?revision:null);},[reviewReady,revision,onReviewRevision]);
+  const reviewInvoker=useRef<HTMLElement|null>(null);
+  function closeReview(){returnToCorrection();setTab('read');requestAnimationFrame(()=>{const target=reviewInvoker.current;(target?.isConnected?target:reviewTrigger.current)?.focus({preventScroll:true});});}
+  const [passagePatchIds,setPassagePatchIds]=useState<string[]>([]);
   const [activePatchId,setActivePatchId]=useState(''),[bulk,setBulk]=useState(false),[reviewLimit,setReviewLimit]=useState(20);
   const mounted=useRef(true),latestRevisionId=useRef(revisionId);latestRevisionId.current=revisionId;
   useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
   useEffect(()=>{setReviewLimit(20);setSelected([]);},[revisionId]);
   useEffect(()=>{
-    function openPatch(event:Event){const detail=(event as CustomEvent<{fileId:string;revisionId?:string;patchId:string}>).detail;if(detail?.fileId!==fileId)return;if(detail.revisionId)setRevisionId(detail.revisionId);setActivePatchId(detail.patchId);setFilter('all');setTab('review');onShow();}
+    function openPatch(event:Event){const detail=(event as CustomEvent<{fileId:string;revisionId?:string;patchId:string;patchIds?:string[]}>).detail;if(detail?.fileId!==fileId)return;reviewInvoker.current=document.activeElement instanceof HTMLElement?document.activeElement:null;if(detail.revisionId)setRevisionId(detail.revisionId);setActivePatchId(detail.patchId);setPassagePatchIds(detail.patchIds??[]);setFilter('all');setTab('review');onShow();}
     window.addEventListener('noema:review-source-patch',openPatch);return()=>window.removeEventListener('noema:review-source-patch',openPatch);
   },[fileId,onShow]);
   const readingKey=`noema:source-reading:${vaultId}:${fileId}`;
-  const [currentReadingId,setCurrentReadingId]=useState(()=>{try{return localStorage.getItem(readingKey)??'';}catch{return '';}}),[readingChoice,setReadingChoice]=useState('current');
-  const requestedReadingId=readingChoice==='original'?'':readingChoice==='current'?currentReadingId:readingChoice;
+  const [currentReadingId,setCurrentReadingId]=useState(()=>{try{return localStorage.getItem(readingKey)??'';}catch{return '';}}),[readingChoice,setReadingChoice]=useState(()=>{try{return localStorage.getItem(readingKey)||'original';}catch{return 'original';}});
+  const requestedReadingId=readingChoice==='original'?'':readingChoice;
   const readingCallback=useRef(onReadingRevision);readingCallback.current=onReadingRevision;
   const readingRequest=useRef(0);
   const eligible=(item:SourceReprocessingRevision|SourceReprocessingSummary)=>item.status==='completed'&&item.report.chunksCompleted>=item.report.chunksTotal&&!item.stale;
   useEffect(()=>{
     const requestId=++readingRequest.current;
     if(!requestedReadingId){readingCallback.current?.(null);return;}
-    readingCallback.current?.(null);
     const controller=new AbortController();
     void request<SourceReprocessingRevision>(`source-files/${encodeURIComponent(fileId)}/reprocessing/${encodeURIComponent(requestedReadingId)}`,'GET',undefined,vaultId,controller.signal).then(value=>{
       if(controller.signal.aborted||readingRequest.current!==requestId)return;
       if(value.fileId===fileId&&eligible(value))readingCallback.current?.(value);
-      else {readingCallback.current?.(null);setError('This revision is incomplete or no longer matches the canonical source. Original processed text is shown.');}
-    }).catch(cause=>{if(!controller.signal.aborted&&readingRequest.current===requestId){readingCallback.current?.(null);setError(String(cause));}});
+      else {readingCallback.current?.(null);setReadingChoice('original');setError('This revision is incomplete or no longer matches the canonical source. Original processed text is shown.');}
+    }).catch(cause=>{if(!controller.signal.aborted&&readingRequest.current===requestId){readingCallback.current?.(null);setReadingChoice('original');setError(String(cause));}});
     return()=>controller.abort();
   },[fileId,vaultId,requestedReadingId,reload,canonicalVersion]);
   function chooseReading(value:string){
+    if(value!=='original'&&!revisionOptions.some(item=>item.id===value&&eligible(item)))return;
+    contextReading.current=null;setEvidenceSurface('reading');onReturnContext?.();
     setReadingChoice(value);
-    if(value!=='current'&&value!=='original'){
-      const item=revisionOptions.find(item=>item.id===value);if(!item||!eligible(item))return;
-      setCurrentReadingId(value);try{localStorage.setItem(readingKey,value);}catch{/* Reading remains selected for this session. */}
-    }
+    if(value!=='original')setRevisionId(value);
     if(value==='original')onOriginal();
+  }
+  function preferReading(){
+    const value=requestedReadingId;
+    setCurrentReadingId(value);try{if(value)localStorage.setItem(readingKey,value);else localStorage.removeItem(readingKey);}catch{/* Preference remains available this session. */}
+  }
+  function returnToCorrection(){
+    if(contextReading.current!==null){setReadingChoice(contextReading.current);contextReading.current=null;}
+    setEvidenceSurface('reading');onReturnContext?.();
   }
   const defaultTabRevision=useRef('');
   useEffect(()=>{if(!revision||defaultTabRevision.current===revision.id)return;defaultTabRevision.current=revision.id;if(!revision.patches.some(patch=>patch.decision==='pending'))setFilter('all');if(reviewRun===revision.id)setTab('review');},[revision,reviewRun]);
@@ -219,7 +170,7 @@ export function SourceReprocessing({sourceId,vaultId,fileId,visible,onShow,onOri
   },[prompt,route,vaultId]);
 
   useEffect(()=>{const controller=new AbortController();let timer:ReturnType<typeof setTimeout>;
-    async function refresh(){try{const items=await request<SourceReprocessingSummary[]>(route,'GET',undefined,vaultId,controller.signal);if(controller.signal.aborted)return;setSummaries(items);setRevisionId(id=>id||items[0]?.id||'');if(items.some(item=>active(item.status)))timer=setTimeout(()=>void refresh(),2500);}catch(cause){if(!controller.signal.aborted)setError(String(cause));}}
+    async function refresh(){try{const items=await request<SourceReprocessingSummary[]>(route,'GET',undefined,vaultId,controller.signal);if(controller.signal.aborted)return;setSummaries(items);setRevisionId(id=>id||(items.some(item=>item.id===requestedReadingId)?requestedReadingId:'')||items[0]?.id||'');if(items.some(item=>active(item.status)))timer=setTimeout(()=>void refresh(),2500);}catch(cause){if(!controller.signal.aborted)setError(String(cause));}}
     void refresh();return()=>{controller.abort();clearTimeout(timer);};
   },[route,vaultId,reload,canonicalVersion]);
   useEffect(()=>{setRevision(current=>current?.id===revisionId?current:null);if(!revisionId)return;const controller=new AbortController();let timer:ReturnType<typeof setTimeout>;
@@ -237,6 +188,7 @@ export function SourceReprocessing({sourceId,vaultId,fileId,visible,onShow,onOri
     void refresh();return()=>{controller.abort();clearTimeout(timer);};
   },[route,vaultId,revisionId,reload,canonicalVersion]);
   const running=summaries.some(item=>active(item.status))||(revision!==null&&active(revision.status)),stale=revision?.stale,pending=revision?.patches.filter(p=>p.decision==='pending').length??0;
+  const activeRun=summaries.find(item=>active(item.status));
   const revisionOptions=revision?summaries.some(item=>item.id===revision.id)?summaries.map(item=>item.id===revision.id?revision:item):[revision,...summaries]:summaries;
   async function start(){if(!configuration||!evidenceCapabilities&&!evidenceError||evidenceOptions.originalPages&&!evidenceOptions.allowExternalTransmission||!beginAction())return;try{const value=await request<SourceReprocessingRevision>(route,'POST',{instructions,pipelineVersion:2,configuration:{depth,reviewPolicy,evidence:evidenceOptions}},vaultId);if(!mounted.current)return;setRevisionId(value.id);setRevision(value);setPrompt(false);setReload(n=>n+1);onShow();}catch(cause){if(mounted.current)setError(cause instanceof Error?cause.message:String(cause));}finally{finishAction();}}
   const patchDraftKey=(patch:SourceEditorialPatch)=>JSON.stringify([vaultId,fileId,revision?.id,patch.id]);
@@ -267,57 +219,67 @@ export function SourceReprocessing({sourceId,vaultId,fileId,visible,onShow,onOri
   }
   const automaticallyApplied=(patch:SourceEditorialPatch)=>patch.decision==='accepted'&&(patch.decisionHistory?.at(-1)?.actor??(patch.autoAcceptance?'automatic':'user'))==='automatic';
   const matches=(patch:SourceEditorialPatch,value:typeof filter)=>value==='all'||(value==='automatic'?automaticallyApplied(patch):value==='accepted'?patch.decision==='accepted'&&!automaticallyApplied(patch):patch.decision===value);
-  const shownPatches=revision?.patches.filter(patch=>matches(patch,filter))??[];
+  const shownPatches=revision?.patches.filter(patch=>matches(patch,filter)&&(!passagePatchIds.length||passagePatchIds.includes(patch.id)))??[];
   const brokenFootnotes=revision?.report.validationDiagnostics?.filter(message=>/footnote.*(?:no definition|missing|ambiguous|\d+ definitions)/i.test(message))??[];
   const visiblePatches=shownPatches.slice(0,reviewLimit),activePatch=shownPatches.find(patch=>patch.id===activePatchId)??shownPatches[0];
   const activeIndex=shownPatches.findIndex(patch=>patch.id===activePatch?.id);
   const activeGroup=activePatch?(revision?.patches.filter(patch=>patch.id===activePatch.id||!!activePatch.patchGroupId&&patch.patchGroupId===activePatch.patchGroupId)??[]):[];
-  const reviewFilters=['pending','automatic','accepted','rejected','all'] as const;
+  const primaryFilters=['pending','all'] as const,historyFilters=['automatic','accepted','rejected'] as const;
   const reviewLabels={pending:'Pending',automatic:'Automatically applied',accepted:'Applied manually',rejected:'Rejected',all:'All history'};
   const emptyReviewMessages={pending:'No pending changes to review.',automatic:'No automatically applied changes.',accepted:'No manually applied changes yet.',rejected:'No rejected changes. Rejected suggestions keep the original text.',all:'No editorial changes recorded.'};
+  function renderFilter(value:typeof filter){
+    return <button key={value} type="button" aria-pressed={filter===value} onClick={()=>{setPassagePatchIds([]);setFilter(value);setActivePatchId('');setReviewLimit(20);setSelected([]);}}>{uiText(reviewLabels[value])} <span className="reprocessing-filter-count">{revision!.patches.filter(patch=>matches(patch,value)).length}</span></button>;
+  }
   function locatePatch(patch:SourceEditorialPatch){
     setActivePatchId(patch.id);
   }
   function showPatchSource(patch:SourceEditorialPatch){
-    closeReview();
+    if(contextReading.current===null)contextReading.current=readingChoice;
+    setEvidenceSurface('original');
     const candidates=revision?sourceDocumentEntries(revision.original.document).filter(({node})=>patch.nodeIds.includes(node.id)&&node.range.startOffset<patch.range.endOffset&&node.range.endOffset>patch.range.startOffset).sort((a,b)=>(a.node.range.endOffset-a.node.range.startOffset)-(b.node.range.endOffset-b.node.range.startOffset)):[];
     const nodeId=candidates[0]?.node.id;
-    if(nodeId){setReadingChoice('original');onOriginal(nodeId,false);onShow();}
+    setReadingChoice('original');onOriginal(nodeId,false);onShow();
   }
+  function renderReview(pane:React.ReactNode){return reviewHost?createPortal(pane,reviewHost):pane;}
   return <section className="source-reprocessing" aria-label={uiText("Beta source reprocessing")}>
     <div className="reprocessing-bar">
       <label className="reprocessing-reading-picker">{uiText("Reading version")} <select aria-label={uiText("Reading version")} value={readingChoice} onChange={event=>chooseReading(event.target.value)}>
-        <option value="current">{uiText("Current reading")}</option><option value="original">{uiText("Original processed")}</option>
-        {revisionOptions.filter(eligible).map(item=><option key={item.id} value={item.id}>{uiText("Editorial revision")} · {new Date(item.createdAt).toLocaleString(getLocale())}</option>)}
+        <option value="original">{uiText("Original processed")}{!currentReadingId?" · Preferred":""}</option>
+        {revisionOptions.filter(eligible).map(item=><option key={item.id} value={item.id}>{uiText("Editorial revision")} · {new Date(item.createdAt).toLocaleString(getLocale())}{currentReadingId===item.id?" · Preferred":""}</option>)}
       </select></label>
-      <button ref={reviewTrigger} type="button" className="reprocessing-quiet-action" aria-expanded={visible&&tab==='review'} aria-controls={`source-review-${fileId}`} onClick={()=>{setFilter(pending>0?'pending':'all');setTab('review');onShow();}}>{uiText("Review changes (")}{pending})</button>
-      <button type="button" className="button small reprocessing-loading-button" aria-busy={running} disabled={busy||running} onClick={()=>{setPrompt(true);onShow();}}>{running&&<span className="scan-spinner" aria-hidden="true"/>}{running?uiText("Reprocessing…"):uiText("Reprocess with AI")}</button>
+      <button type="button" className="reprocessing-quiet-action" disabled={requestedReadingId===currentReadingId} onClick={preferReading}>{uiText("Set as preferred reading version")}</button>
+      <button ref={reviewTrigger} type="button" disabled={!revision||revision.id!==revisionId} className="reprocessing-quiet-action" aria-expanded={visible&&tab==='review'} aria-controls={`source-review-${fileId}`} onClick={()=>{reviewInvoker.current=reviewTrigger.current;setPassagePatchIds([]);setFilter(pending>0?'pending':'all');setTab('review');onShow();}}>{uiText("Review changes (")}{pending})</button>
+      <button type="button" className="button small reprocessing-loading-button" aria-busy={running} disabled={busy} onClick={()=>{setError('');if(running){if(activeRun)setRevisionId(activeRun.id);}else setPrompt(true);onShow();}}>{running&&<span className="scan-spinner" aria-hidden="true"/>}{running?uiText("Processing status"):uiText("Refine text")}</button>
     </div>
-    {error&&<InlineNotice id={`reprocessing-operation-error-${fileId}`} tone="error" title={error} announcement="assertive" actions={<button type="button" className="button" onClick={()=>{setError('');setReload(n=>n+1);}}>{uiText("Refresh")}</button>}/>}
-    {visible&&<><p className="reprocessing-hint">{uiText("An editorial reading version. Balanced restores paragraphs, soft wraps and recognizable footnotes while preserving source text. Wording changes and ambiguous note links remain reviewable.")}</p>
-      {prompt&&<form className="reprocessing-prompt" onSubmit={e=>{e.preventDefault();void start();}}><h3>{uiText("Re-edit this source") + " "}<span>{uiText("Beta")}</span></h3><p>{uiText("Review OCR, line breaks, footnotes, page apparatus, foreign-language citations, metadata and math while preserving source meaning and page provenance.")}</p><div className="reprocessing-configuration" role="status">{configuration?<><strong>{intelligenceModels.find(model=>model.id===configuration.model)?.label??configuration.model} · {configuration.reasoningEffort} {uiText("reasoning")}</strong><p>{uiText("Supported reasoning:")} {intelligenceModels.find(model=>model.id===configuration.model)?.efforts.join(', ')}</p></>:configurationError?<InlineNotice id={`reprocessing-configuration-error-${fileId}`} tone="error" variant="compact" title={configurationError} announcement="assertive"/>:uiText("Loading AI configuration…")}</div><label>{uiText("Processing depth")}<select aria-label={uiText("Processing depth")} value={depth} onChange={event=>setDepth(event.target.value as SourceProcessingDepth)}>{(['light','balanced','deep'] as const).map(value=><option key={value} value={value}>{uiText(depthLabels[value])}</option>)}</select></label><p className="reprocessing-depth-detail">{uiText(depthPasses[depth])}. {uiText("Each pass is a separate model request. Balanced and Deep cost at least two requests per excerpt, even when no changes are proposed.")}</p><label>{uiText("Review policy")}<select aria-label={uiText("Review policy")} value={reviewPolicy} onChange={event=>setReviewPolicy(event.target.value as SourceReviewPolicy)}><option value="verified">{uiText("Apply verified changes automatically")}</option><option value="review_all">{uiText("Review everything")}</option></select></label><p>{uiText("Text-preserving paragraph layout and paired footnote formatting can be applied automatically. Uncertain wording, mathematics and bibliographic changes remain for review.")}</p><EvidenceOptions capabilities={evidenceCapabilities} error={evidenceError} options={evidenceOptions} onChange={setEvidenceOptions} disabled={busy}/><label>{uiText("Editorial guidance (optional)")}<textarea autoFocus value={instructions} maxLength={4000} onChange={e=>setInstructions(e.target.value)} placeholder={uiText("For example: preserve Greek quotations; check ambiguous footnote numbering carefully.")}/></label><div className="reprocessing-actions"><button className="button primary reprocessing-loading-button" aria-busy={busy} disabled={busy||running||!configuration||!evidenceCapabilities&&!evidenceError||evidenceOptions.originalPages&&!evidenceOptions.allowExternalTransmission} type="submit">{busy&&<span className="scan-spinner" aria-hidden="true"/>}{busy?uiText("Starting…"):uiText("Start reprocessing")}</button><button className="button" disabled={busy} type="button" onClick={()=>setPrompt(false)}>{uiText("Cancel")}</button></div></form>}
-      {revisionOptions.length>0&&<label className="reprocessing-revision-picker">{uiText("Revision") + " "}<select disabled={busy} value={revisionId} onChange={e=>{setActivePatchId('');setRevisionId(e.target.value);}}>{revisionOptions.map(item=><option key={item.id} value={item.id}>{new Date(item.createdAt).toLocaleString(getLocale())} · {uiText(partial(item)?"Partial revision":item.status)}</option>)}</select></label>}
-      {!revision&&!prompt&&<p role="status">{revisionId?uiText("Loading revision…"):uiText("Create a beta revision to improve reading quality and review editorial suggestions.")}</p>}
+    {error&&!prompt&&<InlineNotice id={`reprocessing-operation-error-${fileId}`} tone="error" title={error} announcement="assertive" actions={<button type="button" className="button" onClick={()=>{setError('');setReload(n=>n+1);}}>{uiText("Refresh")}</button>}/>}
+    {visible&&<>
+      {prompt&&<SourceReprocessingSetup fileId={fileId} configuration={configuration} configurationError={configurationError} depth={depth} onDepth={setDepth} reviewPolicy={reviewPolicy} onReviewPolicy={setReviewPolicy} instructions={instructions} onInstructions={setInstructions} evidenceCapabilities={evidenceCapabilities} evidenceError={evidenceError} evidenceOptions={evidenceOptions} onEvidenceOptions={setEvidenceOptions} busy={busy} running={running} error={error} onStart={()=>void start()} onClose={()=>setPrompt(false)}/>}
+      {activeRun&&activeRun.id!==revisionId&&<div className="reprocessing-active-run" role="status"><span>{uiText("A revision is processing")} · {new Date(activeRun.createdAt).toLocaleString(getLocale())}</span><button type="button" className="button small" onClick={()=>setRevisionId(activeRun.id)}>{uiText("Show processing status")}</button></div>}
+      {!revision&&!prompt&&<p role="status">{revisionId?uiText("Loading revision…"):uiText("Refine text to create an editorial reading version and review suggested corrections.")}</p>}
       {revision&&revision.id===revisionId&&<>{stale&&<InlineNotice id={`reprocessing-stale-${revision.id}`} tone="warning" title={uiText("The canonical source has changed. This revision is preserved for comparison; start a new run before reviewing changes.")}/>}
-        <ReprocessingProgress key={revision.id} revision={revision}/>
+        <SourceReprocessingProgress key={revision.id} revision={revision} busy={busy} running={running} pending={pending} onStop={()=>void control('cancel')} onResume={()=>void control('resume')} onReview={()=>{setPassagePatchIds([]);setFilter(pending>0?'pending':'all');setTab('review');}} onRefine={()=>{setError('');setPrompt(true);}}>
         {!!revision.furniture?.length&&<details className="reprocessing-page-furniture"><DisclosureSummary>{uiText("Page headers and footers ({value0})",{value0:revision.furniture.length})}</DisclosureSummary><p>{uiText("Marked as page furniture. Source text is retained; use the reading display options to hide headers and footers.")}</p><ul>{revision.furniture.map(item=><li key={item.id}><strong>{uiText(item.kind==='footer'?"Page footer":"Page header")} · {uiText("Page {value0}",{value0:item.page})}</strong><blockquote>{item.text}</blockquote><small>{item.reason}</small></li>)}</ul></details>}
-        {brokenFootnotes.length>0&&<InlineNotice tone="warning" title={uiText("This revision has broken footnote links")} description={<>{uiText("Some note definitions are missing or ambiguous. Compare the original source and repair the affected changes before relying on this reading version.")}<ul>{brokenFootnotes.slice(0,5).map((message,index)=><li key={index}>{message}</li>)}</ul></>}/>}
+
         {eligible(revision)&&<div className="reprocessing-result-summary" role="status"><p>{revision.patches.length===0?uiText("No text or layout changes were proposed."):revision.patches.some(patch=>patch.decision==='accepted')?uiText("The processed reading version includes {value0} applied corrections.",{value0:revision.patches.filter(patch=>patch.decision==='accepted').length}):pending>0?uiText("{value0} proposed corrections are waiting for review. The reading text is unchanged until corrections are accepted.",{value0:pending}):uiText("All proposed corrections were rejected; the original text is retained.")}</p>{revision.reprocessed.text!==revision.original.text&&requestedReadingId!==revision.id&&<button type="button" className="button primary small" onClick={()=>chooseReading(revision.id)}>{uiText("Show processed version")}</button>}{pending>0&&<button type="button" className="reprocessing-quiet-action" onClick={()=>{setFilter('pending');setTab('review');}}>{uiText("Review proposed corrections")}</button>}</div>}
         {revision.report.metadata&&<section className="source-metadata-run-summary" aria-label="Metadata processing summary"><strong>Metadata</strong><p>{revision.report.metadata.added} added · {revision.report.metadata.corroborated} corroborated · {revision.report.metadata.requiresReview} require review</p><button type="button" className="button small" onClick={()=>window.dispatchEvent(new CustomEvent('noema:open-source-metadata',{detail:{vaultId,sourceId,fileId,runId:revision.id}}))}>Review metadata</button></section>}
-        <details className="reprocessing-processing-details"><DisclosureSummary>{uiText("Processing details")}</DisclosureSummary><ExcerptLedger revision={revision}/><Report revision={revision}/></details>
+        <div className="reprocessing-processing-details"><ExcerptLedger revision={revision}/><Report revision={revision}/></div>
         <p className="reprocessing-status" role="status">{uiText("Editorial decisions")} · {pending}{" " + uiText("pending ·") + " "}{revision.patches.filter(patch=>patch.decision==='accepted').length}{" " + uiText("accepted ·") + " "}{revision.patches.filter(patch=>patch.decision==='rejected').length}{" " + uiText("kept original")}</p>
-        {active(revision.status)&&<><button type="button" className="button small" disabled={busy} onClick={()=>void control('cancel')}>{uiText("Stop and keep progress")}</button></>}
-        {['failed','interrupted'].includes(revision.status)&&!stale&&!(revision.pipelineVersion===2&&revision.report.excerpts?.some(excerpt=>excerpt.outcomeUncertain))&&<button type="button" className="button small" disabled={busy||running} onClick={()=>void control('resume')}>{uiText(incompleteResponse(revision)?"Retry unfinished work":configurationFailure(revision)?"Retry after configuration repair":revision.report.excerpts?.some(excerpt=>excerpt.status==='failed')?"Retry failed and remaining excerpts":"Resume remaining excerpts")}</button>}
-        {tab==='read'?<button type="button" className="reprocessing-quiet-action" onClick={()=>{setFilter(pending>0?'pending':'all');setTab('review');}}>{uiText("Open corrections")}</button>:<aside id={`source-review-${fileId}`} className="reprocessing-reviews" aria-label={uiText("Review corrections")} onKeyDown={event=>{if(event.key==='Escape'){event.stopPropagation();closeReview();}}}>
+        </SourceReprocessingProgress>
+        {brokenFootnotes.length>0&&<InlineNotice tone="warning" title={uiText("This revision has broken footnote links")} description={<>{uiText("Some note definitions are missing or ambiguous. Compare the original source and repair the affected changes before relying on this reading version.")}<ul>{brokenFootnotes.slice(0,5).map((message,index)=><li key={index}>{message}</li>)}</ul></>}/>}
+        {tab==='read'?null:renderReview(<aside ref={reviewPane} tabIndex={-1} id={`source-review-${fileId}`} className="reprocessing-reviews" aria-label={uiText("Review corrections")} onKeyDown={event=>{if(event.key==='Escape'){event.stopPropagation();closeReview();}}}>
           <div className="reprocessing-review-heading"><h2>{uiText("Review corrections")}</h2><button type="button" className="button small" onClick={closeReview}>{uiText("Close corrections")}</button></div>
+      {revisionOptions.length>0&&<label className="reprocessing-revision-picker">{uiText("Examining revision") + " "}<select aria-label={uiText("Examining revision")} disabled={busy} value={revisionId} onChange={e=>{returnToCorrection();setPassagePatchIds([]);setActivePatchId('');setRevisionId(e.target.value);}}>{revisionOptions.map(item=><option key={item.id} value={item.id}>{new Date(item.createdAt).toLocaleString(getLocale())} · {uiText(partial(item)?"Partial revision":item.status)}</option>)}</select></label>}
+          {evidenceSurface!=='reading'&&<div className="reprocessing-context-return" role="status"><span>{uiText(evidenceSurface==='pdf'?"PDF page evidence":"Original passage")}</span><button type="button" className="button small" onClick={returnToCorrection}>{uiText("Return to correction")}</button></div>}
           <div className="reprocessing-tabs reprocessing-review-filters" role="group" aria-label={uiText("Review status")}>
-            {reviewFilters.map(value=><button key={value} type="button" aria-pressed={filter===value} onClick={()=>{setFilter(value);setActivePatchId('');setReviewLimit(20);setSelected([]);}}>{reviewLabels[value]} <span className="reprocessing-filter-count">{revision.patches.filter(patch=>matches(patch,value)).length}</span></button>)}
+            {primaryFilters.map(renderFilter)}
+            <details className="reprocessing-history-filters"><DisclosureSummary>{uiText("More filters")}{filter!=='pending'&&filter!=='all'?" · "+uiText(reviewLabels[filter]):''}</DisclosureSummary><div role="group" aria-label={uiText("Historical decision filters")}>{historyFilters.map(renderFilter)}</div></details>
           </div>
           <div className="reprocessing-actions reprocessing-review-toolbar">
             <label className="reprocessing-layout-picker">{uiText("Comparison") + " "}<select aria-label={uiText("Comparison layout")} value={comparisonLayout} onChange={event=>setComparisonLayout(event.target.value as ComparisonLayout)}><option value="auto">{uiText("Auto (unified on narrow screens)")}</option><option value="split">{uiText("Side by side")}</option><option value="unified">{uiText("Unified")}</option></select></label>
             <button type="button" className="reprocessing-quiet-action" aria-pressed={bulk} onClick={()=>{setBulk(value=>!value);setSelected([]);}}>{uiText(bulk?"Exit bulk review":"Bulk review")}</button>
             {bulk&&<><button className="button small" disabled={!selected.length||busy||!!stale||active(revision.status)} onClick={()=>void decideSelected('accepted')}>{uiText("Accept selected (")}{selected.length})</button><button className="button small" disabled={!selected.length||busy||!!stale||active(revision.status)} onClick={()=>void decideSelected('rejected')}>{uiText("Keep original for selected")}</button></>}
           </div>
+          {passagePatchIds.length>0&&<button type="button" className="reprocessing-quiet-action" onClick={()=>setPassagePatchIds([])}>{uiText("Showing this passage · Show all corrections")}</button>}
           {filter==='rejected'&&shownPatches.length>0&&<p className="reprocessing-hint">{uiText("These suggestions were rejected. The original text is kept in the reading version.")}</p>}
           {!shownPatches.length&&<p role="status">{emptyReviewMessages[filter]}</p>}
           {activePatch&&<nav className="reprocessing-review-navigation" aria-label={uiText("Change navigation")}><button type="button" className="button small" disabled={activeIndex<=0} onClick={()=>locatePatch(shownPatches[activeIndex-1]!)}>{uiText("Previous change")}</button><span role="status">{uiText("Change {value0} of {value1}",{value0:activeIndex+1,value1:shownPatches.length})}</span><button type="button" className="button small" disabled={activeIndex>=shownPatches.length-1} onClick={()=>{setReviewLimit(limit=>Math.max(limit,activeIndex+2));locatePatch(shownPatches[activeIndex+1]!);}}>{uiText("Next change")}</button></nav>}
@@ -326,16 +288,16 @@ export function SourceReprocessing({sourceId,vaultId,fileId,visible,onShow,onOri
               {visiblePatches.map((patch,index)=><li key={patch.id}>
                 {bulk&&<label className="reprocessing-select"><input type="checkbox" aria-label={uiText("Select change {value0}",{value0:index+1})} checked={selected.includes(patch.id)} disabled={busy||!!stale||active(revision.status)} onChange={event=>setSelected(ids=>{const related=revision.patches.filter(item=>item.id===patch.id||!!patch.patchGroupId&&item.patchGroupId===patch.patchGroupId).map(item=>item.id);return event.target.checked?[...new Set([...ids,...related])]:ids.filter(id=>!related.includes(id));})}/></label>}
                 <button type="button" aria-pressed={activePatch?.id===patch.id} onClick={()=>locatePatch(patch)} onKeyDown={event=>{if(!['ArrowDown','ArrowUp','Home','End'].includes(event.key))return;event.preventDefault();const target=event.key==='Home'?0:event.key==='End'?visiblePatches.length-1:Math.max(0,Math.min(visiblePatches.length-1,index+(event.key==='ArrowDown'?1:-1)));locatePatch(visiblePatches[target]);event.currentTarget.closest('ol')?.querySelectorAll<HTMLButtonElement>('li>button')[target]?.focus();}}>
-                  <strong>{uiText(label(patch.category))}</strong><span>{patch.range.startPage?uiText("Page {value0}",{value0:patch.range.startPage}):uiText("Line {value0}",{value0:patch.range.startLine})}{patch.riskReasons?.length?' · '+uiText("Manual verification required"):''}</span><span className="reprocessing-list-before">− {patchSnippet(patch,'original')}</span><span className="reprocessing-list-after">+ {patchSnippet(patch,'replacement')}</span><span>{uiText(patch.decision==='pending'?"Pending review":patch.decision==='accepted'?"Applied":"Original kept")}</span>
+                  <strong>{uiText(label(patch.category))}</strong><span>{patch.range.startPage?uiText("Page {value0}",{value0:patch.range.startPage}):uiText("Line {value0}",{value0:patch.range.startLine})}{patch.riskReasons?.length?' · '+uiText("Manual verification required"):''}</span><span>{uiText(patch.decision==='pending'?"Pending review":patch.decision==='accepted'?"Applied":"Original kept")}</span>
                 </button>
               </li>)}
             </ol>
-            {activePatch&&<PatchReview draftKey={patchDraftKey(activePatch)} draftKeyFor={patchDraftKey} key={`${revision.id}:${activePatch.id}`} patch={activePatch} group={activeGroup} sourceText={revision.original.text} layout={comparisonLayout} onLocate={()=>showPatchSource(activePatch)} onChoose={locatePatch} onCompare={onCompare?page=>{closeReview();onCompare(page);}:undefined} disabled={busy||!!stale||active(revision.status)} onDecision={decide}/>}
+            {activePatch&&<PatchReview draftKey={patchDraftKey(activePatch)} draftKeyFor={patchDraftKey} key={`${revision.id}:${activePatch.id}`} patch={activePatch} group={activeGroup} sourceText={revision.original.text} layout={comparisonLayout} onLocate={()=>showPatchSource(activePatch)} onChoose={locatePatch} onCompare={onCompare?page=>{if(contextReading.current===null)contextReading.current=readingChoice;setEvidenceSurface('pdf');onCompare(page);}:undefined} disabled={busy||!!stale||active(revision.status)} onDecision={decide}/>}
             {error&&<InlineNotice id={`reprocessing-review-error-${revision.id}`} tone="error" title={uiText("Could not save correction")} description={error} announcement="assertive"/>}
           </div>
           {shownPatches.length>reviewLimit&&<button type="button" className="button small" onClick={()=>setReviewLimit(limit=>limit+20)}>{uiText("Load more changes")}</button>}
 
-        </aside>}
+        </aside>)}
       </>}
     </>}
   </section>;

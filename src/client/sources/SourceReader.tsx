@@ -22,6 +22,12 @@ import type {SourceReprocessingRevision} from '../../shared/source-reprocessing'
 
 type LoadedFile=SourceFile&{textHash:string;document?:SourceDocument};
 type Entry=SourceViewEntry;
+type ReaderPosition={node?:string;page?:string;top:number};
+function visibleReadingPosition(root:HTMLElement|null):ReaderPosition|null {
+  const edge=(document.querySelector('.topbar')?.getBoundingClientRect().bottom??0)+24;
+  const passage=Array.from(root?.querySelectorAll<HTMLElement>('[data-source-node]')??[]).find(item=>item.getBoundingClientRect().height>0&&item.getBoundingClientRect().bottom>edge);
+  return passage?{node:passage.dataset.canonicalNode,page:passage.dataset.sourcePage,top:passage.getBoundingClientRect().top}:null;
+}
 interface Props {
   vaultId:string;source:Entity;entities:Entity[];onOpenEntity:(id:string)=>void;inspectorOpen?:boolean;onToggleInspector?:()=>void;onReadingActivityOpen?:()=>void;refreshKey?:number;onActiveAttachmentChange?:(fileId:string)=>void;
   onCreatePageFromSource:(source:Entity)=>void;onError:(message:string)=>void;
@@ -45,6 +51,7 @@ function savedDisplay():ReaderDisplay {
 export function SourceReader({vaultId,source,entities,inspectorOpen=false,onToggleInspector,onReadingActivityOpen,refreshKey,onActiveAttachmentChange,onCreatePageFromSource,onError,onAddPassage,onAnnotate,onReadingNoteCreated,onOpenReadingNote,onRemoveReadingNote}:Props) {
   const destination=useContext(ReviewDestination);
   const [display,setDisplay]=useState<ReaderDisplay>(savedDisplay);
+  const [reviewEvidence,setReviewEvidence]=useState(false),[reviewHost,setReviewHost]=useState<HTMLDivElement|null>(null),[reviewRevision,setReviewRevision]=useState<SourceReprocessingRevision|null>(null);
   const [reviewOpen,setReviewOpen]=useState(false),[activityOpen,setActivityOpen]=useState(false);
   const activityChanged=useCallback((open:boolean)=>{setActivityOpen(open);if(open)onReadingActivityOpen?.();},[onReadingActivityOpen]);
   function updateDisplay(value:Partial<ReaderDisplay>){setDisplay(current=>{const next={...current,...value};try{localStorage.setItem('noema:source-reader-display',JSON.stringify(next));}catch{/* Keep preferences for this session. */}return next;});}
@@ -52,20 +59,32 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,onTogg
   const [files,setFiles]=useState<SourceFile[]|null>(null),[fileId,setFileId]=useState('');
   const [loaded,setLoaded]=useState<LoadedFile|null>(null),[error,setError]=useState(''),[retry,setRetry]=useState(0);
   const [selected,setSelected]=useState<string|null>(null),[copied,setCopied]=useState(false);
-  const article=useRef<HTMLElement>(null);
+  const article=useRef<HTMLElement>(null),evidenceReturn=useRef<HTMLButtonElement>(null);
   const [reprocessed,setReprocessed]=useState(false),[comparisonPage,setComparisonPage]=useState<number|null>(null);
   const [readingRevision,setReadingRevision]=useState<SourceReprocessingRevision|null>(null);
+  useLayoutEffect(()=>{if(reviewEvidence&&evidenceReturn.current?.getClientRects().length)evidenceReturn.current.focus({preventScroll:true});},[reviewEvidence,comparisonPage]);
   const [hideFurniture,setHideFurniture]=useState(false);
-  const position=useRef<{node?:string;page?:string;top:number}|null>(null);
+  const position=useRef<ReaderPosition|null>(null);
+  const evidenceContext=useRef<{position:ReaderPosition|null;revision:SourceReprocessingRevision|null}|null>(null);
+  function saveEvidencePosition(){
+    if(!evidenceContext.current)evidenceContext.current={position:visibleReadingPosition(article.current)??position.current,revision:readingRevision};
+  }
+  function returnToReadingContext(){
+    const saved=evidenceContext.current;evidenceContext.current=null;
+    if(saved){position.current=saved.position;setReadingRevision(saved.revision);}
+    setComparisonPage(null);setReviewEvidence(false);
+  }
+  const reviewChanged=useCallback((open:boolean)=>{
+    const saved=visibleReadingPosition(article.current);if(saved)position.current=saved;
+    setReviewOpen(open);
+  },[]);
   const onReadingRevision=useCallback((revision:SourceReprocessingRevision|null)=>{
-    const root=article.current,edge=(document.querySelector('.topbar')?.getBoundingClientRect().bottom??0)+24;
-    const passage=root&&Array.from(root.querySelectorAll<HTMLElement>('[data-source-node]')).find(item=>item.getBoundingClientRect().bottom>edge);
-    if(passage)position.current={node:passage.dataset.canonicalNode,page:passage.dataset.sourcePage,top:passage.getBoundingClientRect().top};
+    const saved=visibleReadingPosition(article.current);if(saved)position.current=saved;
     setReadingRevision(revision);
   },[]);
   useEffect(()=>setComparisonPage(null),[vaultId,fileId]);
-  useEffect(()=>{setReprocessed(false);setReadingRevision(null);position.current=null;},[fileId,vaultId,source.id]);
-  function showOriginal(nodeId?:string,focus=true){if(nodeId){position.current=null;setReadingRevision(null);}else onReadingRevision(null);setReprocessed(false);if(nodeId){setSelected(nodeId);requestAnimationFrame(()=>{const element=document.getElementById(passageAnchor(fileId,nodeId));window.dispatchEvent(new Event('noema:before-reading-jump'));element?.scrollIntoView({block:'center'});if(focus)element?.querySelector<HTMLButtonElement>('button')?.focus({preventScroll:true});});}}
+  useEffect(()=>{setReprocessed(false);setReadingRevision(null);setReviewOpen(false);setReviewEvidence(false);setReviewRevision(null);position.current=null;evidenceContext.current=null;},[fileId,vaultId,source.id]);
+  function showOriginal(nodeId?:string,focus=true){setComparisonPage(null);if(reviewOpen&&nodeId)saveEvidencePosition();if(nodeId){position.current=null;setReadingRevision(null);}else onReadingRevision(null);if(!reviewOpen)setReprocessed(false);if(nodeId){setSelected(nodeId);requestAnimationFrame(()=>{const element=document.getElementById(passageAnchor(fileId,nodeId));window.dispatchEvent(new Event('noema:before-reading-jump'));element?.scrollIntoView({block:'center'});if(focus)element?.querySelector<HTMLButtonElement>('button')?.focus({preventScroll:true});});}}
   const [highlights,setHighlights]=useState<SourceHighlight[]>([]);
   const [readingNotes,setReadingNotes]=useState<ReadingNoteAnchor[]>([]);
   const copyTimer=useRef<ReturnType<typeof setTimeout>|undefined>(undefined);
@@ -157,12 +176,12 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,onTogg
     return links.length===1&&entries.some(entry=>entry.node.id===links[0].originalNodeId)?links[0].originalNodeId:undefined;
   }
   useLayoutEffect(()=>{
-    const saved=position.current,root=article.current;if(!saved||!root)return;position.current=null;
+    const saved=position.current,root=article.current;if(!saved||!root||root.getBoundingClientRect().height===0)return;position.current=null;
     const passages=Array.from(root.querySelectorAll<HTMLElement>('[data-source-node]'));
     const linked=saved.node?passages.filter(item=>item.dataset.canonicalNode===saved.node):[];
     const target=linked.length===1?linked[0]:saved.page?passages.find(item=>item.dataset.sourcePage===saved.page):undefined;
     if(target)window.scrollBy({top:target.getBoundingClientRect().top-saved.top,behavior:'instant'});
-  },[editorial?.id,editorial?.updatedAt]);
+  },[editorial?.id,editorial?.updatedAt,reviewOpen,reviewEvidence,comparisonPage]);
   const selectedEntry=entries.find(({node})=>node.id===selected);
   const reference=useMemo(()=>loaded&&selectedEntry?passageReference(loaded,selectedEntry):null,[loaded,selectedEntry]);
   function selectPassage(nodeId:string){setSelected(nodeId);setCopied(false);}
@@ -173,7 +192,7 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,onTogg
       setCopied(true);clearTimeout(copyTimer.current);copyTimer.current=setTimeout(()=>setCopied(false),2500);
     }catch{onError('Unable to copy the citation. Clipboard access may be unavailable.');}
   }
-  return <section className={'source-reader'+(inspectorOpen||activityOpen?' has-inspector':'')+(reviewOpen?' has-review-drawer':'')} data-reader-width={display.width} data-reader-typography={display.typography} aria-label={uiText("Source reading view")}>
+  return <section className={'source-reader'+(inspectorOpen||activityOpen?' has-inspector':'')+(reviewOpen?' has-review-drawer':'')+(reviewEvidence?' has-review-evidence':'')} data-reader-width={display.width} data-reader-typography={display.typography} aria-label={uiText("Source reading view")}>
     <header className="source-workspace-header"><span className="source-workspace-eyebrow"><Icon name="source"/>{uiText("Source")}{attachment&&<span className="source-reader-format">{attachment.format.toUpperCase()}</span>}</span><h1 className="page-heading source-workspace-title"><SourceReaderInline text={source.name}/></h1></header>
     <div className="source-reader-toolbar">
       <span className="source-reader-mode" title={uiText("Reading · Read-only")}><Icon name="lock"/>{uiText("Read-only")}</span>
@@ -185,7 +204,7 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,onTogg
         {furnitureNodes.size>0&&<label><input type="checkbox" checked={hideFurniture} onChange={event=>setHideFurniture(event.target.checked)}/>{uiText('Hide page headers and footers')}</label>}
         <label>{uiText('Typography')}<select aria-label={uiText('Reader typography')} value={display.typography} onChange={event=>updateDisplay({typography:event.target.value as ReaderDisplay['typography']})}><option value="sans">{uiText('Sans serif')}</option><option value="serif">{uiText('Serif')}</option></select></label>
         <label>{uiText('Reading width')}<select aria-label={uiText('Reading width')} value={display.width} onChange={event=>updateDisplay({width:event.target.value as ReaderDisplay['width']})}><option value="comfortable">{uiText('Comfortable')}</option><option value="wide">{uiText('Wide')}</option></select></label>
-        <div className="source-reader-display-presets"><button type="button" onClick={()=>updateDisplay(defaultDisplay)}>{uiText('Reading preset')}</button><button type="button" onClick={()=>updateDisplay({annotations:'always',structureLabels:true,editorialIndicators:true})}>{uiText('Inspection preset')}</button></div>
+        <div className="source-reader-display-presets"><button type="button" onClick={()=>{updateDisplay(defaultDisplay);setHideFurniture(false);}}>{uiText('Reading preset')}</button><button type="button" onClick={()=>{updateDisplay({...defaultDisplay,annotations:'always',structureLabels:true,editorialIndicators:true});setHideFurniture(false);}}>{uiText('Inspection preset')}</button></div>
       </div></details>
       {loaded&&!editorial&&<button type="button" className="button small" aria-label={uiText('Reading activity')} aria-expanded={activityOpen} title={uiText('Bookmarks, annotations and highlights')} onClick={()=>window.dispatchEvent(new Event('noema:reading-bookmarks'))}><Icon name="reading-activity"/>{uiText('Reading activity')}</button>}
       {onToggleInspector&&<button type="button" className="source-reader-icon-action" aria-label={uiText('Info')} title={uiText('Source information')} aria-expanded={inspectorOpen} onClick={onToggleInspector}><Icon name="info"/></button>}
@@ -198,23 +217,28 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,onTogg
     {attachment&&attachment.status!=='ready'&&<p className="source-reader-status" role="status">{attachment.status==='failed'?attachment.error||uiText("Source processing failed. Use the inspector to retry."):uiText("Preparing this source for reading… {value0}%",{value0: attachment.progress})}</p>}
     {attachment?.status==='ready'&&attachment.admitted!==1&&<p className="source-reader-status">{uiText("This attachment is unavailable for reading.")}</p>}
     {attachment?.status==='ready'&&attachment.admitted===1&&!loaded&&!error&&<p className="source-reader-status" role="status">{uiText("Loading document text…")}</p>}
-    {loaded?.format==='pdf'&&<SourceEvidence vaultId={vaultId} fileId={loaded.id} pageCount={loaded.pages??0} page={comparisonPage} onPage={setComparisonPage}/>}
-    {loaded&&<SourceReprocessing key={`${vaultId}:${loaded.id}`} sourceId={source.id} vaultId={vaultId} fileId={loaded.id} canonicalVersion={JSON.stringify([loaded.textHash,loaded.structural_nodes,loaded.page_start_lines,loaded.generated_name,loaded.language,loaded.name,loaded.enrichment_status])} onCompare={loaded.format==='pdf'?setComparisonPage:undefined} visible={reprocessed||destination?.category==='editorial'&&reviewFile===loaded.id} onShow={()=>setReprocessed(true)} onOriginal={showOriginal} onReadingRevision={onReadingRevision} onReviewOpenChange={setReviewOpen}/>}
+    {loaded&&<SourceReprocessing key={`${vaultId}:${loaded.id}`} sourceId={source.id} vaultId={vaultId} fileId={loaded.id} canonicalVersion={JSON.stringify([loaded.textHash,loaded.structural_nodes,loaded.page_start_lines,loaded.generated_name,loaded.language,loaded.name,loaded.enrichment_status])} onCompare={loaded.format==='pdf'?page=>{saveEvidencePosition();setComparisonPage(page);}:undefined} visible={reprocessed||destination?.category==='editorial'&&reviewFile===loaded.id} onShow={()=>setReprocessed(true)} onOriginal={showOriginal} onReadingRevision={onReadingRevision} reviewHost={reviewHost} onReviewRevision={setReviewRevision} onEvidenceSurfaceChange={setReviewEvidence} onReturnContext={returnToReadingContext} onReviewOpenChange={reviewChanged}/>}
     {loaded&&<div className="source-reader-layout">
-      <div className="source-reader-content">
+      <div className="source-reader-content" onKeyDown={event=>{if(event.key==='Escape'&&reviewOpen&&reviewEvidence){event.stopPropagation();window.dispatchEvent(new Event('noema:return-to-source-correction'));}}}>
+        {reviewOpen&&reviewEvidence&&<button ref={evidenceReturn} type="button" className="button small source-reader-evidence-return" onClick={()=>window.dispatchEvent(new Event('noema:return-to-source-correction'))}>{uiText("Return to correction")}</button>}
+        {loaded?.format==='pdf'&&<SourceEvidence vaultId={vaultId} fileId={loaded.id} pageCount={loaded.pages??0} page={comparisonPage} onPage={setComparisonPage}/> }
+        <div hidden={reviewOpen&&comparisonPage!==null}>
         {reference&&<aside className="source-reader-selection" aria-label={uiText("Selected passage")}><div className="source-reader-selection-heading"><strong>{uiText(editorial?"Selected original passage":"Selected passage")}</strong><button type="button" aria-label={uiText("Clear selected passage")} onClick={()=>setSelected(null)}><Icon name="close"/></button></div><small>{citationLocation(reference)}</small><blockquote>{reference.excerpt}</blockquote><div className="source-reader-selection-actions"><button className="button small" type="button" onClick={()=>void copyCitation()}>{copied?uiText("Copied"):uiText("Copy citation")}</button><button className="button small" type="button" onClick={()=>onAddPassage(reference)}>{uiText("Add to page")}</button><button className="button small" type="button" onClick={()=>onAnnotate(reference)}>{uiText("Annotate")}</button></div><span role="status" className="sr-only">{copied?uiText("Citation copied"):''}</span></aside>}
         {ambiguousEditorialRanges&&<p className="source-reader-editorial-notice" role="status">{uiText('This older editorial revision has unverified text coordinates. Original processed text is shown to preserve the complete document.')}</p>}
         {editorial&&<p className="source-reader-editorial-notice">{uiText('Editorial presentation. Citation actions quote the linked original passage. Highlights, bookmarks and reading notes are available in Original processed until offset mappings are verified.')}</p>}
         {!editorial&&<SourceReadingContinuity key={`continuity:${loaded.id}:${loaded.textHash}`} file={loaded} article={article} selectedOffset={selectedEntry?.node.range.startOffset} inspectorOpen={inspectorOpen} onOpenChange={activityChanged} highlights={highlights} notes={readingNotes} onOpenNote={onOpenReadingNote} onRemoveNote={onRemoveReadingNote} onRemoveHighlight={id=>setHighlights(items=>items.filter(item=>item.id!==id))}/>}
         {!editorial&&<SourceReadingTools key={`tools:${loaded.id}:${loaded.textHash}`} file={loaded} article={article} highlights={highlights} onHighlight={highlight=>setHighlights(items=>[...items.filter(item=>item.id!==highlight.id),highlight])} onHighlightRemoved={id=>setHighlights(items=>items.filter(item=>item.id!==id))} onNoteCreated={readingNoteCreated}/>}
-        <SourceDocumentView furnitureKind={nodeId=>furnitureNodeKinds.get(nodeId)} hiddenNodeIds={hideFurniture?furnitureNodes:undefined} article={article} fileId={loaded.id} name={source.name} text={viewText} entries={viewEntries} selected={selected} annotations={display.annotations} structureLabels={display.structureLabels} highlights={editorial?[]:highlights} canonicalNode={canonicalNode} onSelect={selectPassage} changeForNode={display.editorialIndicators&&editorial?nodeId=>{
-          const originalId=canonicalNode(nodeId),patch=originalId?editorial.patches.find(patch=>patch.nodeIds.includes(originalId)):undefined;
-          return patch?{id:patch.id,label:uiText('Review correction: ')+patch.category}:undefined;
-        }:undefined} onReview={patchId=>window.dispatchEvent(new CustomEvent('noema:review-source-patch',{detail:{fileId:loaded.id,revisionId:readingRevision?.id,patchId}}))}>
+        <SourceDocumentView furnitureKind={nodeId=>furnitureNodeKinds.get(nodeId)} hiddenNodeIds={hideFurniture?furnitureNodes:undefined} article={article} fileId={loaded.id} name={source.name} text={viewText} entries={viewEntries} selected={selected} annotations={display.annotations} structureLabels={display.structureLabels} highlights={editorial?[]:highlights} canonicalNode={canonicalNode} onSelect={selectPassage} changeForNode={editorial||reviewOpen&&reviewRevision?nodeId=>{
+          const revision=reviewOpen&&reviewRevision?reviewRevision:editorial;
+          const originalId=canonicalNode(nodeId),patches=originalId?revision?.patches.filter(patch=>patch.nodeIds.includes(originalId)&&(reviewOpen||patch.decision==='accepted'))??[]:[];
+          return patches.length?{id:patches[0].id,patchIds:patches.map(patch=>patch.id),count:patches.length,quiet:!reviewOpen&&!display.editorialIndicators,label:patches.length===1?uiText('1 editorial change in this passage'):uiText('{value0} editorial changes in this passage',{value0:patches.length})}:undefined;
+        }:undefined} onReview={(patchId,patchIds)=>{const revision=reviewOpen?reviewRevision??editorial:editorial;window.dispatchEvent(new CustomEvent('noema:review-source-patch',{detail:{fileId:loaded.id,revisionId:revision?.id,patchId,patchIds}}));}}>
           {!editorial&&<SourceReadingNoteMarkers article={article} notes={readingNotes} onOpen={onOpenReadingNote} onRemove={onRemoveReadingNote}/>}
         </SourceDocumentView>
         <SourceReadingNavigation activityAvailable={!editorial} article={article} text={viewText} document={viewDocument}/>
+        </div>
       </div>
+      <div ref={setReviewHost} className="source-reader-review-host" hidden={!reviewOpen}/>
     </div>}
   </section>;
 }

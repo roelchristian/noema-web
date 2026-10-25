@@ -9,22 +9,73 @@ import {processedSourceDocument} from '../src/server/modules/source-document.ts'
 import {repairReconstructionPass} from '../src/server/modules/source-reprocessing-pass.ts';
 import {SourceReprocessingCheckpoints} from '../src/server/modules/source-reprocessing-checkpoints.ts';
 
-function harness(t,{depth='balanced',text='A short synthetic scholarly passage.',pages=null,pageStartLines=[],provider=echo,synthesisProvider=()=>JSON.stringify({observations:[]}),evidenceService,omitConfiguration=false,evidenceOptions={originalPages:false,ocr:false,allowExternalTransmission:false}}={}) {
+function harness(t,{depth='balanced',text='A short synthetic scholarly passage.',pages=null,pageStartLines=[],provider=echo,synthesisProvider=()=>JSON.stringify({observations:[]}),synthesisReviewProvider=request=>JSON.stringify({reviews:request.rejected.map(issue=>({index:issue.index,classification:'unsupported',explanation:'The supplied source does not support this observation.',observation:null}))}),evidenceService,omitConfiguration=false,evidenceOptions={originalPages:false,ocr:false,allowExternalTransmission:false}}={}) {
  const db=new DatabaseSync(':memory:');t.after(()=>db.close());
  db.exec(`CREATE TABLE source_math_documents(file_id TEXT,raw_hash TEXT,cleaned_text TEXT,uncertainty_json TEXT,algorithm_version INTEGER);
  CREATE TABLE source_reprocessing(id TEXT PRIMARY KEY,file_id TEXT,vault_id TEXT,status TEXT,created_at TEXT,updated_at TEXT,payload TEXT);
  CREATE TABLE source_reprocessing_chunks(revision_id TEXT,chunk_index INTEGER,payload TEXT,PRIMARY KEY(revision_id,chunk_index));
  CREATE TABLE source_reprocessing_passes(revision_id TEXT,chunk_index INTEGER,pass_index INTEGER,payload TEXT,PRIMARY KEY(revision_id,chunk_index,pass_index));`);
  const store=new Store(db),file={id:'synthetic-file',entity_id:null,name:'Synthetic',original_filename:'Synthetic',format:'txt',language:'en',source_url:null,generated_name:null,text,pages,structural_nodes:'[]',page_start_lines:JSON.stringify(pageStartLines),enrichment_status:'completed',status:'ready',admitted:1};
- const original={text,document:processedSourceDocument(file)},selection={model:'gpt-5-mini',reasoningEffort:'low'},calls=[];
+ const original={text,document:processedSourceDocument(file)},selection={model:'gpt-5-mini',reasoningEffort:'low'},calls=[],prompts=[];
  let locked=false;
- const intelligence={editorialImageCapability:()=>true,editorialSelection:()=>selection,reeditSource:async(prompt,_instructions,signal,observe,_shape,images,consent)=>{const request=JSON.parse(prompt);calls.push(request);observe(20).usage({input_tokens:10,output_tokens:3,output_tokens_details:{reasoning_tokens:1},input_tokens_details:{cached_tokens:2}});if(_shape==='synthesis')return synthesisProvider(request);return provider(request,{signal,images,consent,lock:()=>{locked=true;}});}};
+ const intelligence={editorialImageCapability:()=>true,editorialSelection:()=>selection,reeditSource:async(prompt,_instructions,signal,observe,_shape,images,consent,outputTokenBudget)=>{const request=JSON.parse(prompt);calls.push(request);prompts.push(_instructions);observe(20).usage({input_tokens:10,output_tokens:3,output_tokens_details:{reasoning_tokens:1},input_tokens_details:{cached_tokens:2}});if(_shape==='synthesis')return synthesisProvider(request);if(_shape==='synthesisReview')return synthesisReviewProvider(request);return provider(request,{signal,images,consent,outputTokenBudget,lock:()=>{locked=true;}});}};
  const activity={start:()=>1,request:()=>({}),finish:()=>{}};
  function service(){const result=new SourceReprocessing(store,{require:()=>file},intelligence,()=>{if(locked)throw Error('Vault is locked.');},activity,undefined,evidenceService);result.snapshot=()=>structuredClone(original);result.baseHash=()=>{if(locked)throw Error('Vault is locked.');return sourceRevisionBaseHash(original);};return result;}
  let worker=service();const revision=worker.start('vault',file.id,{pipelineVersion:2,...(omitConfiguration?{}:{configuration:{depth,reviewPolicy:'verified',evidence:evidenceOptions}})});
- return {store,calls,revision,intelligence,activity,checkpoints:new SourceReprocessingCheckpoints(store),get worker(){return worker;},get value(){return JSON.parse(store.get('SELECT payload FROM source_reprocessing WHERE id=?',revision.id).payload);},restart(){locked=false;worker=service();return worker;}};
+ return {store,calls,prompts,revision,intelligence,activity,checkpoints:new SourceReprocessingCheckpoints(store),get worker(){return worker;},get value(){return JSON.parse(store.get('SELECT payload FROM source_reprocessing WHERE id=?',revision.id).payload);},restart(){locked=false;worker=service();return worker;}};
 }
 function echo(request){return JSON.stringify({blocks:request.blocks,diagnostics:[],unresolved:false});}
+
+test('resume recovers a unique unchanged block ID without repeating completed excerpts or synthesis',async t=>{
+ const text='<!-- Page 1 -->\nFirst preserved page.\n\n<!-- Page 2 -->\nSecond preserved page.\n';
+ const env=harness(t,{text,pages:2,pageStartLines:[1,4],provider:request=>JSON.stringify({blocks:request.blocks.map((block,index)=>request.kind==='reconstruct'&&request.chunkIndex===1&&index===0?{id:'f'.repeat(24),text:block.text+'changed'}:block),diagnostics:[],unresolved:false})});
+ await env.worker.tick();assert.equal(env.value.status,'failed');assert.equal(env.value.report.chunksCompleted,1);
+ const synthesis=structuredClone(env.checkpoints.synthesis(env.revision.id)),firstCompleted=structuredClone(env.checkpoints.passes(env.revision.id,0));
+ const failed=env.checkpoints.passes(env.revision.id,1)[0],raw=JSON.parse(failed.result);raw.blocks[0].text=raw.blocks[0].text.slice(0,-'changed'.length);failed.result=JSON.stringify(raw);env.checkpoints.savePass(failed);
+ const retainedRaw=failed.result;env.calls.length=0;env.restart();env.worker.resume('vault',env.revision.fileId,env.revision.id);await env.worker.tick();
+ assert.equal(env.value.status,'completed');assert.equal(env.value.report.chunksCompleted,2);assert.deepEqual(env.calls.map(call=>call.kind),['verify']);
+ assert.deepEqual(env.checkpoints.passes(env.revision.id,0),firstCompleted);assert.equal(env.checkpoints.passes(env.revision.id,1)[0].result,retainedRaw);
+ assert.equal(env.checkpoints.synthesis(env.revision.id).register.hash,synthesis.register.hash);assert.equal(env.checkpoints.synthesis(env.revision.id).result,synthesis.result);
+ assert.ok(env.value.report.diagnostics.some(message=>message.includes('Recovered mistyped block ID')));
+});
+
+test('resume reviews a saved bad summary quotation without replaying first passes or synthesis',async t=>{
+ const env=harness(t,{text:'An original discussion of Austronesian lan- guages.',synthesisReviewProvider:request=>JSON.stringify({reviews:request.rejected.map(issue=>({index:issue.index,classification:'extraction_fix',explanation:'The original quote was silently dehyphenated; the repaired evidence retains original spelling.',observation:{...issue.observation,evidence:[{blockId:request.canonicalBlocks[0].id,quote:'Austronesian lan- guages'}]}}))})});
+ await env.worker.tick();const r=env.value,synthesis=env.checkpoints.synthesis(r.id),pass1=env.checkpoints.passes(r.id)[0];
+ const block=JSON.parse(pass1.result).blocks[0];
+ const raw=JSON.stringify({observations:[{kind:'pattern',reading:'Discusses Austronesian languages.',alternatives:[],evidence:[{blockId:block.id,quote:'Austronesian languages'}],resolutionNeed:'Compare original extraction.'}]});
+ // Reproduce the legacy stop: reconstruction and returned synthesis are durable,
+ // but synthesis validation prevented verification from ever starting.
+ env.store.run('DELETE FROM source_reprocessing_passes WHERE revision_id=? AND pass_index=2',r.id);
+ synthesis.result=raw;synthesis.register=null;synthesis.error='Invalid document synthesis: evidence must quote its canonical block exactly.';synthesis.failureKind='validation';env.checkpoints.saveSynthesis(synthesis);
+ r.status='failed';r.report.contextHash=undefined;r.report.chunksCompleted=0;r.report.completedChunkIndexes=[];r.report.charactersReviewed=0;r.report.error=synthesis.error;r.patches=[];
+ env.store.run('UPDATE source_reprocessing SET status=?,payload=? WHERE id=?','failed',JSON.stringify(r),r.id);
+ env.calls.length=0;env.restart();env.worker.resume('vault',r.fileId,r.id);await env.worker.tick();
+ assert.equal(env.value.status,'completed');assert.deepEqual(env.calls.map(call=>call.kind),['synthesis_evidence_review','verify']);
+ assert.equal(env.checkpoints.synthesis(r.id).result,raw);assert.deepEqual(env.checkpoints.passes(r.id)[0],pass1);
+ assert.equal(env.value.report.summaryValidation.accepted,1);assert.equal(env.value.report.summaryValidation.unresolved,0);assert.match(env.value.report.summaryValidation.diagnostics[0],/silently dehyphenated/);
+ const completedReview=structuredClone(env.checkpoints.synthesis(r.id).review);
+ const {restoreReprocessingSynthesis,validateReprocessingConfiguration}=await import('../src/server/modules/source-reprocessing-backup.ts');
+ const archiveRevision={...env.value,configuration:validateReprocessingConfiguration(env.value.configuration)};
+ const record=env.checkpoints.synthesis(r.id);assert.deepEqual(restoreReprocessingSynthesis(record,archiveRevision,r.id,r.baseHash,env.checkpoints.passes(r.id)).review,completedReview);
+ assert.throws(()=>restoreReprocessingSynthesis({...record,review:{...record.review,result:record.review.result.replace('original spelling','invented spelling')}},archiveRevision,r.id,r.baseHash,env.checkpoints.passes(r.id)),/invalid source editorial/);
+ // Resume once more: the completed review and every paid pass are reused.
+ const retained=env.value;retained.status='interrupted';env.store.run('UPDATE source_reprocessing SET status=?,payload=? WHERE id=?','interrupted',JSON.stringify(retained),r.id);
+ env.calls.length=0;env.restart();env.worker.resume('vault',r.fileId,r.id);await env.worker.tick();assert.equal(env.value.status,'completed');assert.equal(env.calls.length,0);assert.deepEqual(env.checkpoints.synthesis(r.id).review,completedReview);
+});
+
+test('unsupported summary claims stay visible and cannot stop verification or become canonical evidence',async t=>{
+ const env=harness(t,{synthesisProvider:request=>JSON.stringify({observations:[{kind:'pattern',reading:'An unsupported claim.',evidence:[{blockId:request.findings[0].canonicalPassages[0].blockId,quote:'not in the original'}]}]})});
+ await env.worker.tick();assert.equal(env.value.status,'completed');assert.deepEqual(env.calls.map(call=>call.kind),['reconstruct','synthesis','synthesis_evidence_review','verify']);
+ assert.equal(env.value.report.summaryValidation.unresolved,1);assert.match(env.value.report.summaryValidation.diagnostics[0],/unsupported/);
+ const register=env.checkpoints.synthesis(env.revision.id).register;assert.equal(register.observations.length,0);assert.equal(register.rejectedObservations.length,1);assert.equal(env.value.report.inputTokens,40);
+});
+
+test('a failed summary evidence review is visible and is not repeated on resume',async t=>{
+ const env=harness(t,{synthesisProvider:()=>JSON.stringify({observations:[{kind:'pattern',reading:'unsupported',evidence:[]}]}),synthesisReviewProvider:()=>{throw Error('Review connection lost.');}});
+ await env.worker.tick();assert.equal(env.value.status,'completed');assert.equal(env.value.report.summaryValidation.state,'unavailable');assert.match(env.value.report.summaryValidation.diagnostics[0],/connection lost/);
+ assert.equal(env.checkpoints.synthesis(env.revision.id).review.outcomeUncertain,true);
+});
 
 for(const [depth,count] of [['light',1],['balanced',3],['deep',3]])test(`actual V2 ${depth} scheduler performs ${count} successful model requests on unchanged text`,async t=>{
  const env=harness(t,{depth});await env.worker.tick();const result=env.value;
@@ -131,11 +182,11 @@ test('Verified uses bound independent local OCR for a narrow extraction repair w
  currentTrust=false;const changedExtractor=harness(t,{text,pages:1,pageStartLines:[1],evidenceService,evidenceOptions:{originalPages:false,ocr:true,allowExternalTransmission:false},provider:request=>JSON.stringify({blocks:request.blocks.map(block=>({...block,text:block.text.replace('rnodern','modern')})),diagnostics:[],unresolved:false})});await changedExtractor.worker.tick();assert.equal(changedExtractor.value.status,'completed');assert.equal(changedExtractor.value.patches[0].decision,'pending');assert.equal(changedExtractor.value.reprocessed.text,text);
 });
 
-test('omitted V2 configuration defaults to available local OCR while explicit optout remains effective',async t=>{
+test('omitted V2 configuration starts from existing text without invoking optional local OCR',async t=>{
  let collected=0;const evidenceService={capabilities:()=>({originalPages:true,ocr:true,externalImages:true,reason:'synthetic'}),collect:async(_vault,_id,input)=>{collected++;return syntheticEvidence(input);},assertCurrent(){}};
- const defaults=harness(t,{pages:1,pageStartLines:[1],evidenceService,omitConfiguration:true});assert.equal(defaults.revision.configuration.evidence.ocr,true);assert.equal(defaults.revision.configuration.evidence.allowExternalTransmission,false);
- await defaults.worker.tick();assert.equal(defaults.value.status,'completed');assert.equal(collected,1);
- const optedOut=harness(t,{pages:1,pageStartLines:[1],evidenceService});assert.equal(optedOut.revision.configuration.evidence.ocr,false);await optedOut.worker.tick();assert.equal(optedOut.value.status,'completed');assert.equal(collected,1);
+ const defaults=harness(t,{pages:1,pageStartLines:[1],evidenceService,omitConfiguration:true});assert.equal(defaults.revision.configuration.evidence.ocr,false);assert.equal(defaults.revision.configuration.evidence.allowExternalTransmission,false);
+ await defaults.worker.tick();assert.equal(defaults.value.status,'completed');assert.equal(collected,0);
+ const optedOut=harness(t,{pages:1,pageStartLines:[1],evidenceService});assert.equal(optedOut.revision.configuration.evidence.ocr,false);await optedOut.worker.tick();assert.equal(optedOut.value.status,'completed');assert.equal(collected,0);
 });
 
 test('local evidence progress is durable while the next chunk is collecting and before model dispatch',{timeout:2000},async t=>{
@@ -224,7 +275,7 @@ test('crash recovery materializes compact committed accepted patches before unce
 });
 
 test('invalid synthesis preserves actual durable output with separate schema versus JSON failure categories and no replay',async t=>{
- for(const [raw,failureKind] of [['not JSON','invalid_output'],['{"observations":[{"kind":"terminology","reading":"invented","evidence":[]}]}','validation']]){
+ for(const [raw,failureKind] of [['not JSON','invalid_output'],['{"observations":null}','validation']]){
   const env=harness(t,{synthesisProvider:()=>raw});await env.worker.tick();const synthesis=env.checkpoints.synthesis(env.revision.id);assert.equal(env.value.status,'failed');assert.equal(synthesis.status,'completed');assert.equal(synthesis.result,raw);assert.equal(synthesis.outcomeUncertain,false);assert.equal(synthesis.failureKind,failureKind);assert.equal(synthesis.validation.length,1);assert.equal(env.calls.length,2);assert.equal(env.value.report.inputTokens,20);
   env.restart();env.worker.resume('vault',env.revision.fileId,env.revision.id);await env.worker.tick();assert.equal(env.value.status,'failed');assert.equal(env.calls.length,2);assert.equal(env.checkpoints.synthesis(env.revision.id).result,raw);
  }
@@ -239,7 +290,91 @@ test('final deterministic audit remains durable when review rematerializes a der
 });
 
 test('large scholarly audit stays within the restorable finding budget and records truncation',async t=>{
- const text=Array.from({length:1100},(_,index)=>`Reference [^${index}].\n[^${index}]: printed definition.\n\n`).join('');
- const env=harness(t,{text,provider:request=>request.kind==='synthesis'?JSON.stringify({observations:[]}):JSON.stringify({blocks:request.blocks.map(block=>({...block,text:block.text.replace(/^\[\^\d+\]: printed definition\.\n/gm,'')})),diagnostics:[],unresolved:false})});
+ // References and definitions occupy separate physical pages/chunks. Each
+ // chunk remains locally valid, so the final document-wide audit must catch loss.
+ const text='<!-- Page 1 -->\n'+Array.from({length:1100},(_,index)=>`Reference [^${index}].\n`).join('')+'<!-- Page 2 -->\n'+Array.from({length:1100},(_,index)=>`[^${index}]: printed definition.\n`).join('');
+ const env=harness(t,{text,pages:2,pageStartLines:[1,1102],provider:request=>request.kind==='synthesis'?JSON.stringify({observations:[]}):JSON.stringify({blocks:request.blocks.map(block=>({...block,text:block.text.replace(/^\[\^\d+\]: printed definition\.\n/gm,'')})),diagnostics:[],unresolved:false})});
  await env.worker.tick();assert.equal(env.value.status,'completed');const audit=env.value.report.documentAudit;assert.equal(audit.findings.length,1000);assert.match(audit.findings.at(-1),/omitted/);assert.deepEqual(env.value.report.validationDiagnostics,audit.findings);
+});
+
+
+test('newly missing footnotes fail publication and preserve the canonical reading',async t=>{
+ const text='Reference [^note].\n\n[^note]: printed definition.\n';
+ const env=harness(t,{text,provider:request=>JSON.stringify({blocks:request.blocks.map(block=>({...block,text:block.text.replace(/^\[\^note\]: printed definition\.\n/gm,'')})),diagnostics:[],unresolved:false})});
+ await env.worker.tick();assert.equal(env.value.status,'failed');assert.match(env.value.report.error,/missing or ambiguous footnote definition/);
+ assert.equal(env.value.patches.length,0);assert.equal(env.value.reprocessed.text,text);
+});
+
+
+test('explicit resume recovers incomplete first-pass output and retains completed siblings and frozen synthesis',async t=>{
+ const {GenerationResponseError}=await import('../src/server/modules/intelligence.ts');let fail=true;const budgets=[];
+ const env=harness(t,{text:'Synthetic canonical passage. '.repeat(800),provider:(request,control)=>{
+  if(request.kind==='reconstruct'&&request.chunkIndex===0){budgets.push(control.outputTokenBudget);if(fail)throw new GenerationResponseError('provider_output_limit');}
+  return echo(request);
+ }});await env.worker.tick();const stopped=env.value;
+ assert.equal(stopped.status,'failed');assert.equal(stopped.report.errorCode,'provider_output_limit');assert.deepEqual(stopped.report.coverage.incompleteChunkIndexes,[0]);
+ const sibling=structuredClone(env.checkpoints.passes(stopped.id,1)),synthesis=structuredClone(env.checkpoints.synthesis(stopped.id)),before=env.calls.length;
+ assert.equal(env.checkpoints.passes(stopped.id,0)[0].outcomeUncertain,false);
+ fail=false;env.restart();env.worker.resume('vault',stopped.fileId,stopped.id);await env.worker.tick();
+ assert.equal(env.value.status,'completed');assert.deepEqual(env.calls.slice(before).map(call=>[call.kind,call.chunkIndex]),[['reconstruct',0],['verify',0]]);
+ assert.deepEqual(env.checkpoints.passes(stopped.id,1),sibling);assert.deepEqual(env.checkpoints.synthesis(stopped.id),synthesis);assert.deepEqual(budgets,[undefined,32000]);
+ const recovered=env.checkpoints.passes(stopped.id,0)[0];assert.equal(recovered.responseAttempts.length,1);assert.match(recovered.responseAttempts[0].error,/token limit/);assert.equal(recovered.responseAttempts[0].inputTokens,10);
+ assert.equal(env.value.report.coverage.firstPassCompleted,env.value.report.chunksTotal);
+ assert.equal(env.value.report.inputTokens,env.calls.length*10);assert.equal(env.value.report.excerpts[0].inputTokens,30);
+ await assertRecoveryArchive(env);
+});
+
+for(const phase of ['verify','synthesis'])test(`explicit resume recovers incomplete ${phase} without replaying completed requests`,async t=>{
+ const {GenerationResponseError}=await import('../src/server/modules/intelligence.ts');let fail=true;const budgets=[];
+ const env=harness(t,{provider:(request,control)=>{if(request.kind===phase){budgets.push(control.outputTokenBudget);if(fail)throw new GenerationResponseError('provider_empty_output');}return echo(request);},synthesisProvider:()=>{if(phase==='synthesis'&&fail)throw new GenerationResponseError('provider_output_limit');return JSON.stringify({observations:[]});}});
+ await env.worker.tick();const stopped=env.value;assert.equal(stopped.status,'failed');const firstPass=structuredClone(env.checkpoints.passes(stopped.id)[0]),before=env.calls.length;
+ fail=false;env.restart();env.worker.resume('vault',stopped.fileId,stopped.id);await env.worker.tick();assert.equal(env.value.status,'completed');
+ assert.deepEqual(env.checkpoints.passes(stopped.id)[0],firstPass);assert.deepEqual(env.calls.slice(before).map(call=>call.kind),phase==='verify'?['verify']:['synthesis','verify']);
+ const checkpoint=phase==='verify'?env.checkpoints.passes(stopped.id)[1]:env.checkpoints.synthesis(stopped.id);assert.equal(checkpoint.outputTokenBudget,32000);assert.equal(checkpoint.responseAttempts.length,1);
+ assert.equal(env.value.report.inputTokens,env.calls.length*10);await assertRecoveryArchive(env);
+});
+
+test('legacy incomplete response checkpoints recover on explicit resume with bounded retry budgets',async t=>{
+ const env=harness(t,{depth:'light',provider:()=>{throw Error('OpenAI returned an incomplete response. Try a lower reasoning effort or a shorter page.');}});
+ await env.worker.tick();assert.equal(env.value.report.errorCode,'provider_incomplete_output');
+ for(const budget of [32000,64000]){env.restart();env.worker.resume('vault',env.revision.fileId,env.revision.id);await env.worker.tick();assert.equal(env.checkpoints.passes(env.revision.id)[0].outputTokenBudget,budget);}
+ const before=env.calls.length;env.restart();env.worker.resume('vault',env.revision.fileId,env.revision.id);await env.worker.tick();assert.equal(env.calls.length,before);assert.equal(env.value.status,'failed');assert.notEqual(env.value.report.errorCode,'configuration');
+});
+
+
+async function assertRecoveryArchive(env){
+ const {restoreReprocessingCheckpoints,restoreReprocessingSynthesis,validateReprocessingConfiguration}=await import('../src/server/modules/source-reprocessing-backup.ts');
+ const r=env.value;r.configuration=validateReprocessingConfiguration(r.configuration);
+ const passes=env.checkpoints.passes(r.id),chunks=env.checkpoints.chunks(r.id);
+ const restored=restoreReprocessingCheckpoints(r,r.id,r.baseHash,chunks,passes);assert.deepEqual(restored.passes,passes);
+ const synthesis=env.checkpoints.synthesis(r.id);if(synthesis)assert.deepEqual(restoreReprocessingSynthesis(synthesis,r,r.id,r.baseHash,passes),synthesis);
+ const altered=structuredClone(passes);altered[0].outputTokenBudget=999999;
+ assert.throws(()=>restoreReprocessingCheckpoints(r,r.id,r.baseHash,chunks,altered),/invalid source editorial/);
+}
+
+
+test('Balanced materializes restored paragraphs and paired printed footnotes without a separate OCR run',async t=>{
+ const text='The first paragraph has a printed note1 and a hard\nline wrap. Another paragraph begins here.\n\n1. The printed note preserves its exact wording.';
+ const restore=text=>text.replace('note1','note[^p1-1]').replace('hard\nline','hard line').replace('. Another','.\n\nAnother').replace(/^1\. /m,'[^p1-1]: ');
+ const env=harness(t,{text,pages:1,pageStartLines:[1],provider:request=>JSON.stringify({blocks:request.blocks.map(block=>({...block,text:restore(block.text)})),diagnostics:[],unresolved:false})});
+ await env.worker.tick();const result=env.value;
+ assert.equal(result.status,'completed');assert.equal(result.original.text,text);assert.equal(result.reprocessed.text,restore(text));
+ assert.ok(result.patches.some(patch=>patch.category==='footnote'&&patch.decision==='accepted'));
+ assert.ok(result.patches.every(patch=>patch.decision==='accepted'));assert.equal(result.configuration.evidence.ocr,false);
+ const {sourceDocumentEntries}=await import('../src/shared/source-document.ts');const nodes=sourceDocumentEntries(result.reprocessed.document);
+ assert.ok(nodes.some(({node})=>node.kind==='footnote'));assert.ok(nodes.filter(({node})=>node.kind==='paragraph').length>=2);
+ await assertRecoveryArchive(env);
+ assert.match(env.prompts[0],/actively restore readable paragraph boundaries/);assert.match(env.prompts.at(-1),/verification must not revert useful layout/);
+ assert.deepEqual(env.calls[0].physicalPages,{startPage:1,endPage:1});assert.equal(env.calls.length,3);
+ const before=structuredClone(result.patches);result.status='interrupted';env.store.run('UPDATE source_reprocessing SET status=?,payload=? WHERE id=?','interrupted',JSON.stringify(result),result.id);
+ env.restart();env.worker.resume('vault',result.fileId,result.id);await env.worker.tick();assert.equal(env.calls.length,3);assert.deepEqual(env.value.patches,before);
+});
+
+test('legacy reconstruction checkpoints keep their prompt and request hashes during incomplete-response recovery',async t=>{
+ const {GenerationResponseError}=await import('../src/server/modules/intelligence.ts');let fail=true;
+ const env=harness(t,{depth:'light',provider:request=>{if(fail)throw new GenerationResponseError('provider_output_limit');return echo(request);}});
+ const r=env.value;r.report.promptVersion='source-reconstruction-v2-3';env.store.run('UPDATE source_reprocessing SET payload=? WHERE id=?',JSON.stringify(r),r.id);
+ await env.worker.tick();const hash=env.checkpoints.passes(r.id)[0].requestHash;fail=false;
+ env.restart();env.worker.resume('vault',r.fileId,r.id);await env.worker.tick();assert.equal(env.value.status,'completed');assert.equal(env.checkpoints.passes(r.id)[0].requestHash,hash);
+ assert.equal(env.checkpoints.passes(r.id)[0].promptVersion,'source-reconstruction-v2-3');assert.equal(env.calls[0].physicalPages,undefined);assert.doesNotMatch(env.prompts[0],/actively restore/);
 });

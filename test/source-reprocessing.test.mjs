@@ -14,8 +14,8 @@ test('saved Dante formatting patch preserves Introduction and all six structural
  const intro=headings(r.reprocessed).find(({node})=>node.title.includes('Introduction'));assert.ok(intro);
  assert.ok(r.nodeLinks.find(link=>link.originalNodeId===headings(r.original)[0].node.id).reprocessedNodeIds.includes(intro.node.id));
 });
-test('saved accepted revision is blocked when page delimiters would become inline',()=>{
- assert.throws(()=>materializeSourceRevision(fixture()),/page marker.*own line/i);
+test('saved accepted revision retains page separators when corrections collapse surrounding whitespace',()=>{
+ const r=fixture();materializeSourceRevision(r);assert.deepEqual(pageBoundaryDiagnostics(r.original.text,r.reprocessed.text),[]);
  assert.equal(pageBoundaryDiagnostics('<!-- Page 1 -->\ntext','<!-- Page 1 -->text').length,1);
 });
 test('custom replacements get identical global page-boundary validation',()=>{
@@ -404,4 +404,15 @@ test('editorial execution checkpoints document metadata once and preserves separ
  const {HttpError}=await import('../src/server/validation.ts'),ambiguous=concurrentHarness(async()=>JSON.stringify({patches:[]}));
  ambiguous.service.metadata={process(){throw new HttpError(409,'The supporting excerpt changed, disappeared, or is ambiguous.');}};
  await ambiguous.service.tick();assert.equal(ambiguous.stored.status,'completed');assert.match(ambiguous.stored.report.diagnostics.join(' '),/Metadata evidence requires review/);
+});
+
+
+test('accepting corrections beside page markers preserves separators and canonical source coordinates',async()=>{
+ const {processedSourceDocument}=await import('../src/server/modules/source-document.ts');
+ for(const [original,replacement] of [['>\n\n','>'],['text.\n\n','text.']]){
+  const text='<!-- Page 1 -->\n\nFirst text.\n\n<!-- Page 2 -->\nSecond text.';
+  const r=fixture();r.pipelineVersion=undefined;r.original={text,document:processedSourceDocument({id:'f',name:'Synthetic',format:'txt',text,structural_nodes:'[]',page_start_lines:'[]',enrichment_status:'completed'})};
+  const start=text.indexOf(original);r.patches=[{id:'p',original,replacement,decision:'accepted',range:{startOffset:start,endOffset:start+original.length}}];
+  materializeSourceRevision(r);assert.deepEqual(pageBoundaryDiagnostics(text,r.reprocessed.text),[]);assert.equal(r.original.text,text);assert.equal(r.patches[0].original,original);assert.ok(r.patches[0].userReplacement.endsWith('\n'));
+ }
 });

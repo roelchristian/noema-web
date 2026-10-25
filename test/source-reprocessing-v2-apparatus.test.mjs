@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {planReprocessingChunks} from '../src/server/modules/source-reprocessing-planner.ts';
 import {reconstructBlocks,boundedReconstructionDiff} from '../src/server/modules/source-reprocessing-diff.ts';
-import {groupApparatusPatches,assertAtomicPatchGroups,apparatusProblems} from '../src/server/modules/source-reprocessing-apparatus.ts';
+import {groupApparatusPatches,assertAtomicPatchGroups,apparatusProblems,acceptVerifiedFootnoteFormatting} from '../src/server/modules/source-reprocessing-apparatus.ts';
 import {detectPageFurniture,presentWithoutFurniture} from '../src/server/modules/source-reprocessing-furniture.ts';
 test('reference and definition repairs are atomic and cannot autoaccept',()=>{
  const chunk=planReprocessingChunks('word[^1]\n\n[^1]: note',{physical:{pages:[]}})[0];
@@ -23,6 +23,23 @@ test('repeated boundary lines are reversible presentation suggestions over uncha
  const hidden=candidates.map(item=>({...item,hidden:true}));assert.equal(presentWithoutFurniture(text,hidden),'\nFirst body.\n\nSecond body.\n\nThird body.\n');
  assert.equal(text,pages.join(''));assert.throws(()=>presentWithoutFurniture('different',hidden),/no longer matches/);
  assert.equal(detectPageFurniture(pages.slice(0,2).join(''),{physical:{pages:document.physical.pages.slice(0,2)}}).length,0);
+});
+
+
+test('numeric furniture patterns retain multiline headers and page labels without hiding numbered prose',()=>{
+ const pages=Array.from({length:3},(_,index)=>`Journal proceedings 202${index}\nVolume of collected research ${index+1}\nDistinct passage ${index+1}.\nPage ${index+1}\n`);
+ let at=0;const document={physical:{pages:pages.map((text,index)=>{const startOffset=at;at+=text.length;return {number:index+1,range:{startOffset,endOffset:at}};})}};
+ const text=pages.join(''),candidates=detectPageFurniture(text,document);
+ assert.equal(candidates.length,9);
+ for(const page of document.physical.pages){
+  const items=candidates.filter(item=>item.page===page.number);
+  assert.equal(items.length,3);assert.ok(items.every(item=>!item.hidden));
+  assert.ok(items.some(item=>item.text===`Journal proceedings 202${page.number-1}`&&item.kind==='header'));
+  assert.ok(items.some(item=>item.text===`Volume of collected research ${page.number}`&&item.kind==='header'));
+  assert.ok(items.some(item=>item.text===`Page ${page.number}`&&item.kind==='footer'));
+ }
+ const reading=presentWithoutFurniture(text,candidates.map(item=>({...item,hidden:true})));
+ for(let page=1;page<=3;page++)assert.ok(reading.includes(`Distinct passage ${page}.`));
 });
 
 
@@ -79,4 +96,21 @@ test('highly fragmented reconstruction compacts to at most fifty exact canonical
  assert.ok(result.patches.length<=50);assert.ok(result.patches.length>1);
  const actual=[...result.patches].reverse().reduce((text,patch)=>text.slice(0,patch.startOffset)+patch.replacement+text.slice(patch.endOffset),original);
  assert.equal(actual,replacement);
+});
+
+
+test('paired footnote formatting preserves words and labels, and refuses ambiguous or substantive changes',()=>{
+ const text='Body with note1.\n\n1. The original note text.';
+ const proposed='Body with note[^p1-1].\n\n[^p1-1]: The original note text.';
+ const document={physical:{pages:[{number:1,range:{startOffset:0,endOffset:text.length}}]}};
+ const check=(replacement,policy='verified',source=text)=>{
+  const patch={id:'p',original:source,replacement,decision:'pending',category:'ocr',range:{startOffset:0,endOffset:source.length}};
+  return acceptVerifiedFootnoteFormatting(groupApparatusPatches([patch]),source,document,policy)[0];
+ };
+ assert.equal(check(proposed).decision,'accepted');assert.equal(check(proposed).category,'footnote');assert.ok(check(proposed).autoAcceptance.checks.includes('identical-note-and-body-text'));
+ assert.equal(check(proposed,'review_all').decision,'pending');assert.equal(check(proposed.replace('original','invented')).decision,'pending');
+ assert.equal(check(proposed.replaceAll('p1-1','p1-2')).decision,'pending');assert.equal(check(proposed.replaceAll('p1-1','p2-1')).decision,'pending');
+ assert.equal(check('Body with note[^p1-1].\n\n1. The original note text.').decision,'pending');
+ const numbered='Body has 2021.\n\n1. The original note text.';document.physical.pages[0].range.endOffset=numbered.length;
+ assert.equal(check('Body has 202[^p1-1].\n\n[^p1-1]: The original note text.','verified',numbered).decision,'pending');
 });

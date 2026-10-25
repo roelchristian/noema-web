@@ -1,7 +1,7 @@
 import {detectPageFurniture} from './source-reprocessing-furniture.js';
 import {gatherReprocessingEvidence,type SourceReprocessingEvidence} from './source-reprocessing-evidence.js';
 import {assertAtomicPatchGroups} from './source-reprocessing-apparatus.js';
-import {executeReconstruction,reconstructionPromptVersion} from './source-reprocessing-pass.js';
+import {executeReconstruction,reconstructionPromptVersion,supportedReconstructionPromptVersion} from './source-reprocessing-pass.js';
 import {SourceReprocessingCheckpoints} from './source-reprocessing-checkpoints.js';
 import {planReprocessingChunks} from './source-reprocessing-planner.js';
 import {createHash,randomUUID} from 'node:crypto';
@@ -17,7 +17,7 @@ import {evaluateEditorialAcceptance,editorialRiskValidator} from './source-repro
 import {mathSource} from './source-math-text.js';
 import {SourceDocuments,sourceDocumentBuilderVersion} from './source-documents.js';
 import {sourceStructureKinds} from '../../shared/domain.js';
-import {editorialDiagnostics,pageBoundaryDiagnostics} from './source-reprocessing-diagnostics.js';
+import {editorialDiagnostics,pageBoundaryDiagnostics,preservePageMarkerSeparators,preserveReconstructionSeparators} from './source-reprocessing-diagnostics.js';
 import type {SourceFile} from '../../shared/domain.js';
 import {processedSourceDocument} from './source-document.js';
 import {sourceDocumentEntries,type SourceDocument,type SourceDocumentRange} from '../../shared/source-document.js';
@@ -66,6 +66,12 @@ export function materializeSourceRevision(r:SourceReprocessingRevision){
    const {startOffset:start,endOffset:end}=p.range;
    const excerpt=p.excerptIndex===undefined?undefined:r.report.excerpts?.[p.excerptIndex];
    if(!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||start<0||end<=start||end>r.original.text.length||!utf16Boundary(r.original.text,start)||!utf16Boundary(r.original.text,end)||r.original.text.slice(start,end)!==p.original||!wellFormedUnicode(p.userReplacement??p.replacement)||p.baseHash!==undefined&&p.baseHash!==r.baseHash||p.excerptIndex!==undefined&&(!Number.isSafeInteger(p.excerptIndex)||!excerpt||start<excerpt.startOffset||end>excerpt.endOffset)||index>0&&start<patches[index-1]!.range.endOffset)throw new HttpError(400,'Editorial patch evidence does not match this canonical revision or excerpt.');
+  }
+  for(const patch of patches){
+   const replacement=patch.userReplacement??patch.replacement;
+   const separated=r.pipelineVersion===2?preserveReconstructionSeparators(patch.original,replacement):replacement;
+   const preserved=preservePageMarkerSeparators(r.original.text,patch.range.startOffset,patch.range.endOffset,separated);
+   if(preserved!==replacement)patch.userReplacement=preserved;
   }
   if(!patches.length){r.reprocessed=structuredClone(r.original);r.nodeLinks=sourceDocumentEntries(r.original.document).map(({node})=>({originalNodeId:node.id,reprocessedNodeIds:[node.id]}));r.report.validationDiagnostics=editorialDiagnostics(r.original.text,r.original.text);return;}
   let text='',offset=0;for(const p of patches){text+=r.original.text.slice(offset,p.range.startOffset)+(p.userReplacement??p.replacement);offset=p.range.endOffset;}text+=r.original.text.slice(offset);
@@ -148,7 +154,14 @@ export class SourceReprocessing {
  private currentHash(vault:string,id:string){try{return this.baseHash(vault,id);}catch{return null;}}
  capabilities(vault:string,id:string){this.requireOpen(vault);const file=this.files.require(vault,id);if(mathSource(this.store,file).text!==file.text)return {originalPages:false,ocr:false,externalImages:false,reason:'Original-source evidence for a cleaned math derivative requires an exact canonical mapping that is unavailable.'};const local=this.evidence?.capabilities(vault,id)??{originalPages:false,ocr:false,externalImages:false,reason:'Local source evidence adapters are unavailable.'};const imageInput=this.intelligence.editorialImageCapability?.()===true;return {...local,externalImages:local.originalPages&&imageInput,reason:local.reason+(!imageInput?' The selected model has no enabled original-page image input capability.':'')};}
  list(vault:string,id:string):SourceReprocessingSummary[]{this.files.require(vault,id);const current=this.currentHash(vault,id);return this.store.all<{summary_json:string}>('SELECT summary_json FROM source_reprocessing WHERE file_id=? AND vault_id=? AND summary_json IS NOT NULL ORDER BY created_at DESC,id DESC LIMIT 100',id,vault).map(row=>{const r=JSON.parse(row.summary_json) as SourceReprocessingSummary;return {...r,stale:r.baseHash!==current};});}
- detail(vault:string,id:string,revisionId:string){this.files.require(vault,id);const row=this.store.get<Row>('SELECT * FROM source_reprocessing WHERE id=? AND file_id=? AND vault_id=?',revisionId,id,vault);if(!row)throw new HttpError(404,'Editorial pass not found.');const r=JSON.parse(row.payload) as SourceReprocessingRevision;r.stale=r.baseHash!==this.currentHash(vault,id);return r;}
+ detail(vault:string,id:string,revisionId:string){
+  this.files.require(vault,id);const row=this.store.get<Row>('SELECT * FROM source_reprocessing WHERE id=? AND file_id=? AND vault_id=?',revisionId,id,vault);if(!row)throw new HttpError(404,'Editorial pass not found.');
+  const r=JSON.parse(row.payload) as SourceReprocessingRevision;r.stale=r.baseHash!==this.currentHash(vault,id);
+  // Repair the derived presentation of saved V2 runs without another provider call
+  // or writing to the archive. Exact patch evidence and source text stay authoritative.
+  if(r.pipelineVersion===2&&!r.stale&&!['queued','running'].includes(r.status)&&r.patches.some(patch=>patch.decision==='accepted'&&preserveReconstructionSeparators(patch.original,patch.userReplacement??patch.replacement)!==(patch.userReplacement??patch.replacement)))materializeSourceRevision(r);
+  return r;
+ }
  status(vault:string,id:string,revisionId:string){
   this.files.require(vault,id);
   // Read only status fields rather than transferring/parsing both full document snapshots.
@@ -163,7 +176,6 @@ export class SourceReprocessing {
   if(body.pipelineVersion!==undefined&&body.pipelineVersion!==1&&body.pipelineVersion!==2)throw new HttpError(400,'Invalid reprocessing pipeline version.');
   const pipelineVersion=body.pipelineVersion??(body.acceptanceMode!==undefined?1:2);
   const configuration=pipelineVersion===2?{...reprocessingConfiguration(body.configuration),architectureVersion:1 as const}:undefined;
-  if(configuration&&body.configuration===undefined&&this.evidence&&this.capabilities(vault,id).ocr)configuration.evidence.ocr=true;
   if(configuration?.evidence.originalPages&&!configuration.evidence.allowExternalTransmission)throw new HttpError(400,'Explicit original-page transmission consent is required.');
   if(configuration&&(configuration.evidence.originalPages||configuration.evidence.ocr)){const capability=this.capabilities(vault,id);if(configuration.evidence.originalPages&&!capability.externalImages||configuration.evidence.ocr&&!capability.ocr)throw new HttpError(409,capability.reason||'Requested source evidence capability is unavailable.');}
   if(body.instructions!==undefined&&(typeof body.instructions!=='string'||body.instructions.length>4000))throw new HttpError(400,'Editorial instructions must be at most 4,000 characters.');
@@ -211,12 +223,12 @@ export class SourceReprocessing {
   if(!['failed','interrupted'].includes(r.status)||this.activeRevisionId===revisionId)throw new HttpError(409,'Wait for interruption to finish before resuming.');
   if(r.stale)throw new HttpError(409,'Canonical source changed. Start a new editorial pass.');
   const selection=this.intelligence.editorialSelection();
-  if(r.report.promptVersion!==(r.pipelineVersion===2?reconstructionPromptVersion:promptVersion)||r.report.model!==selection.model||(r.pipelineVersion===2&&r.report.reasoningEffort!==selection.reasoningEffort))throw new HttpError(409,'Editorial configuration changed. Start a new pass.');
+  if(!(r.pipelineVersion===2?supportedReconstructionPromptVersion(r.report.promptVersion):r.report.promptVersion===promptVersion)||r.report.model!==selection.model||(r.pipelineVersion===2&&r.report.reasoningEffort!==selection.reasoningEffort))throw new HttpError(409,'Editorial configuration changed. Start a new pass.');
   if(this.store.get("SELECT 1 FROM source_reprocessing WHERE file_id=? AND status IN ('queued','running')",id))throw new HttpError(409,'Another pass is already active.');
   if(r.pipelineVersion===2){
    const checkpoints=new SourceReprocessingCheckpoints(this.store),synthesis=checkpoints.synthesis(r.id);
    if(synthesis?.register&&synthesis.register.revisionId!==r.id)throw new HttpError(409,'Imported document context retains its archived identity. Start a new revision explicitly.');
-   if([...checkpoints.passes(r.id),...checkpoints.repairs(r.id),...(synthesis?[synthesis]:[])].some(pass=>pass.outcomeUncertain||pass.status==='running'||pass.status==='interrupted'))throw new HttpError(409,'Provider outcome is uncertain. Start a new revision explicitly; this request will not be replayed.');
+   if([...checkpoints.passes(r.id),...checkpoints.repairs(r.id),...(synthesis?[synthesis,...(synthesis.review?[synthesis.review]:[])]:[])].some(pass=>pass.outcomeUncertain||pass.status==='running'||pass.status==='interrupted'))throw new HttpError(409,'Provider outcome is uncertain. Start a new revision explicitly; this request will not be replayed.');
   }
   r.report.reasoningEffort=selection.reasoningEffort;r.status='queued';r.report.error=null;delete r.report.errorCode;this.save(vault,r);return r;
  }

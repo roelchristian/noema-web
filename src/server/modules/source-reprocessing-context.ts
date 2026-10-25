@@ -20,6 +20,8 @@ export interface SynthesisInput {
 }
 export interface SourceDocumentSynthesis {
  version:1;promptVersion:string;revisionId:string;baseHash:string;inputHash:string;hash:string;title:string;constituentHashes:SynthesisConstituent[];missingChunkIndexes:number[];sections:ContextSection[];observations:ContextObservation[];
+ evidenceReview?:{resultHash:string;assessments:{index:number;classification:'extraction_fix'|'wrong_reference'|'unsupported';explanation:string;accepted:boolean}[]};
+ validationPolicy?:'isolate-invalid-observations-v1';rejectedObservations?:{index:number;reason:string}[];
 }
 
 /** Sections are context permissions only: chunk editing coordinates never expand. */
@@ -57,13 +59,14 @@ export function createSynthesisInput(input:{revisionId:string;baseHash:string;te
  return {...identity,inputHash,request,blocks};
 }
 
-export function parseDocumentSynthesis(input:SynthesisInput,result:string):SourceDocumentSynthesis {
+export function parseDocumentSynthesis(input:SynthesisInput,result:string,options:{isolateInvalidObservations?:boolean}={}):SourceDocumentSynthesis {
  if(result.length>128000)return invalid('output exceeds budget.');
  let value:unknown;try{value=JSON.parse(result.replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,''));}catch{return invalid('expected JSON.');}
  if(!value||typeof value!=='object'||Array.isArray(value))return invalid('expected an object.');
  const values=(value as Record<string,unknown>).observations;
  if(!Array.isArray(values)||values.length>128)return invalid('expected at most 128 observations.');
- const observations:ContextObservation[]=values.map(item=>{
+ const rejectedObservations:{index:number;reason:string}[]=[];
+ const observations:ContextObservation[]=values.flatMap((item,index)=>{try{
   if(!item||typeof item!=='object'||Array.isArray(item))return invalid('invalid observation.');
   const data=item as Record<string,unknown>;
   if(!['terminology','entity','outline','reference','pattern','uncertainty'].includes(String(data.kind))||typeof data.reading!=='string'||!wellFormedUnicode(data.reading)||!data.reading.trim()||data.reading.length>1000)return invalid('invalid kind or reading.');
@@ -78,9 +81,15 @@ export function parseDocumentSynthesis(input:SynthesisInput,result:string):Sourc
    if(!chunk)return invalid('evidence must come from completed coverage.');
    const start=block.start+block.text.indexOf(ref.quote);return {blockId:block.id,quote:ref.quote,start,end:start+ref.quote.length};
   });
-  return {kind:data.kind as ContextObservation['kind'],reading:data.reading,alternatives:(data.alternatives??[]) as string[],evidence,...(data.resolutionNeed?{resolutionNeed:data.resolutionNeed as string}:{})};
+  return [{kind:data.kind as ContextObservation['kind'],reading:data.reading,alternatives:(data.alternatives??[]) as string[],evidence,...(data.resolutionNeed?{resolutionNeed:data.resolutionNeed as string}:{})}];
+ }catch(error){
+  // Summary observations are optional context, never edit authority. Reject the
+  // entire observation, preserving exact source checks for every retained quote.
+  if(!options.isolateInvalidObservations||!(error instanceof HttpError))throw error;
+  rejectedObservations.push({index,reason:error.message});return [];
+ }
  });
- const register={version:1 as const,promptVersion:synthesisPromptVersion,revisionId:input.revisionId,baseHash:input.baseHash,inputHash:input.inputHash,title:input.title,constituentHashes:input.constituentHashes,missingChunkIndexes:input.missingChunkIndexes,sections:input.sections,observations};
+ const register={version:1 as const,promptVersion:synthesisPromptVersion,revisionId:input.revisionId,baseHash:input.baseHash,inputHash:input.inputHash,title:input.title,constituentHashes:input.constituentHashes,missingChunkIndexes:input.missingChunkIndexes,sections:input.sections,observations,...(options.isolateInvalidObservations?{validationPolicy:'isolate-invalid-observations-v1' as const,rejectedObservations}:{})};
  return {...register,hash:hash(JSON.stringify(register))};
 }
 

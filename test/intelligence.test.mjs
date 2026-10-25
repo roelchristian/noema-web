@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { intelligenceModels } from '../src/shared/intelligence.ts';
 import {defaultNarrationPreferences} from '../src/shared/narration.ts';
-import { Intelligence, intelligencePreferencesFor, GenerationAdmissionError, GenerationProviderError, GenerationTransportError, GenerationCancellationError } from '../src/server/modules/intelligence.ts';
+import { Intelligence, intelligencePreferencesFor, GenerationAdmissionError, GenerationProviderError, GenerationTransportError, GenerationCancellationError, GenerationResponseError } from '../src/server/modules/intelligence.ts';
 import { openDatabase } from '../src/server/database.ts';
 import { Store } from '../src/server/store.ts';
 import { createApp } from '../src/server/http.ts';
@@ -535,4 +535,39 @@ test('original-page provider input requires consent, explicit model support, and
  assert.ok(!JSON.stringify(traces).includes(image.base64));assert.ok(JSON.stringify(traces).includes(image.sha256));
  ai.savePreferences({model:'gpt-6-luna',reasoningEffort:'none'});assert.equal(ai.editorialImageCapability(),false);
  await assert.rejects(()=>ai.reeditSource('canonical','source only',signal,undefined,'blocks',[image],true),/image capability/);assert.equal(calls,1);
+});
+
+
+test('received output failures retain their reason and never become configuration errors',async()=>{
+ const {editorialFailure}=await import('../src/server/modules/source-reprocessing-errors.ts');
+ for(const [response,code] of [
+  [{status:'incomplete',incomplete_details:{reason:'max_output_tokens'},output:[]},'provider_output_limit'],
+  [{status:'incomplete',incomplete_details:{reason:'content_filter'},output:[]},'provider_content_filter'],
+  [{status:'failed',output:[]},'provider_response_failed'],
+  [{status:'completed',output:[]},'provider_empty_output'],
+  [{status:'completed',output:[{type:'message',content:[{type:'output_text',text:'x'.repeat(60001)}]}]},'provider_output_too_large'],
+ ]){
+  const ai=new Intelligence(new Secrets(),async()=>Response.json(response));ai.save({apiKey:key});
+  await assert.rejects(()=>ai.reeditSource('text','Edit',new AbortController().signal),error=>{
+   assert.ok(error instanceof GenerationResponseError);assert.equal(error.code,code);assert.equal(error.outcomeUncertain,false);
+   const failure=editorialFailure(error);assert.equal(failure.code,code);assert.equal(failure.configuration,false);assert.equal(failure.retryable,false);return true;
+  });
+ }
+ const legacy=editorialFailure(new Error('OpenAI returned an incomplete response. Try a lower reasoning effort or a shorter page.'));
+ assert.equal(legacy.code,'provider_incomplete_output');assert.equal(legacy.configuration,false);
+ assert.equal(editorialFailure(new Error('Try lighter reasoning after repeated incomplete output.')).configuration,false);
+});
+
+test('explicit editorial recovery can request a larger bounded response budget without changing reasoning',async()=>{
+ let body;const ai=new Intelligence(new Secrets(),async(_url,options)=>{body=JSON.parse(options.body);return completed('{"blocks":[]}');});ai.save({apiKey:key});
+ await ai.reeditSource('text','Edit',new AbortController().signal,undefined,'blocks',undefined,false,32000);
+ assert.equal(body.max_output_tokens,32000);assert.equal(body.reasoning.effort,ai.editorialSelection().reasoningEffort);
+});
+
+
+test('streamed incomplete responses retain the output-limit reason and reported usage',async()=>{
+ const usage=[];const terminal={status:'incomplete',incomplete_details:{reason:'max_output_tokens'},usage:{input_tokens:20,output_tokens:16000},output:[]};
+ const ai=new Intelligence(new Secrets(),async()=>new Response('data: '+JSON.stringify({type:'response.incomplete',response:terminal})+'\n\n',{headers:{'content-type':'text/event-stream'}}));ai.save({apiKey:key});
+ await assert.rejects(()=>ai.reeditSource('text','Edit',new AbortController().signal,()=>({usage:value=>usage.push(value)}),'blocks'),error=>error instanceof GenerationResponseError&&error.code==='provider_output_limit');
+ assert.deepEqual(usage,[terminal.usage]);
 });

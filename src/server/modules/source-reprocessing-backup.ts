@@ -1,4 +1,5 @@
 import {createHash} from 'node:crypto';
+import {createSynthesisReviewInput,resolveReviewedSynthesis,synthesisReviewPromptVersion} from './source-reprocessing-synthesis-review.js';
 import {createSynthesisInput,parseDocumentSynthesis,synthesisPromptVersion} from './source-reprocessing-context.js';
 import {planReprocessingChunks} from './source-reprocessing-planner.js';
 import type {SourceReprocessingSynthesisCheckpoint,SourceReprocessingRepairCheckpoint} from './source-reprocessing-checkpoints.js';
@@ -56,9 +57,10 @@ export function restoreReprocessingCheckpoints(revision:SourceReprocessingRevisi
   if(JSON.stringify(validateReprocessingConfiguration(p.configuration))!==JSON.stringify(configuration)||!/^[a-f0-9]{64}$/.test(string(p.requestHash,64)))throw invalid();
   if(p.result!==null)string(p.result,256000);if(p.status==='completed'&&(p.result===null||p.finishedAt===null||p.outcomeUncertain!==false))throw invalid();
   for(const check of array(p.validation,100))string(check,2000);
-  if(p.failureKind!==undefined)oneOf(p.failureKind,['transport','invalid_output','validation','evidence','admission']);
+  if(p.failureKind!==undefined)oneOf(p.failureKind,['transport','invalid_output','validation','evidence','admission','response']);
   timestamp(p.startedAt);if(p.finishedAt!==null)timestamp(p.finishedAt);if(p.error!==null)string(p.error,10000);if(typeof p.outcomeUncertain!=='boolean')throw invalid();
   for(const key of ['inputTokens','outputTokens','reasoningTokens','cachedInputTokens'])if(p[key]!==null)integer(p[key],0,Number.MAX_SAFE_INTEGER);
+  validateResponseAttempts(p);
   const pass={...structuredClone(p),revisionId:revision.id} as unknown as SourceReprocessingPass;
   if(pass.status==='running'){pass.status='interrupted';pass.outcomeUncertain=true;pass.finishedAt=now();pass.error='Restored during a request; provider outcome is unknown.';}
   passes.push(pass);
@@ -86,7 +88,7 @@ export function restoreReprocessingRepairs(values:unknown[],revision:SourceRepro
   if(data.result!==null)string(data.result,256000);
   if(data.status==='completed'&&(data.result===null||data.finishedAt===null||data.outcomeUncertain!==false))throw invalid();
   for(const check of array(data.validation,100))string(check,2000);
-  if(data.failureKind!==undefined)oneOf(data.failureKind,['transport','invalid_output','validation','evidence','admission']);
+  if(data.failureKind!==undefined)oneOf(data.failureKind,['transport','invalid_output','validation','evidence','admission','response']);
   for(const key of ['inputTokens','outputTokens','reasoningTokens','cachedInputTokens'])if(data[key]!==null)integer(data[key],0,Number.MAX_SAFE_INTEGER);
   const repair={...structuredClone(data),revisionId:revision.id} as unknown as SourceReprocessingRepairCheckpoint;
   if(repair.status==='running'){repair.status='interrupted';repair.outcomeUncertain=true;repair.finishedAt=now();repair.error='Restored during an explicit repair; provider outcome is unknown.';}
@@ -105,18 +107,33 @@ export function restoreReprocessingSynthesis(value:unknown,revision:SourceReproc
  if(typeof data.outcomeUncertain!=='boolean')throw invalid();
  for(const key of ['inputTokens','outputTokens','reasoningTokens','cachedInputTokens'])if(data[key]!==null)integer(data[key],0,Number.MAX_SAFE_INTEGER);
  if(data.result!==null)string(data.result,128000);
- if(data.failureKind!==undefined)oneOf(data.failureKind,['transport','invalid_output','validation','evidence','admission']);
+ if(data.failureKind!==undefined)oneOf(data.failureKind,['transport','invalid_output','validation','evidence','admission','response']);
  if(data.validation!==undefined)for(const check of array(data.validation,100))string(check,2000);
  if(data.status==='completed'&&(data.result===null||data.finishedAt===null||data.outcomeUncertain!==false))throw invalid();
+ if(data.review!==undefined){
+  const review=object(data.review);oneOf(review.status,['running','completed','failed','interrupted']);
+  if(review.promptVersion!==synthesisReviewPromptVersion||!/^[a-f0-9]{64}$/.test(string(review.requestHash,64))||typeof review.outcomeUncertain!=='boolean')throw invalid();
+  timestamp(review.startedAt);if(review.finishedAt!==null)timestamp(review.finishedAt);if(review.error!==null)string(review.error,10000);if(review.result!==null)string(review.result,128000);
+  for(const key of ['inputTokens','outputTokens','reasoningTokens','cachedInputTokens'])if(review[key]!==null)integer(review[key],0,Number.MAX_SAFE_INTEGER);
+  if(review.status==='completed'&&(review.result===null||review.finishedAt===null||review.outcomeUncertain!==false))throw invalid();
+  if(data.status!=='completed'||typeof data.result!=='string')throw invalid();
+  const chunks=planReprocessingChunks(revision.original.text,revision.original.document,8000,configuration.architectureVersion===1);
+  const frozenIndexes=data.register?array(object(data.register).constituentHashes,128).map(item=>object(item).chunkIndex):null;
+  const firstPasses=passes.filter(pass=>pass.index===1&&pass.status==='completed'&&pass.validation.includes('complete-canonical-block-mapping')&&(!frozenIndexes||frozenIndexes.includes(pass.chunkIndex))).map(pass=>{const repair=repairs.filter(item=>item.chunkIndex===pass.chunkIndex&&item.passIndex===1&&item.status==='completed'&&!item.outcomeUncertain&&item.validation.includes('complete-canonical-block-mapping')).at(-1);return {chunkIndex:pass.chunkIndex,result:repair?.result??pass.result!,requestHash:repair?.requestHash??pass.requestHash};});
+  const input=createSynthesisInput({revisionId:oldRevisionId,baseHash:oldBaseHash,text:revision.original.text,title:revision.original.document.source.title,chunks,firstPasses});
+  if(createHash('sha256').update(input.request).digest('hex')!==data.requestHash||createSynthesisReviewInput(input,data.result).requestHash!==review.requestHash)throw invalid();
+ }
  if(data.register!==null){
   const chunks=planReprocessingChunks(revision.original.text,revision.original.document,8000,configuration.architectureVersion===1);
   const register=object(data.register);if(revision.report.contextHash!==undefined&&revision.report.contextHash!==register.hash)throw invalid();const constituents=array(register.constituentHashes,128).map(object);
   const firstPasses=constituents.map(item=>{const pass=passes.find(pass=>pass.index===1&&pass.chunkIndex===item.chunkIndex&&pass.requestHash===item.requestHash)??repairs.find(repair=>repair.passIndex===1&&repair.chunkIndex===item.chunkIndex&&repair.requestHash===item.requestHash&&repair.validation.includes('complete-canonical-block-mapping'));if(!pass)throw invalid();return pass;});
   if(firstPasses.some(pass=>pass.status!=='completed'||!pass.result)||firstPasses.length!==constituents.length)throw invalid();
   const input=createSynthesisInput({revisionId:oldRevisionId,baseHash:oldBaseHash,text:revision.original.text,title:revision.original.document.source.title,chunks,firstPasses:firstPasses.map(pass=>({chunkIndex:pass.chunkIndex,result:pass.result!,requestHash:pass.requestHash}))});
-  if(createHash('sha256').update(input.request).digest('hex')!==data.requestHash||JSON.stringify(parseDocumentSynthesis(input,data.result as string))!==JSON.stringify(register))throw invalid();
+  if(createHash('sha256').update(input.request).digest('hex')!==data.requestHash||JSON.stringify(register.evidenceReview?resolveReviewedSynthesis(input,data.result as string,string(object(data.review).result,128000)):parseDocumentSynthesis(input,data.result as string,{isolateInvalidObservations:register.validationPolicy==='isolate-invalid-observations-v1'}))!==JSON.stringify(register))throw invalid();
  }
+ validateResponseAttempts(data);
  const restored={...structuredClone(data),revisionId:revision.id} as unknown as SourceReprocessingSynthesisCheckpoint;
+ if(restored.review?.status==='running'){restored.review.status='interrupted';restored.review.outcomeUncertain=true;restored.review.finishedAt=now();restored.review.error='Restored during summary evidence review; provider outcome is unknown.';}
  if(restored.status==='running'){restored.status='interrupted';restored.outcomeUncertain=true;restored.finishedAt=now();restored.error='Restored during synthesis; provider outcome is unknown.';}
  return restored;
 }
@@ -185,7 +202,7 @@ export function restoreSourceRevision(payload:unknown,oldId:string,oldFileId:str
  string(processing.aiEnrichmentStatus,30);
  if(processing.math!==undefined){const math=object(processing.math);if(math.format!=='LaTeX'||!/^[a-f0-9]{64}$/.test(string(math.originalTextHash,64)))throw invalid();for(const value of array(math.uncertain,100000)){const issue=object(value);integer(issue.line,1,starts.length);string(issue.text,1000);}}
  if(r.furniture!==undefined){
-  const seenFurniture=new Set<string>();for(const value of array(r.furniture,2000)){const f=object(value),id=string(f.id,100),start=integer(f.startOffset,0,text.length),end=integer(f.endOffset,start+1,text.length),page=integer(f.page,1,pageCount??1000);if(!id||seenFurniture.has(id)||!utf16Boundary(text,start)||!utf16Boundary(text,end)||string(f.text,16000)!==text.slice(start,end)||pageAt(start)!==page||pageAt(end-1)!==page||typeof f.hidden!=='boolean')throw invalid();seenFurniture.add(id);string(f.reason,2000);}
+  const seenFurniture=new Set<string>();for(const value of array(r.furniture,2000)){const f=object(value),id=string(f.id,100),start=integer(f.startOffset,0,text.length),end=integer(f.endOffset,start+1,text.length),page=integer(f.page,1,pageCount??1000);if(!id||seenFurniture.has(id)||!utf16Boundary(text,start)||!utf16Boundary(text,end)||string(f.text,16000)!==text.slice(start,end)||pageAt(start)!==page||pageAt(end-1)!==page||typeof f.hidden!=='boolean')throw invalid();seenFurniture.add(id);string(f.reason,2000);if(f.kind!==undefined)oneOf(f.kind,['header','footer']);}
  }
  const patches=array(r.patches,6400),patchIds=new Set<string>();
  const ordered=patches.map(value=>{
@@ -226,6 +243,7 @@ export function restoreSourceRevision(payload:unknown,oldId:string,oldFileId:str
  if(report.documentAudit!==undefined){const audit=object(report.documentAudit);if(audit.version!==1||!/^[a-f0-9]{64}$/.test(string(audit.candidateHash,64)))throw invalid();if(audit.contextHash!==undefined&&audit.contextHash!==report.contextHash)throw invalid();for(const finding of array(audit.findings,1000))string(finding,10000);}
  if(report.coverage!==undefined){const coverage=object(report.coverage);if(coverage.totalChunks!==chunks)throw invalid();const completed=integer(coverage.firstPassCompleted,0,chunks),missing=array(coverage.incompleteChunkIndexes,128).map(value=>integer(value,0,chunks-1));if(new Set(missing).size!==missing.length||missing.length!==chunks-completed)throw invalid();}
 
+ if(report.summaryValidation!==undefined){const summary=object(report.summaryValidation);if(summary.contextPreserved!==undefined&&typeof summary.contextPreserved!=='boolean')throw invalid();oneOf(summary.state,['reviewing','completed','unavailable']);const issues=integer(summary.issues,0,128),accepted=integer(summary.accepted,0,issues),unresolved=integer(summary.unresolved,0,issues);if(accepted+unresolved!==issues)throw invalid();for(const message of array(summary.diagnostics,129))string(message,10000);}
  if(report.concurrency!==undefined)integer(report.concurrency,1,2);
  if(report.evidencePreparation!==undefined){const preparation=object(report.evidencePreparation);oneOf(preparation.state,['collecting','completed']);if(integer(preparation.totalChunks,0,128)!==chunks)throw invalid();integer(preparation.preparedChunks,0,chunks);if(preparation.state==='completed'&&preparation.preparedChunks!==chunks)throw invalid();}
  if(report.completedChunkIndexes!==undefined){
@@ -278,4 +296,13 @@ export function restoreSourceRevision(payload:unknown,oldId:string,oldFileId:str
  }
  materializeSourceRevision(revision);
  return revision;
+}
+
+function validateResponseAttempts(value:RecordValue){
+ if(value.responseCode!==undefined)oneOf(value.responseCode,['provider_output_limit','provider_empty_output','provider_incomplete_output','provider_content_filter','provider_response_failed','provider_output_too_large']);
+ if(value.outputTokenBudget!==undefined)integer(value.outputTokenBudget,16000,64000);if(value.outputTokenBudget!==undefined&&![16000,32000,64000].includes(value.outputTokenBudget as number))throw invalid();
+ if(value.responseAttempts!==undefined)for(const item of array(value.responseAttempts,2)){
+  const attempt=object(item);timestamp(attempt.startedAt);if(attempt.finishedAt!==null)timestamp(attempt.finishedAt);string(attempt.error,10000);integer(attempt.outputTokenBudget,16000,64000);if(![16000,32000,64000].includes(attempt.outputTokenBudget as number))throw invalid();
+  for(const key of ['inputTokens','outputTokens','reasoningTokens','cachedInputTokens'])if(attempt[key]!==null)integer(attempt[key],0,Number.MAX_SAFE_INTEGER);
+ }
 }

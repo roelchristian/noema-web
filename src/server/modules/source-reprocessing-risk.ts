@@ -54,6 +54,11 @@ export function evaluateV2Acceptance(input:Omit<Input,'policy'|'threshold'|'conf
  const headings=sourceDocumentEntries(document).filter(({node})=>node.title&&node.range.startOffset<=start).sort((a,b)=>b.node.range.startOffset-a.node.range.startOffset);
  if([headings[0]?.node.title,...(node?.path.map(parent=>parent.title)??[])].some(title=>title&&/bibliograph|references|works cited|sources cited|literature cited/i.test(title)))reasons.push('Bibliographic context requires source review.');
  const passage=node?text.slice(node.node.range.startOffset,node.node.range.endOffset):original;
+ // Layout reconstruction is independently checkable against the exact text: only
+ // whitespace may change, with every word, punctuation mark and word boundary kept.
+ const proseLayout=['formatting','line_breaks'].includes(category)&&original.replace(/[ \t\r\n]+/g,' ')===replacement.replace(/[ \t\r\n]+/g,' ');
+ const structuralSyntax=/^[ \t]*(?:#{1,6}\s|>|[-+*]\s|\d+[.)]\s|```|~~~|\[\^|\$\$|\\\[)/m;
+ if(!reasons.length&&proseLayout&&original&&replacement&&!/[\t]|\r(?!\n)| {2,}\r?\n/.test(original+replacement)&&!/ {2,}\r?\n/.test(passage)&&!structuralSyntax.test(passage+'\n'+replacement)&&!/[|`$\\]/.test(passage+replacement))return {automatic:true,reasons:[],checks:[...checks,'identical-words-punctuation-order','prose-whitespace-layout-only']};
  if(!reasons.length&&node&&independentMechanicalEvidence(input,node.node.range.startOffset,node.node.range.endOffset))return {automatic:true,reasons:[],checks:[...checks,'trusted-native-page-to-separate-raster-OCR','unique-whole-prose-line-alignment','high-confidence-without-alternative-readings','narrow-mechanical-repair-only']};
  if(category!=='formatting'||!original||!replacement||original.replace(/[ \t]+/g,' ')!==replacement.replace(/[ \t]+/g,' ')||/[\r\n]/.test(original+replacement))reasons.push('Substantive, line-boundary, OCR, or apparatus changes lack independent source evidence.');else checks.push('identical-characters-except-horizontal-spacing');
  if(/[0-9'"“”‘’«»„‟`*_#|<>\[\]{}\\$=+^~]/.test(passage+replacement)||/https?:|\b(?:pp?\.|doi|ISBN)\b/i.test(passage+replacement))reasons.push('Quotation, mathematics, citation, bibliography, or structured content requires review.');

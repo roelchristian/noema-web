@@ -153,7 +153,9 @@ test('resumed ledger preserves each last attempt configuration and marks incompl
  assert.equal(document.querySelector('.reprocessing-processing-details').open,false);
  await env.click(env.button('Review changes (1)'));assert.equal(document.querySelectorAll('.reprocessing-patch').length,1);
  assert.equal(document.querySelector('.reprocessing-patch-explanation').open,false);
- assert.equal(document.querySelector('[aria-label="Comparison layout"]').value,'unified');
+ assert.equal(document.querySelector('[aria-label="Comparison layout"]').value,'auto');
+ assert.ok(env.button('Reading preview'));
+ assert.equal(env.button('Reading preview').getAttribute('aria-pressed'),'true');
  });
 
 test('only explicit completed revision selection changes the reading version',async t=>{
@@ -209,6 +211,9 @@ test('review location selects the specific passage instead of its containing cha
  patch.nodeIds=['container','leaf'];
  const env=await mount(t,{initial:r,onOriginal:(nodeId,focus)=>locations.push({nodeId,focus})});
  await env.click(env.button('Review changes (2)'));await env.click(document.querySelector('.reprocessing-patch-list li>button'));
+ assert.deepEqual(locations,[],'choosing a correction keeps its review open');
+ await env.click(env.button('Show original passage'));
+ assert.equal(document.querySelector('.reprocessing-reviews'),null);
  assert.deepEqual(locations,[{nodeId:'leaf',focus:false}]);
 });
 
@@ -278,7 +283,7 @@ test('changing depth leaves the independent review policy unchanged',async t=>{
 test('linked scholarly decisions submit the complete atomic group',async t=>{
  const r=fixture();r.patches=r.patches.map(patch=>({...patch,patchGroupId:'footnote-pair'}));
  const env=await mount(t,{initial:r,post:async(_,current)=>current});await env.click(env.button('Review changes (2)'));
- assert.match(document.querySelector('.reprocessing-patch').textContent,/Linked scholarly changes/);await env.click(env.button('Keep original'));
+ assert.match(document.querySelector('.reprocessing-patch').textContent,/Linked scholarly changes/);await env.click(env.button('Keep originals for group (2)'));
  assert.deepEqual(env.requests.find(entry=>entry.method==='POST').body.decisions,[{patchId:'patch-0',decision:'rejected'},{patchId:'patch-1',decision:'rejected'}]);
 });
 
@@ -294,7 +299,7 @@ test('unavailable native source evidence leaves extracted-text reprocessing avai
 
 test('available macOS local OCR is separate from explicit external evidence consent',async t=>{
  const env=await mount(t,{post:async()=>fixture(),capabilities:{originalPages:true,ocr:true,externalImages:true,reason:'macOS native PDF and Vision OCR are available.'}});await env.click(env.button('Reprocess with AI'));
- const ocr=document.querySelector('[aria-label="Use local OCR evidence"]');assert.equal(ocr.disabled,false);assert.equal(ocr.checked,true);
+ const ocr=document.querySelector('[aria-label="Use local OCR evidence"]');assert.equal(ocr.disabled,false);assert.equal(ocr.checked,false);await env.click(ocr);
  const consent=document.querySelector('[aria-label="Allow selected source evidence to be sent to the AI provider"]');assert.ok(consent);assert.equal(consent.checked,false);assert.equal(env.button('Start reprocessing').disabled,false);
  assert.match(document.querySelector('.reprocessing-evidence-options').textContent,/Without transmission consent, its text stays local/);
  await env.click(env.button('Start reprocessing'));assert.deepEqual(env.requests.find(entry=>entry.method==='POST').body.configuration.evidence,{originalPages:false,ocr:true,allowExternalTransmission:false});
@@ -307,7 +312,7 @@ test('original-page model comparison requires explicit consent and changing evid
  await env.click(document.querySelector('[aria-label="Allow selected source evidence to be sent to the AI provider"]'));assert.equal(env.button('Start reprocessing').disabled,false);
  await env.click(document.querySelector('[aria-label="Use local OCR evidence"]'));assert.equal(document.querySelector('[aria-label="Allow selected source evidence to be sent to the AI provider"]').checked,false);assert.equal(env.button('Start reprocessing').disabled,true);
  await env.click(document.querySelector('[aria-label="Allow selected source evidence to be sent to the AI provider"]'));await env.click(env.button('Start reprocessing'));
- assert.deepEqual(env.requests.find(entry=>entry.method==='POST').body.configuration.evidence,{originalPages:true,ocr:false,allowExternalTransmission:true});
+ assert.deepEqual(env.requests.find(entry=>entry.method==='POST').body.configuration.evidence,{originalPages:true,ocr:true,allowExternalTransmission:true});
 });
 
 test('native OCR remains available when the selected model cannot receive images',async t=>{
@@ -317,22 +322,22 @@ test('native OCR remains available when the selected model cannot receive images
 });
 
 
-test('explicit local OCR optout survives other form changes and a new run restores available defaults',async t=>{
+test('local OCR is opt-in for each run and explicit selection survives form changes',async t=>{
  const env=await mount(t,{post:async()=>fixture(),capabilities:{originalPages:true,ocr:true,externalImages:true,reason:'Synthetic macOS native evidence capabilities.'}});await env.click(env.button('Reprocess with AI'));
- const ocr=document.querySelector('[aria-label="Use local OCR evidence"]');assert.equal(ocr.checked,true);await env.click(ocr);assert.equal(ocr.checked,false);
+ const ocr=document.querySelector('[aria-label="Use local OCR evidence"]');assert.equal(ocr.checked,false);await env.click(ocr);assert.equal(ocr.checked,true);
  const depth=document.querySelector('[aria-label="Processing depth"]');await act(async()=>{depth.value='deep';depth.dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});
- assert.equal(document.querySelector('[aria-label="Use local OCR evidence"]').checked,false);
- await env.click(env.button('Cancel'));await env.click(env.button('Reprocess with AI'));assert.equal(document.querySelector('[aria-label="Use local OCR evidence"]').checked,true);
- await env.click(document.querySelector('[aria-label="Use local OCR evidence"]'));await env.click(env.button('Start reprocessing'));assert.equal(env.requests.find(entry=>entry.method==='POST').body.configuration.evidence.ocr,false);
+ assert.equal(document.querySelector('[aria-label="Use local OCR evidence"]').checked,true);
+ await env.click(env.button('Cancel'));await env.click(env.button('Reprocess with AI'));assert.equal(document.querySelector('[aria-label="Use local OCR evidence"]').checked,false);
+ await env.click(env.button('Start reprocessing'));assert.equal(env.requests.find(entry=>entry.method==='POST').body.configuration.evidence.ocr,false);
 });
 
 
-test('start waits for source capabilities so available local OCR is not skipped by a fast submission',async t=>{
+test('capability discovery never silently enables optional local OCR',async t=>{
  let resolveCapabilities;const env=await mount(t,{post:async()=>fixture(),capabilities:()=>new Promise(resolve=>{resolveCapabilities=resolve;})});await env.click(env.button('Reprocess with AI'));
  assert.equal(env.button('Start reprocessing').disabled,true);await env.click(env.button('Start reprocessing'));assert.equal(env.requests.some(entry=>entry.method==='POST'),false);
  await act(async()=>resolveCapabilities({originalPages:true,ocr:true,externalImages:true,reason:'Synthetic native evidence support.'}));
- assert.equal(document.querySelector('[aria-label="Use local OCR evidence"]').checked,true);assert.equal(env.button('Start reprocessing').disabled,false);
- await env.click(env.button('Start reprocessing'));assert.equal(env.requests.find(entry=>entry.method==='POST').body.configuration.evidence.ocr,true);
+ assert.equal(document.querySelector('[aria-label="Use local OCR evidence"]').checked,false);assert.equal(env.button('Start reprocessing').disabled,false);
+ await env.click(env.button('Start reprocessing'));assert.equal(env.requests.find(entry=>entry.method==='POST').body.configuration.evidence.ocr,false);
 });
 
 
@@ -341,6 +346,8 @@ test('local evidence preparation has visible progress before model excerpts comp
  t.mock.method(globalThis,'setTimeout',(callback,delay,...args)=>{if(delay===2500){scheduled.push(callback);return 987654;}return realTimeout(callback,delay,...args);});
  const r=fixture();r.status='running';r.report.chunksCompleted=0;r.report.evidencePreparation={state:'collecting',preparedChunks:2,totalChunks:r.report.chunksTotal};
  await mount(t,{initial:r});assert.match(document.body.textContent,/Preparing original-source evidence locally: 2 \/ /);
+ assert.match(document.querySelector('[id^="reprocessing-progress-"]').textContent,/Preparing original-source evidence locally/);
+ assert.match(document.querySelector('.reprocessing-progress small').textContent,/before AI processing begins/);
  const evidence=()=>document.querySelector('[id^="reprocessing-evidence-"]');
  const stage=()=>evidence().querySelector('[aria-live="polite"]').textContent;
  const initialStage=stage();
@@ -360,17 +367,88 @@ test('local evidence preparation has visible progress before model excerpts comp
  assert.doesNotMatch(stage(),/\d|\//);
 });
 
-for(const [stage,title] of Object.entries({reconstructing:'Reconstructing',understanding:'Understanding document',verifying:'Verifying',auditing:'Checking document consistency'})){
+test('summary quotation review visibly explains corrected and unresolved observations',async t=>{
+ const r=fixture();r.report.summaryValidation={state:'completed',issues:2,accepted:1,unresolved:1,diagnostics:['Observation 3: extraction fix — proposed dehyphenation was quoted as original. Source quotation validated.','Observation 5: unsupported — the source block does not contain this claim. Not used as verification context.']};
+ await mount(t,{initial:r});const review=document.querySelector('.reprocessing-summary-validation');
+ assert.ok(review);assert.match(review.textContent,/2 quotation differences.*1 resolved.*1 excluded from summary context/);assert.match(review.textContent,/proposed dehyphenation/);assert.match(review.textContent,/unsupported/);assert.match(review.textContent,/Resolved quotation corrections do not block processing/);
+});
+
+for(const [stage,title] of Object.entries({reconstructing:'First pass · reconstructing excerpts',understanding:'Understanding document',verifying:'Verifying excerpts',auditing:'Checking document consistency'})){
  test(`document stage ${stage} exposes owned state without conflating final excerpt coverage`,async t=>{
   const r=fixture();r.pipelineVersion=2;r.status='running';r.configuration={depth:'balanced',reviewPolicy:'verified',evidence:{originalPages:false,ocr:false,allowExternalTransmission:false}};
   r.report.chunksCompleted=0;r.report.chunksTotal=3;r.report.stage=stage;r.report.stageProgress={completed:2,total:3};
   await mount(t,{initial:r});const presentation=document.querySelector('[data-reprocessing-stage]');
   assert.equal(presentation.dataset.reprocessingStage,stage);assert.equal(presentation.getAttribute('role'),'status');assert.match(presentation.textContent,new RegExp(title));assert.match(presentation.textContent,/2 \/ 3/);
-  assert.equal(document.querySelector('[aria-label="Reprocessing progress"]').value,0);assert.match(document.querySelector('.reprocessing-stage-summary').textContent,/plus document synthesis/);
+  const progress=document.querySelector('[aria-label="Reprocessing progress"]');
+  if(stage==='auditing')assert.equal(progress.hasAttribute('value'),false);
+  else {assert.equal(progress.value,2);assert.equal(progress.max,3);}
+  assert.match(document.querySelector('.reprocessing-stage-summary').textContent,/plus document synthesis/);
  });
 }
 
 test('document synthesis incomplete coverage names first-pass progress independently of review',async t=>{
  const r=fixture();r.pipelineVersion=2;r.status='failed';r.report.stage='understanding';r.report.coverage={firstPassCompleted:2,totalChunks:3,incompleteChunkIndexes:[1]};
  await mount(t,{initial:r});assert.match(document.querySelector('[data-reprocessing-coverage="incomplete"]').textContent,/incomplete first-pass coverage: 2 \/ 3.*recovery and review/);
+});
+
+
+test('first pass shows activity before its first result and advances from polled stage checkpoints',async t=>{
+ const scheduled=[],realTimeout=globalThis.setTimeout;
+ t.mock.method(globalThis,'setTimeout',(callback,delay,...args)=>{if(delay===2500){scheduled.push(callback);return 987654;}return realTimeout(callback,delay,...args);});
+ const r=fixture();r.pipelineVersion=2;r.status='running';r.report.chunksCompleted=0;r.report.chunksTotal=3;
+ r.report.stage='reconstructing';r.report.stageProgress={completed:0,total:3};r.report.sessionStartedAt=new Date(Date.now()-65000).toISOString();
+ r.report.excerpts=[{index:0,status:'running',attempts:1,startPage:1,endPage:2,activePass:1,lastAttemptAt:r.report.sessionStartedAt,durationMs:0}];
+ await mount(t,{initial:r});
+ const progress=()=>document.querySelector('[aria-label="Reprocessing progress"]');
+ assert.equal(progress().hasAttribute('value'),false);
+ assert.match(document.querySelector('.reprocessing-active-excerpts').textContent,/Excerpt 1.*Pages 1–2.*Running pass 1.*1m/);
+ assert.match(document.querySelector('.reprocessing-progress small').textContent,/Elapsed: 1m.*Progress updates when each model request finishes/);
+ r.updatedAt='2026-10-25T00:00:01Z';r.report.stageProgress.completed=1;
+ await act(async()=>{for(const callback of [...scheduled])await callback();});
+ assert.equal(progress().value,1);assert.equal(progress().max,3);
+ assert.match(document.querySelector('[id^="reprocessing-progress-"]').textContent,/1 \/ 3 excerpts processed in this stage.*0 \/ 3 excerpts completed/);
+ r.updatedAt='2026-10-25T00:00:02Z';r.report.stage='understanding';r.report.stageProgress={completed:0,total:1};
+ await act(async()=>{for(const callback of [...scheduled])await callback();});
+ assert.equal(progress().hasAttribute('value'),false);
+ assert.match(document.querySelector('[id^="reprocessing-progress-"] [aria-live]').textContent,/Understanding document/);
+ assert.equal(document.querySelector('.reprocessing-active-excerpts'),null);
+});
+
+
+test('incomplete provider output offers recovery without configuration advice',async t=>{
+ const r=fixture();r.pipelineVersion=2;r.status='failed';r.report.chunksCompleted=0;r.report.error='The AI response reached its output token limit before finishing. Retry unfinished work to use a larger response budget.';r.report.errorCode='provider_output_limit';
+ const env=await mount(t,{initial:r});const notice=document.querySelector('[id^="reprocessing-error-"]');
+ assert.match(notice.textContent,/larger response budget.*Completed excerpts and review decisions are retained/);
+ assert.doesNotMatch(notice.textContent,/Settings|provider access|configuration/);
+ assert.ok(env.button('Retry unfinished work'));assert.equal(env.button('Retry after configuration repair'),undefined);
+});
+
+
+test('legacy incomplete errors suppress stale configuration advice and offer recovery',async t=>{
+ const r=fixture();r.pipelineVersion=2;r.status='failed';r.report.error='OpenAI returned an incomplete response. Try a lower reasoning effort or a shorter page.';r.report.errorCode='configuration';
+ const env=await mount(t,{initial:r});const notice=document.querySelector('[id^="reprocessing-error-"]');
+ assert.doesNotMatch(notice.textContent,/Settings|shorter page|reasoning effort/);assert.match(notice.textContent,/larger response budget/);assert.ok(env.button('Retry unfinished work'));
+});
+
+
+test('completed corrections offer an explicit action to show the processed reading version',async t=>{
+ const r=fixture();r.fileId='f';r.status='completed';r.report.chunksCompleted=r.report.chunksTotal;r.patches.forEach(patch=>patch.decision='accepted');const readings=[];
+ const env=await mount(t,{initial:r,onReadingRevision:value=>readings.push(value)});
+ assert.match(document.querySelector('.reprocessing-result-summary').textContent,/includes 2 applied corrections/);
+ assert.equal(readings.some(Boolean),false);await env.click(env.button('Show processed version'));assert.equal(readings.at(-1).id,r.id);
+ assert.equal(env.button('Show processed version'),undefined);
+});
+
+test('completion distinguishes proposed corrections from unchanged output',async t=>{
+ const r=fixture();r.status='completed';r.report.chunksCompleted=r.report.chunksTotal;
+ const env=await mount(t,{initial:r});assert.match(document.querySelector('.reprocessing-result-summary').textContent,/2 proposed corrections.*reading text is unchanged/);
+ await env.click(env.button('Review proposed corrections'));assert.ok(document.querySelector('.reprocessing-reviews'));
+});
+
+
+test('failed acceptance displays the cause beside the correction controls',async t=>{
+ const r=fixture();const env=await mount(t,{initial:r,post:async()=>{throw Error('Synthetic correction could not be saved.');}});
+ await env.click(env.button('Review changes (2)'));await env.click(env.button('Accept change'));
+ assert.match(document.querySelector('[id^="reprocessing-review-error-"]').textContent,/Could not save correction.*Synthetic correction could not be saved/);
+ assert.equal(env.button('Accept change').disabled,false);
 });

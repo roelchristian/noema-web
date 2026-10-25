@@ -1,10 +1,11 @@
 import {t as uiText} from '../i18n';
-import {Fragment,type ReactNode} from 'react';
+import {createContext,Fragment,useContext,type ReactNode} from 'react';
 import {safeHref} from '../../shared/domain';
 import type {SourceHighlight} from '../../shared/source-reading';
 import {renderMath} from '../editor/math';
 
 type ReaderProps={text:string;startOffset?:number;highlights?:SourceHighlight[];footnotePrefix?:string};
+export const SourceFootnoteDefinitions=createContext<ReadonlySet<string>|null>(null);
 const expressions=/(`+)([\s\S]*?)\1|\[([^\]]+)\]\(([^\s)]+)\)|\*\*([^*]+)\*\*|__([^_]+)__|~~([^~]+)~~|\*([^*]+)\*|_([^_]+)_|(?<!\\)\$\$([\s\S]+?)(?<!\\)\$\$|(?<!\\)\\\[([\s\S]+?)(?<!\\)\\\]|(?<![\\$])\$(?![\s$])((?:\\.|[^$\n\\])+?)(?<![\s\\])\$(?![$\d])|(?<!\\)\\\(([^\n]*?)(?<!\\)\\\)|(?<!\\)\[\^([^\]\n]+)\](?!:)/g;
 
 function activeHighlight(highlights:SourceHighlight[],start:number,end:number) {
@@ -24,6 +25,7 @@ function MathLeaf({source,display,start,end,highlights}:{source:string;display:b
 }
 /** Raw offsets belong to the immutable imported text, including Markdown delimiters. */
 export function SourceReaderInline({text,startOffset=0,highlights=[],footnotePrefix='source-footnote'}:ReaderProps) {
+  const definitions=useContext(SourceFootnoteDefinitions);
   const parts:ReactNode[]=[];
   const plain=(value:string,offset:number)=>{
     // An escaped table pipe displays one character but retains its exact raw position.
@@ -50,7 +52,9 @@ export function SourceReaderInline({text,startOffset=0,highlights=[],footnotePre
       node=bold?<strong>{child}</strong>:strike?<s>{child}</s>:<em>{child}</em>;
     } else if(match[14]!==undefined) {
       const label=match[14],target=`${footnotePrefix}-note-${encodeURIComponent(label)}`;
-      node=<sup className="source-reader-footnote-reference"><a href={`#${target}`} data-footnote-reference={target} data-source-start={offset} data-source-end={offset+match[0].length} data-source-atomic="true" aria-label={uiText("Footnote {value0}",{value0: label})} onClick={event=>{event.preventDefault();const note=document.getElementById(target);if(note){window.dispatchEvent(new Event('noema:before-reading-jump'));note.scrollIntoView({block:'center'});note.focus({preventScroll:true});}}}>{label.replace(/^p\d+-/, '')}</a></sup>;
+      const missing=definitions!==null&&!definitions.has(label);
+      const missingLabel=uiText("Footnote {value0}: definition missing from this reading version",{value0:label});
+      node=<sup className="source-reader-footnote-reference">{missing?<span title={missingLabel} aria-label={missingLabel} data-source-start={offset} data-source-end={offset+match[0].length} data-source-atomic="true">{label.replace(/^p\d+-/, '')}?</span>:<a href={`#${target}`} data-footnote-reference={target} data-source-start={offset} data-source-end={offset+match[0].length} data-source-atomic="true" aria-label={uiText("Footnote {value0}",{value0: label})} onClick={event=>{event.preventDefault();const note=document.getElementById(target);if(note){window.dispatchEvent(new Event('noema:before-reading-jump'));note.scrollIntoView({block:'center'});note.focus({preventScroll:true});}}}>{label.replace(/^p\d+-/, '')}</a>}</sup>;
     } else {
       const source=(match[10]??match[11]??match[12]??match[13]??'').trim();
       node=<MathLeaf source={source} display={match[10]!==undefined||match[11]!==undefined} start={offset} end={offset+match[0].length} highlights={highlights}/>;

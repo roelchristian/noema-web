@@ -25,4 +25,7 @@ do {
  }
  let result: [String: Any] = ["engine": "AppleVision", "version": "revision-\(request.revision)", "configuration": "accurate;languageCorrection=false;cpuOnly=true;normalized-bottom-left", "lines": lines]
  FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject: result, options: [.sortedKeys]))
-} catch { fail("Local raster OCR failed") }
+} catch {
+ let failure = error as NSError
+ fail("Local raster OCR failed (\(failure.domain) \(failure.code)): \(failure.localizedDescription)")
+}

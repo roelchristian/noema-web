@@ -2,7 +2,27 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {SourceReprocessingEvidence} from '../src/server/modules/source-reprocessing-evidence.ts';
 import {evaluateV2Acceptance} from '../src/server/modules/source-reprocessing-risk.ts';
-import {validateOCRResult} from '../src/server/modules/source-reprocessing-native-evidence.ts';
+import {NativeReprocessingOCR,validateOCRResult} from '../src/server/modules/source-reprocessing-native-evidence.ts';
+import {SourcePageImages} from '../src/server/modules/source-page-images.ts';
+import {mkdtempSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+
+test('sandboxed native OCR initializes its private model cache and recognizes a rendered PDF',{
+ skip:process.platform!=='darwin'||process.env.NOEMA_NATIVE_TESTS!=='1',timeout:450000,
+},async()=>{
+ const directory=mkdtempSync(path.join(tmpdir(),'noema-native-evidence-test-'));
+ const filename=fileURLToPath(new URL('./fixtures/source-sanitizer/active-with-visible-annotation.pdf',import.meta.url));
+ const images=new SourcePageImages({root:directory,require:()=>({admitted:1,status:'ready',format:'pdf',pages:1}),filename:()=>filename});
+ const ocr=new NativeReprocessingOCR();
+ try{
+  const image=await images.get('v','f',1);
+  const result=await ocr.recognize(image,new AbortController().signal);
+  assert.equal(result.engine,'AppleVision');
+  assert.ok(result.lines.some(line=>line.text.trim()),'the rendered page must produce real OCR text');
+ }finally{ocr.close();images.close();rmSync(directory,{recursive:true,force:true});}
+});
 const text='alpha\nbeta';
 function setup(method='native'){
  let count=0,rendered=0,hash='a'.repeat(64);const file={id:'f',format:'pdf',admitted:1,status:'ready',pages:1,text};

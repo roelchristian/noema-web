@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {planReprocessingChunks} from '../src/server/modules/source-reprocessing-planner.ts';
 import {createSynthesisInput,parseDocumentSynthesis,assertFrozenSynthesis,selectVerificationContext,planContextSections,auditDocumentConsistency,parseReconstructionUncertainty} from '../src/server/modules/source-reprocessing-context.ts';
+import {createSynthesisReviewInput,resolveReviewedSynthesis} from '../src/server/modules/source-reprocessing-synthesis-review.ts';
 const document={physical:{pages:[]}};
 const fixture=(text='Chapter I\nAmbiguous nomen.\n\nChapter II\nA nomen is a name.😀')=>{
  const chunks=planReprocessingChunks(text,document,100);
@@ -9,6 +10,23 @@ const fixture=(text='Chapter I\nAmbiguous nomen.\n\nChapter II\nA nomen is a nam
  return {text,chunks,firstPasses,input:createSynthesisInput({revisionId:'revision',baseHash:'base',text,chunks,firstPasses,title:'Scholarly fixture'})};
 };
 const observation=(block)=>({kind:'uncertainty',reading:'The reading nomen is uncertain.',alternatives:['nomen','nomcn'],evidence:[{blockId:block.id,quote:'nomen'}],resolutionNeed:'Inspect the original page.'});
+test('summary evidence review separates a proposed extraction repair from exact canonical quotations',()=>{
+ const {input,chunks,text}=fixture('A discussion of Austronesian lan- guages and nomen.');
+ const block=input.blocks[0],valid=observation(block),mismatch={...valid,reading:'A discussion of Austronesian languages.',evidence:[{blockId:block.id,quote:'Austronesian languages'}]};
+ const original=JSON.stringify({observations:[valid,mismatch]});
+ assert.throws(()=>parseDocumentSynthesis(input,original),/quote its canonical block exactly/);
+ const pending=createSynthesisReviewInput(input,original);assert.equal(pending.baseline.observations.length,1);assert.equal(pending.baseline.rejectedObservations[0].index,1);
+ assert.ok(pending.request.includes('lan- guages'));assert.deepEqual(pending.baseline.observations[0].evidence,parseDocumentSynthesis(input,JSON.stringify({observations:[valid]})).observations[0].evidence);
+ const corrected={...mismatch,evidence:[{blockId:block.id,quote:'Austronesian lan- guages'}]};
+ const review=JSON.stringify({reviews:[{index:1,classification:'extraction_fix',explanation:'The quote used a proposed dehyphenation. The original still contains lan- guages.',observation:corrected}]});
+ const register=resolveReviewedSynthesis(input,original,review);assert.equal(register.observations.length,2);assert.equal(register.rejectedObservations.length,0);assert.equal(register.evidenceReview.assessments[0].accepted,true);
+ const ref=register.observations[1].evidence[0];assert.equal(text.slice(ref.start,ref.end),ref.quote);assert.doesNotThrow(()=>assertFrozenSynthesis(register,input));
+ assert.equal(selectVerificationContext(register,chunks[0],text).documentContext.global.observationsAreIndependentEvidence,false);
+ const stillWrong=resolveReviewedSynthesis(input,original,JSON.stringify({reviews:[{index:1,classification:'extraction_fix',explanation:'Claims an extraction fix but repeats the wrong quote.',observation:mismatch}]}));
+ assert.equal(stillWrong.observations.length,1);assert.equal(stillWrong.rejectedObservations.length,1);assert.equal(stillWrong.evidenceReview.assessments[0].accepted,false);
+ assert.throws(()=>resolveReviewedSynthesis(input,original,'{"reviews":[]}'),/every mismatched/);
+ assert.throws(()=>parseDocumentSynthesis(input,'not JSON',{isolateInvalidObservations:true}),/expected JSON/);
+});
 test('synthesis preserves competing readings, immutable constituent hashes and canonical evidence',()=>{
  const {input}=fixture();const register=parseDocumentSynthesis(input,JSON.stringify({observations:[observation(input.blocks[0])]}));
  assert.deepEqual(register.observations[0].alternatives,['nomen','nomcn']);assert.equal(register.constituentHashes.length,1);assert.equal(register.missingChunkIndexes.length,0);

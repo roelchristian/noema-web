@@ -3,6 +3,8 @@ import {api} from '../src/client/api.ts';
 beforeEach(t=>{t.mock.method(api,'intelligence',async()=>({personaId:'oxford_don'}));});
 import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
+import {setupDOM as baseSetupDOM} from './helpers/dom.mjs';
+function setupDOM(t,options){const env=baseSetupDOM(t,options);env.dom.window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};env.dom.window.HTMLDialogElement.prototype.close=function(){this.open=false;};return env;}
 import {revealEntityFact} from '../src/client/chat/entity-evidence-navigation.ts';
 
 test('entity evidence reveals the exact full property and relationship IDs without invoking mutation controls',t=>{
@@ -60,7 +62,7 @@ test('Chat shows typing until the complete reply arrives and clears interrupted 
   assert.equal(document.querySelectorAll('.meno-avatar').length,1,'Typing keeps a single Meno in the header');
   assert.ok(document.querySelector('.chat-contact .meno-avatar'));
   assert.equal(document.querySelector('.chat-messages .meno-avatar'),null);
-  assert.equal(document.querySelectorAll('.chat-copy').length,0);assert.equal(document.getElementById('chat-question').disabled,true);
+  assert.equal(document.querySelectorAll('.chat-copy').length,0);assert.equal(document.getElementById('chat-question').disabled,false);
   assert.equal(document.querySelector('.chat-citation'),null,'Partial claims do not expose citations');
   if(outcome==='complete'){
    const log=document.querySelector('.chat-messages');let scrolls=0;log.scrollTo=()=>scrolls++;Object.defineProperties(log,{scrollHeight:{configurable:true,value:1000},clientHeight:{configurable:true,value:200}});
@@ -86,7 +88,7 @@ test('Chat shows typing until the complete reply arrives and clears interrupted 
 
 test('conversation inbox groups and searches history, opens the selected scope, and keeps rename/delete working',async t=>{
  const {act,createElement}=await import('react'),{createRoot}=await import('react-dom/client');
- const {setupDOM}=await import('./helpers/dom.mjs'),{ChatWorkspace}=await import('../src/client/chat/ChatWorkspace.tsx'),{chatAPI}=await import('../src/client/chat/api.ts');
+ const {ChatWorkspace}=await import('../src/client/chat/ChatWorkspace.tsx'),{chatAPI}=await import('../src/client/chat/api.ts');
  const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
  const now=new Date().toISOString();let threads=[{id:'today',vaultId:'default',title:'Grace and evidence',scope:{kind:'source',id:'source-1'},createdAt:now,updatedAt:now,messages:[]},{id:'old',vaultId:'default',title:'Earlier questions',scope:{kind:'vault'},createdAt:'2020-01-01T00:00:00Z',updatedAt:'2020-01-01T00:00:00Z',messages:[]}];
  t.mock.method(chatAPI,'list',async()=>structuredClone(threads));
@@ -98,9 +100,9 @@ test('conversation inbox groups and searches history, opens the selected scope, 
  await act(async()=>root.render(createElement(ChatWorkspace,{vaultId:'default',vaultName:'Test vault',initialScope:{kind:'vault'},entities:[{id:'source-1',vault_id:'default',name:'Original source'}],pages:[],visible:true,onClose(){},onOpenEvidence(){}})));
  const inbox=document.querySelector('aside[aria-label="Chat inbox"]');assert.ok(inbox);assert.equal(document.querySelector('select[aria-label="Conversation history"]'),null);
  assert.deepEqual([...inbox.querySelectorAll('.chat-thread-group h3')].map(node=>node.textContent),['Today','Earlier']);
- await edit('input[aria-label="Search conversations"]','GRACE');assert.equal(document.querySelectorAll('.chat-thread').length,1);
- await edit('input[aria-label="Search conversations"]','no match');assert.match(inbox.textContent,/No matches/);
- await edit('input[aria-label="Search conversations"]','');await click('[data-thread-id=today]');
+ await edit('input[aria-label="Search conversation titles"]','GRACE');assert.equal(document.querySelectorAll('.chat-thread').length,1);
+ await edit('input[aria-label="Search conversation titles"]','no match');assert.match(inbox.textContent,/No matches/);
+ await edit('input[aria-label="Search conversation titles"]','');await click('[data-thread-id=today]');
  assert.equal(document.querySelector('[aria-current=page]').dataset.threadId,'today');assert.match(document.querySelector('[data-chat-scope]').textContent,/Source · Original source/);assert.match(document.querySelector('.chat-heading h1').textContent,/Grace and evidence/);
  assert.equal(document.querySelectorAll('.meno-avatar').length,1,'A conversation with multiple answers shows one Meno');
  assert.ok(document.querySelector('.chat-contact .meno-avatar'),'Meno stays in the contact header');
@@ -111,13 +113,13 @@ test('conversation inbox groups and searches history, opens the selected scope, 
  await click('[aria-label="Rename conversation"]');await edit('input[aria-label="Conversation title"]','Renamed conversation');
  await act(async()=>document.querySelector('.chat-rename').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
  assert.match(document.querySelector('[data-thread-id=today]').textContent,/Renamed conversation/);
- await click('[aria-label="Delete conversation"]');assert.equal(document.querySelector('[data-thread-id=today]'),null);assert.equal(document.querySelectorAll('.chat-message').length,0);
+ await click('[aria-label="Delete conversation"]');assert.ok(document.querySelector('#chat-delete-title'));assert.ok(document.querySelector('[data-thread-id=today]'));await act(async()=>[...document.querySelectorAll('button')].find(button=>button.textContent==='Confirm delete').click());assert.equal(document.querySelector('[data-thread-id=today]'),null);assert.equal(document.querySelectorAll('.chat-message').length,0);
  await click('.chat-new');assert.match(document.querySelector('.chat-heading h1').textContent,/New chat/);
 });
 
 test('mobile inbox uses a modal drawer, restores focus on dismissal, and closes when a conversation opens',async t=>{
  const {act,createElement}=await import('react'),{createRoot}=await import('react-dom/client');
- const {setupDOM}=await import('./helpers/dom.mjs'),{ChatWorkspace}=await import('../src/client/chat/ChatWorkspace.tsx'),{chatAPI}=await import('../src/client/chat/api.ts');
+ const {ChatWorkspace}=await import('../src/client/chat/ChatWorkspace.tsx'),{chatAPI}=await import('../src/client/chat/api.ts');
  const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
  env.dom.window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};env.dom.window.HTMLDialogElement.prototype.close=function(){this.open=false;};
  t.mock.method(window,'matchMedia',query=>({matches:query==='(max-width: 750px)'||query==='(prefers-reduced-motion: reduce)',addEventListener(){},removeEventListener(){}}));
@@ -127,7 +129,7 @@ test('mobile inbox uses a modal drawer, restores focus on dismissal, and closes 
  t.mock.method(chatAPI,'list',async()=>[thread]);t.mock.method(chatAPI,'get',async()=>({...thread,messages:[{id:'answer',role:'assistant',text:'Saved mobile answer.',createdAt:now}]}));
  await act(async()=>root.render(createElement(ChatWorkspace,{vaultId:'default',vaultName:'Test',initialScope:{kind:'vault'},entities:[],pages:[],visible:true,onClose(){},onOpenEvidence(){}})));
  const toggle=document.querySelector('[aria-label="Show conversations"]');assert.equal(document.querySelector('.chat-history-pane'),null);assert.equal(toggle.getAttribute('aria-expanded'),'false');
- await act(async()=>toggle.click());assert.equal(document.querySelector('.chat-history-dialog').open,true);assert.equal(document.querySelector('.chat-main').hasAttribute('inert'),true);assert.equal(document.activeElement.getAttribute('aria-label'),'Search conversations');
+ await act(async()=>toggle.click());assert.equal(document.querySelector('.chat-history-dialog').open,true);assert.equal(document.querySelector('.chat-main').hasAttribute('inert'),true);assert.equal(document.activeElement.getAttribute('aria-label'),'Search conversation titles');
  await act(async()=>document.querySelector('dialog').dispatchEvent(new Event('cancel',{bubbles:true,cancelable:true})));
  assert.equal(document.querySelector('dialog'),null);assert.equal(document.activeElement,toggle);assert.equal(document.querySelector('.chat-main').hasAttribute('inert'),false);
  await act(async()=>toggle.click());await act(async()=>document.querySelector('[data-thread-id=saved]').click());
@@ -136,7 +138,7 @@ test('mobile inbox uses a modal drawer, restores focus on dismissal, and closes 
 
 test('inbox recovers from history load failure without hiding a conversation error in the composer',async t=>{
  const {act,createElement}=await import('react'),{createRoot}=await import('react-dom/client');
- const {setupDOM}=await import('./helpers/dom.mjs'),{ChatWorkspace}=await import('../src/client/chat/ChatWorkspace.tsx'),{chatAPI}=await import('../src/client/chat/api.ts');
+ const {ChatWorkspace}=await import('../src/client/chat/ChatWorkspace.tsx'),{chatAPI}=await import('../src/client/chat/api.ts');
  const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));let attempts=0;
  t.mock.method(chatAPI,'list',async()=>{if(++attempts===1)throw new Error('History is unavailable.');return [];});
  await act(async()=>root.render(createElement(ChatWorkspace,{vaultId:'default',vaultName:'Test',initialScope:{kind:'vault'},entities:[],pages:[],visible:true,onClose(){},onOpenEvidence(){}})));
@@ -146,7 +148,7 @@ test('inbox recovers from history load failure without hiding a conversation err
 
 test('refresh restores the saved conversation, scope, draft, mentions, search depth and reading position',async t=>{
  const {act,createElement}=await import('react'),{createRoot}=await import('react-dom/client');
- const {setupDOM}=await import('./helpers/dom.mjs'),{ChatWorkspace}=await import('../src/client/chat/ChatWorkspace.tsx'),{chatAPI}=await import('../src/client/chat/api.ts');
+ const {ChatWorkspace}=await import('../src/client/chat/ChatWorkspace.tsx'),{chatAPI}=await import('../src/client/chat/api.ts');
  const {readChatSession}=await import('../src/client/chat/chat-session.ts');
  const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
  const now=new Date().toISOString(),thread={id:'saved-thread',title:'A continuing discussion',scope:{kind:'page',id:'page-1'},createdAt:now,updatedAt:now,messages:[{id:'first',role:'user',text:'A saved question',createdAt:now},{id:'second',role:'assistant',text:'A saved answer',createdAt:now}]};
@@ -170,7 +172,7 @@ test('refresh restores the saved conversation, scope, draft, mentions, search de
 
 test('refresh keeps an unsent draft and temporary chat never persists content in the browser',async t=>{
  const {act,createElement}=await import('react'),{createRoot}=await import('react-dom/client');
- const {setupDOM}=await import('./helpers/dom.mjs'),{ChatWorkspace}=await import('../src/client/chat/ChatWorkspace.tsx'),{chatAPI}=await import('../src/client/chat/api.ts');
+ const {ChatWorkspace}=await import('../src/client/chat/ChatWorkspace.tsx'),{chatAPI}=await import('../src/client/chat/api.ts');
  const {readChatSession}=await import('../src/client/chat/chat-session.ts');
  const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));t.mock.method(chatAPI,'list',async()=>[]);
  const props={vaultId:'default',vaultName:'Test',initialScope:{kind:'vault'},entities:[],pages:[],visible:true,onClose(){},onOpenEvidence(){}};
@@ -182,7 +184,7 @@ test('refresh keeps an unsent draft and temporary chat never persists content in
 });
 
 test('Chat session parsing rejects bad scope and identity, bounds drafts, and tolerates blocked storage',async t=>{
- const {setupDOM}=await import('./helpers/dom.mjs'),{readChatSession,writeChatSession,clearChatSession}=await import('../src/client/chat/chat-session.ts');
+ const {readChatSession,writeChatSession,clearChatSession}=await import('../src/client/chat/chat-session.ts');
  const env=setupDOM(t),key='noema-chat-session:default';
  for(const value of ['broken','null','{"scope":{"kind":"unknown"}}','{"scope":{"kind":"page"}}','{"scope":{"kind":"folder"}}','{"scope":{"kind":"folder","id":42}}','{"scope":{"kind":"folder","id":""}}','{"scope":{"kind":"vault"},"threadId":4}']){window.sessionStorage.setItem(key,value);assert.equal(readChatSession('default'),null);}
  window.sessionStorage.setItem(key,JSON.stringify({open:true,scope:{kind:'vault'},draft:'a'.repeat(3000),scrollTop:-4}));assert.equal(readChatSession('default').draft.length,2000);assert.equal(readChatSession('default').scrollTop,0);
@@ -192,7 +194,7 @@ test('Chat session parsing rejects bad scope and identity, bounds drafts, and to
 
 test('inbox timestamps use compact relative labels and update while the inbox is open',async t=>{
  const {act,createElement}=await import('react'),{createRoot}=await import('react-dom/client');
- const {setupDOM}=await import('./helpers/dom.mjs'),{ChatInbox,relativeChatTime}=await import('../src/client/chat/ChatInbox.tsx');
+ const {ChatInbox,relativeChatTime}=await import('../src/client/chat/ChatInbox.tsx');
  const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
  let now=Date.parse('2026-10-26T04:00:00Z'),tick;t.mock.method(Date,'now',()=>now);t.mock.method(window,'setInterval',callback=>{tick=callback;return 1;});t.mock.method(window,'clearInterval',()=>{});
  for(const [seconds,label] of [[0,'just now'],[59,'just now'],[120,'2m'],[3600,'1h'],[172800,'2d'],[604800,'1w']])assert.equal(relativeChatTime(new Date(now-seconds*1000).toISOString(),now),label);
@@ -204,7 +206,7 @@ test('inbox timestamps use compact relative labels and update while the inbox is
 
 test('title reveal animates once, exposes the complete accessible name, and respects reduced motion',async t=>{
  const {act,createElement}=await import('react'),{createRoot}=await import('react-dom/client');
- const {setupDOM}=await import('./helpers/dom.mjs'),{ChatTitle}=await import('../src/client/chat/ChatTitle.tsx');
+ const {ChatTitle}=await import('../src/client/chat/ChatTitle.tsx');
  const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));let tick,cleared=0;
  t.mock.method(window,'setInterval',callback=>{tick=callback;return 1;});t.mock.method(window,'clearInterval',()=>cleared++);
  await act(async()=>root.render(createElement(ChatTitle,{title:'A topic',animate:true})));assert.equal(document.querySelector('.sr-only').textContent,'A topic');assert.equal(document.querySelector('[aria-hidden]').textContent.trim(),'');
@@ -214,7 +216,7 @@ test('title reveal animates once, exposes the complete accessible name, and resp
 
 test('history row swipe reveals delete without selecting; vertical scrolling stays vertical and keyboard actions work',async t=>{
  const {act,createElement,useState}=await import('react'),{createRoot}=await import('react-dom/client');
- const {setupDOM}=await import('./helpers/dom.mjs'),{ChatThreadRow}=await import('../src/client/chat/ChatThreadRow.tsx');
+ const {ChatThreadRow}=await import('../src/client/chat/ChatThreadRow.tsx');
  const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));let selected=0,deleted=0;
  const thread={id:'swipe',title:'A long conversation title that should wrap rather than force horizontal scrolling',scope:{kind:'vault'},createdAt:'',updatedAt:'',messages:[]};
  function Fixture(){const [revealed,onReveal]=useState(false);return createElement('ul',null,createElement(ChatThreadRow,{thread,selected:false,disabled:false,revealed,animate:false,time:'just now',onSelect:()=>selected++,onDelete:()=>deleted++,onReveal}));}
@@ -230,7 +232,7 @@ test('history row swipe reveals delete without selecting; vertical scrolling sta
 
 test('toolbar occupies the app slot and inbox collapse persists without losing the selected conversation',async t=>{
  const {act,createElement}=await import('react'),{createRoot}=await import('react-dom/client');
- const {setupDOM}=await import('./helpers/dom.mjs'),{ChatWorkspace}=await import('../src/client/chat/ChatWorkspace.tsx'),{chatAPI}=await import('../src/client/chat/api.ts');
+ const {ChatWorkspace}=await import('../src/client/chat/ChatWorkspace.tsx'),{chatAPI}=await import('../src/client/chat/api.ts');
  const {readChatSession}=await import('../src/client/chat/chat-session.ts');
  const env=setupDOM(t,{html:'<header class="topbar"><div id="chat-toolbar"></div></header><div id="mount"></div>'}),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
  let measure=()=>{};
@@ -243,14 +245,14 @@ test('toolbar occupies the app slot and inbox collapse persists without losing t
  t.mock.method(chatAPI,'list',async()=>[thread]);t.mock.method(chatAPI,'get',async()=>thread);
  const props={vaultId:'default',vaultName:'Test',initialScope:{kind:'vault'},entities:[],pages:[],visible:true,onClose(){},onOpenEvidence(){}};
  await act(async()=>root.render(createElement(ChatWorkspace,props)));assert.ok(document.querySelector('#chat-toolbar .chat-heading'));assert.equal(document.querySelector('.chat-main .chat-heading'),null);
- await act(async()=>document.querySelector('[data-thread-id=current]').click());assert.equal(document.querySelector('.chat-toolbar').style.getPropertyValue('--chat-contact-center'),'650px','Meno centers over the conversation rather than the inbox and conversation combined');await act(async()=>document.querySelector('[aria-label="Hide inbox"]').click());assert.equal(document.querySelector('.chat-history-pane').hidden,true);measure();assert.equal(document.querySelector('.chat-toolbar').style.getPropertyValue('--chat-contact-center'),'500px','Meno returns to the full-width center when the inbox collapses');assert.match(document.querySelector('.chat-messages').textContent,/Answer/);assert.equal(readChatSession('default').inboxCollapsed,true);
+ await act(async()=>document.querySelector('[data-thread-id=current]').click());assert.match(document.querySelector('.chat-heading h1').textContent,/A selected conversation/);assert.ok(document.querySelector('.chat-contact'),'Conversation keeps a secondary Meno identity');await act(async()=>document.querySelector('[aria-label="Hide inbox"]').click());assert.equal(document.querySelector('.chat-history-pane').hidden,true);measure();assert.match(document.querySelector('.chat-heading h1').textContent,/A selected conversation/);assert.match(document.querySelector('.chat-messages').textContent,/Answer/);assert.equal(readChatSession('default').inboxCollapsed,true);
  await act(async()=>root.render(null));await act(async()=>root.render(createElement(ChatWorkspace,{...props,restoreSession:true})));assert.equal(document.querySelector('.chat-history-pane').hidden,true);assert.match(document.querySelector('.chat-messages').textContent,/Answer/);
- await act(async()=>document.querySelector('[aria-label="Show inbox"]').click());assert.equal(document.querySelector('.chat-history-pane').hidden,false);measure();assert.equal(document.querySelector('.chat-toolbar').style.getPropertyValue('--chat-contact-center'),'650px');assert.equal(document.querySelector('[aria-current=page]').dataset.threadId,'current');assert.ok(document.querySelector('.chat-copy .icon'));assert.equal(document.querySelector('.chat-copy').textContent,'');assert.ok(document.querySelector('[aria-label="Regenerate answer"] .icon'));
+ await act(async()=>document.querySelector('[aria-label="Show inbox"]').click());assert.equal(document.querySelector('.chat-history-pane').hidden,false);measure();assert.match(document.querySelector('.chat-heading h1').textContent,/A selected conversation/);assert.equal(document.querySelector('[aria-current=page]').dataset.threadId,'current');assert.ok(document.querySelector('.chat-copy .icon'));assert.equal(document.querySelector('.chat-copy').textContent,'');assert.ok(document.querySelector('[aria-label="Regenerate answer"] .icon'));
 });
 
 test('regeneration shows typing, keeps the draft and old answer until a replacement succeeds',async t=>{
  const {act,createElement}=await import('react'),{createRoot}=await import('react-dom/client');
- const {setupDOM}=await import('./helpers/dom.mjs'),{ChatWorkspace}=await import('../src/client/chat/ChatWorkspace.tsx'),{chatAPI}=await import('../src/client/chat/api.ts');
+ const {ChatWorkspace}=await import('../src/client/chat/ChatWorkspace.tsx'),{chatAPI}=await import('../src/client/chat/api.ts');
  for(const outcome of ['complete','error','stop'])await t.test(outcome,async t=>{
   const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
   const now=new Date().toISOString(),original={id:'old-answer',role:'assistant',text:'Keep the old answer.',createdAt:now,status:'completed'},thread={id:'regenerate',title:'A conversation',scope:{kind:'vault'},createdAt:now,updatedAt:now,messages:[{id:'user',role:'user',text:'Original question?',createdAt:now},original]};
@@ -270,20 +272,20 @@ test('regeneration shows typing, keeps the draft and old answer until a replacem
 
 test('deleting a different inbox row preserves the active conversation and draft',async t=>{
  const {act,createElement}=await import('react'),{createRoot}=await import('react-dom/client');
- const {setupDOM}=await import('./helpers/dom.mjs'),{ChatWorkspace}=await import('../src/client/chat/ChatWorkspace.tsx'),{chatAPI}=await import('../src/client/chat/api.ts');
+ const {ChatWorkspace}=await import('../src/client/chat/ChatWorkspace.tsx'),{chatAPI}=await import('../src/client/chat/api.ts');
  const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
  const now=new Date().toISOString();let threads=['Current','Other'].map(title=>({id:title,title,scope:{kind:'vault'},createdAt:now,updatedAt:now,messages:[]}));
  t.mock.method(chatAPI,'list',async()=>threads);t.mock.method(chatAPI,'get',async(_vault,id)=>({...threads.find(item=>item.id===id),messages:[{id:'user',role:'user',text:'My question',createdAt:now}]}));t.mock.method(chatAPI,'remove',async(_vault,id)=>{threads=threads.filter(item=>item.id!==id);return {deleted:true};});
  await act(async()=>root.render(createElement(ChatWorkspace,{vaultId:'default',vaultName:'Test',initialScope:{kind:'vault'},entities:[],pages:[],visible:true,onClose(){},onOpenEvidence(){}})));
  await act(async()=>document.querySelector('[data-thread-id=Current]').click());await act(async()=>{const input=document.getElementById('chat-question');input[Object.keys(input).find(key=>key.startsWith('__reactProps'))].onChange({target:{value:'Keep this draft'}});});
- await act(async()=>document.querySelector('[aria-label="Actions for Other"]').click());await act(async()=>document.querySelector('[aria-label="Delete Other"]').click());
+ await act(async()=>document.querySelector('[aria-label="Actions for Other"]').click());await act(async()=>document.querySelector('[aria-label="Delete Other"]').click());await act(async()=>[...document.querySelectorAll('button')].find(button=>button.textContent==='Confirm delete').click());
  assert.equal(document.querySelector('[data-thread-id=Other]'),null);assert.equal(document.querySelector('[aria-current=page]').dataset.threadId,'Current');assert.equal(document.getElementById('chat-question').value,'Keep this draft');assert.match(document.querySelector('.chat-messages').textContent,/My question/);
 });
 
 
 test('Meno picker applies only the persona, supports keyboard navigation, and keeps failed changes retryable',async t=>{
  const {act,createElement}=await import('react'),{createRoot}=await import('react-dom/client');
- const {setupDOM}=await import('./helpers/dom.mjs'),{MenoPicker}=await import('../src/client/chat/MenoPicker.tsx');
+ const {MenoPicker}=await import('../src/client/chat/MenoPicker.tsx');
  const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
  let chosen,fail=false,updates=0,settings=0;
  t.mock.method(api,'saveAIPersona',async id=>{chosen=id;if(fail)throw new Error('Try again');return {personaId:id};});
@@ -305,46 +307,32 @@ test('Meno picker applies only the persona, supports keyboard navigation, and ke
 });
 
 
-test('@ autocomplete chooses strict note, source and folder context while retaining entity references',async t=>{
+test('scope selection is separate from entity mentions and preserves the draft',async t=>{
  const {act,createElement}=await import('react'),{createRoot}=await import('react-dom/client');
- const {setupDOM}=await import('./helpers/dom.mjs'),{ChatWorkspace}=await import('../src/client/chat/ChatWorkspace.tsx'),{chatAPI}=await import('../src/client/chat/api.ts');
+ const {ChatWorkspace}=await import('../src/client/chat/ChatWorkspace.tsx'),{chatAPI}=await import('../src/client/chat/api.ts');
  const {readChatSession}=await import('../src/client/chat/chat-session.ts');
  const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));t.mock.method(chatAPI,'list',async()=>[]);
- const scrolled=[];env.dom.window.HTMLElement.prototype.scrollIntoView=function(){scrolled.push(this.id);};
  const props={vaultId:'default',vaultName:'Test',initialScope:{kind:'vault'},entities:[{id:'source-1',vault_id:'default',type:'source',name:'Grace source'},{id:'hidden',vault_id:'other',type:'source',name:'Other vault source'},{id:'inactive',vault_id:'default',type:'source',name:'Inactive source',inactive:true},{id:'person',vault_id:'default',type:'person',name:'An entity'}],pages:[{id:'note-1',title:'Grace note'},{id:'archived',title:'Archived note',archived_at:'2026-01-01'}],folders:[{id:'parent',name:'Research',parent_id:null},{id:'child',name:'Grace',parent_id:'parent'}],visible:true,onClose(){},onOpenEvidence(){}};
  await act(async()=>root.render(createElement(ChatWorkspace,props)));
- const input=document.getElementById('chat-question'),edit=value=>act(async()=>input[Object.keys(input).find(key=>key.startsWith('__reactProps'))].onChange({target:{value}})),key=value=>act(async()=>input.dispatchEvent(new env.dom.window.KeyboardEvent('keydown',{key:value,bubbles:true,cancelable:true})));
- await act(async()=>document.querySelector('[aria-label="Add context"]').click());assert.equal(input.value,'@');assert.equal(document.activeElement,input);assert.equal(document.querySelector('dialog'),null);
- assert.deepEqual([...document.querySelectorAll('#chat-mention-list [role=group]')].map(node=>node.getAttribute('aria-label')),['Notes','Sources','Folders','Entities']);
- assert.equal(document.querySelectorAll('#chat-mention-list [role=option]').length,5);assert.doesNotMatch(document.querySelector('#chat-mention-list').textContent,/Other vault|Inactive source|Archived note/);
- assert.ok(document.querySelector('[data-context-id=child]').textContent.includes('Research / Grace'));
- await edit('Keep this draft @Research / Grace');assert.equal(document.querySelectorAll('#chat-mention-list [role=option]').length,1);await key('Enter');
- assert.deepEqual(readChatSession('default').scope,{kind:'folder',id:'child'});assert.equal(input.value,'Keep this draft ');assert.equal(document.querySelector('#chat-mention-list'),null);assert.ok(document.querySelector('[data-chat-scope]').textContent.includes('Folder · Research / Grace'));
- await edit('About @Grace note');await key('Enter');assert.deepEqual(readChatSession('default').scope,{kind:'page',id:'note-1'});assert.equal(input.value,'About ');
- await edit('Compare @Grace');await key('ArrowDown');assert.equal(input.getAttribute('aria-activedescendant'),'chat-mention-1');assert.equal(scrolled.at(-1),'chat-mention-1','Keyboard context selection stays visible in the grouped list');await key('Enter');assert.deepEqual(readChatSession('default').scope,{kind:'source',id:'source-1'});assert.equal(input.value,'Compare ');assert.equal(document.querySelector('.chat-mentions'),null,'Selecting a source creates a strict scope rather than a loose reference');
- await edit('Compare @An ent');await key('Enter');assert.deepEqual(readChatSession('default').scope,{kind:'source',id:'source-1'});assert.equal(document.querySelector('.chat-mentions [data-entity-id]').dataset.entityId,'person');assert.equal(input.value,'Compare An entity ');
- await act(async()=>document.querySelector('[aria-label="Remove context"]').click());assert.deepEqual(readChatSession('default').scope,{kind:'vault'});assert.equal(input.value,'Compare An entity ');assert.equal(document.querySelector('[data-chat-scope]'),null);
+ const input=document.getElementById('chat-question'),edit=value=>act(async()=>input[Object.keys(input).find(key=>key.startsWith('__reactProps'))].onChange({target:{value}}));
+ await edit('Compare @An ent');await act(async()=>document.querySelector('#chat-mention-list button').click());assert.equal(document.querySelector('.chat-mentions [data-entity-id]').dataset.entityId,'person');assert.deepEqual(readChatSession('default').scope,{kind:'vault'});
+ await act(async()=>document.querySelector('[aria-label="Search within"]').click());assert.ok(document.querySelector('.chat-scope-dialog').open);assert.doesNotMatch(document.querySelector('.chat-scope-dialog').textContent,/Other vault|Inactive source|Archived note/);
+ await act(async()=>document.querySelector('[data-context-id=child]').click());assert.deepEqual(readChatSession('default').scope,{kind:'folder',id:'child'});assert.equal(input.value,'Compare An entity ');assert.equal(document.querySelector('.chat-mentions [data-entity-id]').dataset.entityId,'person');
+ await act(async()=>document.querySelector('[aria-label="Search within"]').click());await act(async()=>[...document.querySelectorAll('.chat-scope-option')].find(button=>button.textContent.includes('Entire vault')).click());assert.deepEqual(readChatSession('default').scope,{kind:'vault'});assert.match(document.querySelector('[data-chat-scope]').textContent,/Entire vault/);
 });
 
-test('@ context in an existing chat preserves the draft, separates history and sends only its selected scope',async t=>{
+test('scope changes in an existing conversation require confirmation and retain resolved references',async t=>{
  const {act,createElement}=await import('react'),{createRoot}=await import('react-dom/client');
- const {setupDOM}=await import('./helpers/dom.mjs'),{ChatWorkspace}=await import('../src/client/chat/ChatWorkspace.tsx'),{chatAPI}=await import('../src/client/chat/api.ts');
+ const {ChatWorkspace}=await import('../src/client/chat/ChatWorkspace.tsx'),{chatAPI}=await import('../src/client/chat/api.ts');
  const {readChatSession}=await import('../src/client/chat/chat-session.ts');
  const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
- const now=new Date().toISOString(),thread={id:'saved-context',vaultId:'default',title:'Earlier source chat',scope:{kind:'source',id:'source-1'},createdAt:now,updatedAt:now,messages:[{id:'user',role:'user',text:'An earlier question',createdAt:now,mentions:[{id:'subject',name:'Earlier subject'}]},{id:'answer',role:'assistant',text:'An earlier answer',createdAt:now}]};
- t.mock.method(chatAPI,'list',async()=>[thread]);t.mock.method(chatAPI,'get',async()=>structuredClone(thread));t.mock.method(chatAPI,'cancel',async()=>({cancelled:true}));
- let sent;t.mock.method(globalThis,'fetch',async(_url,options)=>{sent=JSON.parse(options.body);return new Response(new ReadableStream({start(controller){options.signal.addEventListener('abort',()=>controller.error(new DOMException('Stopped','AbortError')),{once:true});}}));});
- const props={vaultId:'default',vaultName:'Test',initialScope:{kind:'vault'},entities:[{id:'source-1',vault_id:'default',type:'source',name:'Earlier source'}],pages:[],folders:[{id:'folder-1',name:'Research',parent_id:null}],visible:true,onClose(){},onOpenEvidence(){}};
+ const now=new Date().toISOString(),thread={id:'saved-context',vaultId:'default',title:'Earlier source chat',scope:{kind:'source',id:'source-1'},createdAt:now,updatedAt:now,messages:[{id:'user',role:'user',text:'An earlier question',createdAt:now},{id:'answer',role:'assistant',text:'An earlier answer',createdAt:now}]};
+ t.mock.method(chatAPI,'list',async()=>[thread]);t.mock.method(chatAPI,'get',async()=>structuredClone(thread));
+ const props={vaultId:'default',vaultName:'Test',initialScope:{kind:'vault'},entities:[{id:'source-1',vault_id:'default',type:'source',name:'Earlier source'},{id:'person',vault_id:'default',type:'person',name:'Augustine'}],pages:[],folders:[{id:'folder-1',name:'Research',parent_id:null}],visible:true,onClose(){},onOpenEvidence(){}};
  const edit=value=>act(async()=>{const input=document.getElementById('chat-question');input[Object.keys(input).find(key=>key.startsWith('__reactProps'))].onChange({target:{value}});});
- await act(async()=>root.render(createElement(ChatWorkspace,props)));await act(async()=>document.querySelector('[data-thread-id=saved-context]').click());await edit('Keep this draft @Research');
- await act(async()=>document.querySelector('[data-context-id=folder-1]').click());
- assert.equal(document.querySelectorAll('.chat-message').length,0);assert.equal(document.getElementById('chat-question').value,'Keep this draft ');assert.match(document.querySelector('[data-chat-scope]').textContent,/Folder · Research/);assert.match(document.querySelector('.chat-composer-area').textContent,/Started a new conversation limited/);
- assert.equal(readChatSession('default').threadId,undefined);assert.deepEqual(readChatSession('default').scope,{kind:'folder',id:'folder-1'});assert.ok(document.querySelector('[data-thread-id=saved-context]'),'The previous chat remains in the inbox');
- await act(async()=>document.querySelector('.chat-composer').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
- assert.deepEqual(sent.scope,{kind:'folder',id:'folder-1'});assert.equal(sent.threadId,undefined);assert.equal(sent.question,'Keep this draft');assert.deepEqual(sent.previousQuestions,[]);assert.deepEqual(sent.mentions,[]);
- assert.equal(document.querySelector('[aria-label="Change context"]').disabled,true);assert.equal(document.querySelector('[aria-label="Remove context"]').disabled,true);
- await edit('Cannot switch @Research');assert.equal(document.querySelector('#chat-mention-list'),null,'Context choices stay inactive during an answer');assert.deepEqual(readChatSession('default').scope,{kind:'folder',id:'folder-1'});
- await act(async()=>[...document.querySelectorAll('button')].find(button=>button.textContent==='Stop').click());await edit('A whole-vault draft');await act(async()=>document.querySelector('[aria-label="Remove context"]').click());
- assert.equal(document.querySelector('[data-chat-scope]'),null);assert.equal(document.getElementById('chat-question').value,'A whole-vault draft');assert.deepEqual(readChatSession('default').scope,{kind:'vault'});
- await act(async()=>document.querySelector('[data-thread-id=saved-context]').click());assert.match(document.querySelector('[data-chat-scope]').textContent,/Source · Earlier source/);assert.match(document.querySelector('.chat-messages').textContent,/An earlier answer/);
+ const button=text=>[...document.querySelectorAll('button')].find(button=>button.textContent===text);
+ const choose=async()=>{await act(async()=>document.querySelector('[aria-label="Search within"]').click());await act(async()=>document.querySelector('[data-context-id=folder-1]').click());};
+ await act(async()=>root.render(createElement(ChatWorkspace,props)));await act(async()=>document.querySelector('[data-thread-id=saved-context]').click());await edit('@August');await act(async()=>document.querySelector('#chat-mention-list button').click());await edit('Keep this draft');
+ await choose();await act(async()=>button('Keep current scope').click());assert.deepEqual(readChatSession('default').scope,{kind:'source',id:'source-1'});assert.match(document.querySelector('.chat-messages').textContent,/An earlier answer/);
+ await choose();await act(async()=>button('Start new conversation').click());assert.equal(document.querySelectorAll('.chat-message').length,0);assert.equal(document.getElementById('chat-question').value,'Keep this draft');assert.equal(document.querySelector('.chat-mentions [data-entity-id]').dataset.entityId,'person');assert.deepEqual(readChatSession('default').scope,{kind:'folder',id:'folder-1'});assert.equal(readChatSession('default').threadId,undefined);assert.ok(document.querySelector('[data-thread-id=saved-context]'));
 });

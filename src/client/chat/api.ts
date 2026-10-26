@@ -1,6 +1,7 @@
 import {request,ApiError} from '../api';
-import type {ChatEvent,ChatSubmit,ChatThread,ChatEvidence} from '../../shared/chat';
+import type {ChatEvent,ChatSubmit,ChatThread,ChatEvidence,ChatRequestStatus} from '../../shared/chat';
 export const chatAPI={
+ requestStatus:(vault:string,requestId:string,signal?:AbortSignal)=>request<ChatRequestStatus>(`chat/requests/${encodeURIComponent(requestId)}`,'GET',undefined,vault,signal),
  verify:(vault:string,evidence:ChatEvidence[],signal?:AbortSignal)=>request<ChatEvidence[]>('chat/evidence','POST',{evidence},vault,signal),
  list:(vault:string,signal?:AbortSignal)=>request<ChatThread[]>('chat/threads','GET',undefined,vault,signal),
  get:(vault:string,id:string,signal?:AbortSignal)=>request<ChatThread>(`chat/threads/${encodeURIComponent(id)}`,'GET',undefined,vault,signal),

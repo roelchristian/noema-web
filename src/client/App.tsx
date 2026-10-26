@@ -1,5 +1,5 @@
 import {revealEntityFact} from './chat/entity-evidence-navigation';
-import {readChatSession,clearChatSession} from './chat/chat-session';
+import {readChatSession,clearChatSession,clearChatDrafts} from './chat/chat-session';
 import {ChatWorkspace} from './chat/ChatWorkspace';
 import type {ChatScope,ChatEvidence} from '../shared/chat';
 import {resolveEntityIcon,entityIconName} from '../shared/entity-icons';
@@ -133,7 +133,7 @@ function WorkspaceApp({workspace}:{workspace:Workspace}) {
     reviewVault.current=null;setReviewDestination(null);setChatFactTarget(null);
     const resume=vault&&!vault.locked?readChatSession(vault.id):null;
     setChatOpen(!!resume?.open);setChatSession(resume&&vault?{vaultId:vault.id,scope:resume.scope,key:randomUUID(),restore:true}:null);
-    if(vault?.locked)clearChatSession(vault.id);
+    if(vault?.locked){clearChatSession(vault.id);clearChatDrafts(vault.id);}
   },[vault?.id,vault?.locked]);
   useEffect(()=>{
     if(!vault||vault.locked)return;

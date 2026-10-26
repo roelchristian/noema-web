@@ -55,5 +55,5 @@ export interface SourceProcessingRunView {
  stage:'preparation'|'upload'|'extraction'|'validation'|'repair'|'publication'|'indexing';
  provider:SourceIngestionRoute;model:string|null;pageCount:number;completedPages:number;completedWindows:number;totalWindows:number;
  activePages:number[];pendingReview:number;startedAt:string;updatedAt:string;
- error:string|null;unknownOutcome:boolean;canResume:boolean;
+ error:string|null;warnings?:string[];canRetryOptional?:boolean;unknownOutcome:boolean;canResume:boolean;
 }

@@ -221,6 +221,7 @@ export class SourceReprocessing {
   const acceptanceThreshold=body.acceptanceThreshold??0.9;
   if(typeof acceptanceThreshold!=='number'||!Number.isFinite(acceptanceThreshold)||acceptanceThreshold<0||acceptanceThreshold>1)throw new HttpError(400,'Acceptance threshold must be a number between 0 and 1.');
   const file=this.files.require(vault,id);if(file.status!=='ready'||!file.admitted||!file.text.trim())throw new HttpError(409,'Wait for a processed source before starting an editorial pass.');
+  if(this.store.get("SELECT 1 FROM sqlite_master WHERE type='table' AND name='source_ingestion_runs'")&&this.store.get("SELECT 1 FROM source_ingestion_runs WHERE file_id=? AND vault_id=? AND state IN ('pending','running','paused','unknown')",id,vault))throw new HttpError(409,'Finish or resolve the active PDF ingestion recovery before starting an editorial pass.');
   if(['pending','running'].includes(file.enrichment_status))throw new HttpError(409,'Wait for original source enrichment to finish before reprocessing; it may still change math, metadata, and structure.');
   if(file.text.length>512000)throw new HttpError(413,'This beta supports up to 512,000 extracted characters per source. No partial pass was started.');
   if(this.store.get("SELECT 1 FROM source_reprocessing WHERE file_id=? AND status IN ('queued','running')",id))throw new HttpError(409,'An editorial pass for this source is already queued or running.');
@@ -260,6 +261,7 @@ export class SourceReprocessing {
  resume(vault:string,id:string,revisionId:string){
   this.requireOpen(vault);if(this.closed)throw new HttpError(503,'Editorial processing is shutting down.');
   const r=this.detail(vault,id,revisionId);
+  if(this.store.get("SELECT 1 FROM sqlite_master WHERE type='table' AND name='source_ingestion_runs'")&&this.store.get("SELECT 1 FROM source_ingestion_runs WHERE file_id=? AND vault_id=? AND state IN ('pending','running','paused','unknown')",id,vault))throw new HttpError(409,'Finish or resolve the active PDF ingestion recovery before resuming an editorial pass.');
   if(!['failed','interrupted'].includes(r.status)||this.activeRevisionId===revisionId)throw new HttpError(409,'Wait for interruption to finish before resuming.');
   if(r.stale)throw new HttpError(409,'Canonical source changed. Start a new editorial pass.');
   const selection=this.intelligence.editorialSelection();

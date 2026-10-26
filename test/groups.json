@@ -42,7 +42,11 @@
     "test/vector-search-cache.test.mjs",
     "test/knowledge-polling.test.mjs",
     "test/domain-shortlist-multilingual.test.mjs",
-    "test/page-block-evidence.test.mjs"
+    "test/page-block-evidence.test.mjs",
+    "test/source-ingestion-contracts.test.mjs",
+    "test/source-ingestion-security.test.mjs",
+    "test/source-ingestion-options.test.mjs",
+    "test/source-ingestion-targeted-repair.test.mjs"
   ],
   "dom": [
     "test/trash-ui.test.mjs",
@@ -266,6 +270,11 @@
     "test/page-segment-persistence.test.mjs",
     "test/semantic-scope-efficiency.test.mjs",
     "test/page-read-overhead.test.mjs",
-    "test/page-assessment-lifecycle.test.mjs"
+    "test/page-assessment-lifecycle.test.mjs",
+    "test/document-providers.test.mjs",
+    "test/source-ingestion-corrections.test.mjs",
+    "test/source-ingestion-restore.test.mjs",
+    "test/source-ingestion-scheduler.test.mjs",
+    "test/source-ingestion-runtime.test.mjs"
   ]
 }

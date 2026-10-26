@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {assembleSourceIngestionDocument} from '../src/server/modules/source-ingestion-assembly.ts';
 import {createSourceIngestionCorrectionRevision} from '../src/server/modules/source-ingestion-corrections.ts';
 import {processedSourceDocument} from '../src/server/modules/source-document.ts';
-import {materializeSourceRevision,sourceRevisionBaseHash} from '../src/server/modules/source-reprocessing.ts';
+import {SourceReprocessing,materializeSourceRevision,sourceRevisionBaseHash} from '../src/server/modules/source-reprocessing.ts';
 import {restoreSourceRevision,restoreReprocessingCheckpoints} from '../src/server/modules/source-reprocessing-backup.ts';
 const options={runId:'synthetic-run',documentId:'synthetic-document',model:'synthetic-provider-model',reviewPolicy:'verified',depth:'balanced'};
 function fixture(text='The ﬁrst source paragraph preserves its words.',repair={original:'ﬁrst',replacement:'first',category:'ocr'}){
@@ -71,7 +71,7 @@ test('rich revision retains immutable transcription and explicitly maps changed 
  assert.match(restored.reprocessed.document.semantic.children[0].text,/first/);
 });
 test('rich archive refuses an unmatched block, invalid page, or invented exact geometry',()=>{
- for(const mutate of [r=>{r.original.document.ingestion.blocks[0].text='invented';},r=>{r.original.document.ingestion.pages[0].number=2;},r=>{r.original.document.ingestion.blocks[0].location={x:0,y:0,width:1,height:1,accuracy:'native'};}]){
+ for(const mutate of [r=>{r.original.document.ingestion.blocks[0].text='invented';},r=>{r.original.document.ingestion.pages[0].number=2;},r=>{r.original.document.ingestion.provenance.independentEvidence='checked';},r=>{r.original.document.ingestion.blocks[0].location={x:0,y:0,width:1,height:1,accuracy:'native'};}]){
   const f=addRich(fixture()),r=f.revision();mutate(r);
   // Recompute to test the additive rich validator independently of the base digest guard.
   r.baseHash=(sourceRevisionBaseHash(r.original));for(const patch of r.patches)patch.baseHash=r.baseHash;
@@ -98,4 +98,12 @@ test('metadata reconciliation preserves manual values, registers AI evidence for
  const snapshot=metadata.snapshot('default',source.id),proposal=snapshot.fields.find(field=>field.key==='bibliography:publisher').proposals.find(value=>value.value==='Archive Press');
  assert.ok(proposal);assert.equal(proposal.compatible,false);assert.equal(snapshot.fields.find(field=>field.key==='bibliography:author').value,'Jane Synthetic');
  assert.ok(first.metadataPending>0);assert.equal(store.get('SELECT count(*) n FROM source_reprocessing WHERE file_id=?',file.id).n,1);
+ const review=new SourceReprocessing(store,files,{},()=>{},{}),patch=first.revision.patches[0];
+ assert.throws(()=>review.review('default',file.id,first.revision.id,{updatedAt:'stale',decisions:[{patchId:patch.id,decision:'accepted'}]}),error=>error.status===409);
+ const edited=review.review('default',file.id,first.revision.id,{updatedAt:first.revision.updatedAt,decisions:[{patchId:patch.id,decision:'accepted',replacement:'first revised'}]});
+ assert.match(edited.reprocessed.text,/first revised/);assert.equal(files.require('default',file.id).text,f.assembly.text);
+ const reversed=review.review('default',file.id,first.revision.id,{updatedAt:edited.updatedAt,decisions:[{patchId:patch.id,decision:'rejected'}]});assert.equal(reversed.reprocessed.text,reversed.original.text);
+ store.run('UPDATE source_files SET text=? WHERE id=?',f.assembly.text+'Changed source.',file.id);
+ assert.throws(()=>review.review('default',file.id,first.revision.id,{updatedAt:reversed.updatedAt,decisions:[{patchId:patch.id,decision:'accepted'}]}),error=>error.status===409);
+
 });

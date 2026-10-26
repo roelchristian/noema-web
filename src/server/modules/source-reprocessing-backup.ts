@@ -146,7 +146,7 @@ export function restoreReprocessingSynthesis(value:unknown,revision:SourceReproc
 export function restoreSourceRevision(payload:unknown,oldId:string,oldFileId:string,newId:string,newFileId:string):SourceReprocessingRevision {
  const r=object(payload);if(r.pipelineVersion!==undefined&&r.pipelineVersion!==1&&r.pipelineVersion!==2)throw invalid();if(r.pipelineVersion===2)validateReprocessingConfiguration(r.configuration);else if(r.configuration!==undefined)throw invalid();
  let ingestionOrigin:SourceReprocessingRevision['origin'];
- if(r.origin!==undefined){const origin=object(r.origin);if(origin.kind!=='ingestion'||r.pipelineVersion!==2||r.status!=='completed'||object(r.report).promptVersion!=='source-ingestion-corrections-1')throw invalid();ingestionOrigin={kind:'ingestion',documentId:string(origin.documentId,200),runId:string(origin.runId,200)};}
+ if(r.origin!==undefined){const origin=object(r.origin);if(origin.kind!=='ingestion'||r.pipelineVersion!==2||r.status!=='completed'||object(r.report).promptVersion!=='source-ingestion-corrections-1')throw invalid();if(origin.repairIdentity!==undefined&&!/^[a-f0-9]{64}$/.test(string(origin.repairIdentity,64)))throw invalid();ingestionOrigin={kind:'ingestion',documentId:string(origin.documentId,200),runId:string(origin.runId,200),...(origin.repairIdentity!==undefined?{repairIdentity:origin.repairIdentity as string}:{})};}
  const textLimit=ingestionOrigin?SOURCE_INGESTION_MAX_CHARACTERS:512000;
  const original=object(r.original),text=string(original.text,textLimit),document=object(original.document);if(ingestionOrigin&&Buffer.byteLength(text)>maxSourceTextBytes)throw invalid();
  if(r.id!==oldId||r.fileId!==oldFileId||document.schemaVersion!==1||r.baseHash!==hash(original))throw invalid();
@@ -212,7 +212,7 @@ export function restoreSourceRevision(payload:unknown,oldId:string,oldFileId:str
   try {validateSourceIngestionDocument({schemaVersion:1,metadata:{title:null,language:null,synopsis:null,contributors:[],bibliographic:[]},pages:rich.pages,blocks,relations,repairs:[]},{pageCount:pageCount??pages.length,ownedPages:pages.map((_,index)=>index+1)});}catch{throw invalid();}
   const provenance=object(rich.provenance);oneOf(provenance.provider,['openai','gemini']);string(provenance.requestedModel,200);if(provenance.returnedModel!==null)string(provenance.returnedModel,200);if(provenance.schemaVersion!==1)throw invalid();string(provenance.promptVersion,200);
   for(const field of ['originalHash','admittedHash','transmittedHash','responseHash'])if(!/^[a-f0-9]{64}$/.test(string(provenance[field],64)))throw invalid();
-  if(provenance.coverage!=='checked'||!['not-checked','checked'].includes(provenance.independentEvidence as string)||typeof provenance.userReviewed!=='boolean')throw invalid();
+  if(provenance.coverage!=='checked'||provenance.independentEvidence!=='not-checked'||typeof provenance.userReviewed!=='boolean')throw invalid();
   if(rich.readingMapping!==undefined)throw invalid(); // Original snapshots cannot assert derived or native proof mappings.
  }
  const processing=object(document.processing);

@@ -1,3 +1,5 @@
+import {materializeSourceRevision,sourceRevisionBaseHash} from './source-reprocessing.js';
+import {restoreIngestionBackup} from './source-ingestion-backup.js';
 import {restoreChatHistory} from './chat-backup.js';
 import {remapPageLinks} from '../../shared/page-links.js';
 import {sourceMetadataFieldFingerprint,sourceMetadataCanonicalField,sourceMetadataBibliographicOwner} from './source-metadata.js';
@@ -86,8 +88,12 @@ const tables={
   source_reprocessing_passes:{columns:'revision_id,chunk_index,pass_index,payload',scope:'revision_id IN (SELECT id FROM source_reprocessing WHERE vault_id=? AND file_id IN (SELECT id FROM source_files WHERE entity_id IS NOT NULL))'},
   source_reprocessing_versions:{columns:'file_id,last_version',scope:'file_id IN (SELECT id FROM source_files WHERE vault_id=? AND entity_id IS NOT NULL)'},
   source_reprocessing:{columns:'id,file_id,status,created_at,updated_at,payload',scope:'vault_id=? AND file_id IN (SELECT id FROM source_files WHERE entity_id IS NOT NULL)'},
+  source_ingestion_documents:{columns:'id,file_id,schema_version,assembly_version,content_hash,document_json,assembly_json,provenance_json,capabilities_json,created_at',scope:'vault_id=? AND file_id IN (SELECT id FROM source_files WHERE entity_id IS NOT NULL)'},
+  source_ingestion_runs:{columns:'id,file_id,idempotency_key,config_json,fingerprint,context_json,state,stage,page_count,original_hash,admitted_hash,published_document_id,error,created_at,updated_at',scope:'vault_id=? AND file_id IN (SELECT id FROM source_files WHERE entity_id IS NOT NULL)'},
+  source_ingestion_windows:{columns:'id,run_id,ordinal,plan_json,state,result_json,transmitted_hash,error,repair_state',scope:'run_id IN (SELECT id FROM source_ingestion_runs WHERE vault_id=? AND file_id IN (SELECT id FROM source_files WHERE entity_id IS NOT NULL))'},
+  source_ingestion_attempts:{columns:'id,window_id,state,usage_json,response_hash,error,created_at,updated_at,returned_model,kind',scope:'window_id IN (SELECT w.id FROM source_ingestion_windows w JOIN source_ingestion_runs r ON r.id=w.run_id WHERE r.vault_id=? AND r.file_id IN (SELECT id FROM source_files WHERE entity_id IS NOT NULL))'},
   source_math_documents:{columns:'file_id,raw_hash,algorithm_version,cleaned_text,uncertainty_json,updated_at',scope:'file_id IN (SELECT id FROM source_files WHERE vault_id=? AND entity_id IS NOT NULL)'},
-  source_files:{columns:'id,entity_id,name,size,status,text,error,progress,pages,ocr_pages,created_at,import_method,source_url,pdf_flattened,admitted,format,page_start_lines,structural_nodes,original_filename,language,summary,generated_name,enrichment_status,contains_math',scope:'vault_id=? AND entity_id IS NOT NULL'},
+  source_files:{columns:'id,entity_id,name,size,status,text,error,progress,pages,ocr_pages,created_at,import_method,source_url,pdf_flattened,admitted,format,page_start_lines,structural_nodes,original_filename,language,summary,generated_name,enrichment_status,contains_math,ingestion_origin',scope:'vault_id=? AND entity_id IS NOT NULL'},
   source_reading_locations:{columns:'file_id,id,label,anchor_json',scope:'vault_id=? AND file_id IN (SELECT id FROM source_files WHERE entity_id IS NOT NULL)'},
   highlights:{columns:'id,source_id,file_id,source_hash,start_offset,end_offset,excerpt,color,reference_json,created_at',scope:'vault_id=?'},
   page_reading_notes:{columns:'page_id,source_id,file_id,source_hash,start_offset,end_offset,excerpt,reference_json,created_at',scope:'vault_id=?'},
@@ -198,7 +204,7 @@ export class VaultBackups {
     const vaultName=required(requestedName?.trim()||object(archive.vault).name);
     const data=object(archive.tables),rows={} as Record<Table,Row[]>;
     let total=0;
-    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table.startsWith('chat_')||table.startsWith('bibliographic_')||table.startsWith('source_metadata_')||table==='page_versions'||table==='collection_descriptions'||table==='folder_descriptions'||table.startsWith('smart_collection_')||table.startsWith('temporal_')||table==='property_provenance'||table==='entity_name_provenance'||table==='property_proposals'||table==='source_author_jobs'||table==='property_definitions'||table==='property_value_metadata'||table==='entity_overviews'||table==='entity_page_associations'||table==='page_page_associations'||table==='source_reading_locations'||table.startsWith('source_reprocessing')||table==='page_domains'||table==='page_domain_state'||table==='entity_domains'||table==='page_segment_cache'||table==='source_math_documents'||table==='source_files'||table==='entity_subtype_properties'||table==='collection_folders'||table==='page_edit_locks'||table==='page_enrichment_settings'||table==='page_source_dismissals'||table==='highlights'||table==='page_reading_notes'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
+    for(const table of Object.keys(tables) as Table[]) {rows[table]=list(table.startsWith('chat_')||table.startsWith('bibliographic_')||table.startsWith('source_metadata_')||table==='page_versions'||table==='collection_descriptions'||table==='folder_descriptions'||table.startsWith('smart_collection_')||table.startsWith('temporal_')||table==='property_provenance'||table==='entity_name_provenance'||table==='property_proposals'||table==='source_author_jobs'||table==='property_definitions'||table==='property_value_metadata'||table==='entity_overviews'||table==='entity_page_associations'||table==='page_page_associations'||table==='source_reading_locations'||table.startsWith('source_reprocessing')||table.startsWith('source_ingestion_')||table==='page_domains'||table==='page_domain_state'||table==='entity_domains'||table==='page_segment_cache'||table==='source_math_documents'||table==='source_files'||table==='entity_subtype_properties'||table==='collection_folders'||table==='page_edit_locks'||table==='page_enrichment_settings'||table==='page_source_dismissals'||table==='highlights'||table==='page_reading_notes'?(data[table]??[]):data[table]).map(object);total+=rows[table].length;}
     const splitSourceOwners=new Set<unknown>(),sourceOwners=new Set<unknown>(),legacyEntities=new Map(rows.entities.map(row=>[row.id,row]));
     const legacyProperties=[...rows.properties],legacyLinks=[...rows.page_sources];
     for(const file of rows.source_files) {
@@ -394,6 +400,7 @@ export class VaultBackups {
           const status=string(row,'status',20);if(!['queued','processing','ready','failed'].includes(status)||status==='ready'&&admitted!==1)throw invalid();
           this.store.run('UPDATE source_files SET status=?,text=?,error=?,progress=?,pages=?,ocr_pages=?,created_at=? WHERE id=?',status==='processing'?'queued':status,string(row,'text',16*1024*1024),nullable(row,'error',2000),integer(row,'progress',0,100),integer(row,'pages',0,1000),integer(row,'ocr_pages',0,1000),timestamp(row,'created_at'),added.id);
         }
+        restoreIngestionBackup(this.store,vault,restoredSourceFiles,rows);
         for(const row of rows.source_math_documents) {
           const fileId=restoredSourceFiles.get(name(row,'file_id'));if(!fileId)throw invalid();
           const raw=this.store.get<{text:string}>('SELECT text FROM source_files WHERE id=?',fileId)!;
@@ -409,6 +416,19 @@ export class VaultBackups {
           const oldId=name(row,'id'),oldFile=name(row,'file_id'),fileId=ref(restoredSourceFiles,oldFile);
           const payload=object(json(row,'payload')),revision=restoreSourceRevision(payload,oldId,oldFile,ref(editorialIds,oldId),fileId);
           if(row.status!==payload.status||timestamp(row,'created_at')!==revision.createdAt||timestamp(row,'updated_at')!==revision.updatedAt)throw invalid();
+          if(revision.origin?.kind==='ingestion') {
+            const archivedDocument=rows.source_ingestion_documents.find(item=>item.id===revision.origin!.documentId&&item.file_id===oldFile);
+            const archivedRun=rows.source_ingestion_runs.find(item=>item.id===revision.origin!.runId&&item.file_id===oldFile&&item.published_document_id===revision.origin!.documentId);
+            const restoredDocument=this.store.get<{id:string;content_hash:string}>('SELECT id,content_hash FROM source_ingestion_documents WHERE file_id=? AND vault_id=?',fileId,vault);
+            const restoredRun=this.store.get<{id:string}>('SELECT id FROM source_ingestion_runs WHERE file_id=? AND vault_id=? AND published_document_id=?',fileId,vault,restoredDocument?.id??'');
+            if(!archivedDocument||!archivedRun||!restoredDocument||!restoredRun||!revision.original.document.ingestion||revision.original.document.ingestion.documentId!==revision.origin.documentId||revision.original.document.ingestion.contentHash!==restoredDocument.content_hash||archivedDocument.content_hash!==restoredDocument.content_hash)throw invalid();
+            revision.origin={...revision.origin,documentId:restoredDocument.id,runId:restoredRun.id};
+            revision.original.document.ingestion.documentId=restoredDocument.id;
+            revision.baseHash=sourceRevisionBaseHash(revision.original);
+            for(const patch of revision.patches)if(patch.baseHash!==undefined)patch.baseHash=revision.baseHash;
+            materializeSourceRevision(revision);
+          }
+
           insert('source_reprocessing',{id:revision.id,file_id:fileId,vault_id:vault,status:revision.status,created_at:revision.createdAt,updated_at:revision.updatedAt,payload:JSON.stringify(revision)});
           const chunkRows=rows.source_reprocessing_chunks.filter(item=>item.revision_id===oldId).sort((a,b)=>Number(a.chunk_index)-Number(b.chunk_index));
           const passRows=rows.source_reprocessing_passes.filter(item=>item.revision_id===oldId);

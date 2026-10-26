@@ -92,7 +92,7 @@ export interface SourceReprocessingReport {
 }
 export interface SourceReprocessingRevision {
  /** Initial ingestion repairs reuse decisions without starting an editorial generation job. */
- origin?:{kind:'ingestion';documentId:string;runId:string};
+ origin?:{kind:'ingestion';documentId:string;runId:string;repairIdentity?:string};
  /** Immutable source-local ordinal, assigned when queued; absent only in legacy archives. */
  versionNumber?:number;
  id:string;fileId:string;createdAt:string;updatedAt:string;status:ReprocessingStatus;instructions:string;

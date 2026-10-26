@@ -25,6 +25,49 @@ export interface SourceIngestionReconciliationOptions {
  runId:string;documentId:string;reviewPolicy:SourceIngestionOptions['reviewPolicy'];depth:SourceIngestionOptions['depth'];model:string;
 }
 
+/** Check before another paid optional request. Publication rechecks capacity transactionally. */
+export function preflightSourceIngestionRepairCapacity(store:Store,file:SourceFile):void {
+ if(file.status!=='ready'||!file.admitted||!file.text.trim())throw new HttpError(409,'A published admitted transcription is required for optional repair.');
+ if(store.get("SELECT 1 FROM source_reprocessing WHERE file_id=? AND vault_id=? AND status IN ('queued','running')",file.id,file.vault_id))throw new HttpError(409,'Wait for the active editorial pass before requesting optional PDF repair.');
+ const count=store.get<{count:number}>('SELECT count(*) count FROM source_reprocessing WHERE file_id=? AND vault_id=?',file.id,file.vault_id)!.count;
+ if(count>=sourceEditorialRevisionLimit)throw new HttpError(409,'Revision limit reached. Delete an editorial revision before requesting optional PDF repair.');
+}
+
+/** A later repair creates a separate, explicitly selectable derivative. It never
+ * changes the frozen IR, prior decisions, metadata, citation IDs or preferred reading. */
+export function createSourceIngestionRepairDerivative(store:Store,file:SourceFile,publishedIR:SourceIngestionDocument,candidateAssembly:SourceIngestionAssembly,options:SourceIngestionReconciliationOptions&{candidateIdentity:string}):{revision:SourceReprocessingRevision|null;created:boolean;skipped:number} {
+ const work=()=>{
+  if(!/^[a-f0-9]{64}$/.test(options.candidateIdentity))throw new HttpError(400,'Invalid optional repair identity.');
+  const current=store.get<SourceFile>('SELECT * FROM source_files WHERE id=? AND vault_id=?',file.id,file.vault_id);
+  const authoritative=store.get<{id:string;document_json:string;assembly_json:string}>('SELECT id,document_json,assembly_json FROM source_ingestion_documents WHERE file_id=? AND vault_id=?',file.id,file.vault_id);
+  if(!current||current.text!==file.text||current.text!==candidateAssembly.text||!authoritative||authoritative.id!==options.documentId||authoritative.document_json!==JSON.stringify(publishedIR))throw new HttpError(409,'Optional repair no longer matches the immutable published source.');
+  const originalAssembly=JSON.parse(authoritative.assembly_json) as SourceIngestionAssembly;
+  if(originalAssembly.text!==candidateAssembly.text||JSON.stringify(originalAssembly.blockRanges)!==JSON.stringify(candidateAssembly.blockRanges))throw new HttpError(409,'Optional repair cannot change canonical block identities or ranges.');
+  const rows=store.all<{payload:string}>("SELECT payload FROM source_reprocessing WHERE file_id=? AND vault_id=? AND json_extract(payload,'$.origin.kind')='ingestion' AND json_extract(payload,'$.origin.documentId')=? ORDER BY created_at,id",file.id,file.vault_id,options.documentId);
+  const revisions=rows.map(row=>JSON.parse(row.payload) as SourceReprocessingRevision);
+  const repeated=revisions.find(revision=>revision.origin?.repairIdentity===options.candidateIdentity);
+  if(repeated)return {revision:repeated,created:false,skipped:0};
+  const prior=revisions.flatMap(revision=>revision.patches);
+  let skipped=0;
+  const candidates=candidateAssembly.repairs.filter(candidate=>{
+   if(prior.some(patch=>candidate.startOffset<patch.range.endOffset&&candidate.endOffset>patch.range.startOffset)){skipped++;return false;}
+   return true;
+  });
+  if(!candidates.length)return {revision:null,created:false,skipped};
+  preflightSourceIngestionRepairCapacity(store,current);
+  const document=new SourceDocuments(store).get(current);
+  const revision=createSourceIngestionCorrectionRevision(current,document,{...candidateAssembly,repairs:candidates},options)!;
+  revision.origin!.repairIdentity=options.candidateIdentity;
+  revision.instructions='Optional targeted PDF recovery; canonical extraction and earlier reading decisions remain unchanged.';
+  revision.report.diagnostics.push('Later recovery is a separate reading version. Select it explicitly to inspect its suggestions.');
+  if(skipped)revision.report.diagnostics.push(`${skipped} candidate(s) overlapped prior decisions and were retained in the recovery response instead of replacing those decisions.`);
+  store.run('INSERT INTO source_reprocessing(id,file_id,vault_id,status,created_at,updated_at,payload) VALUES(?,?,?,?,?,?,?)',revision.id,current.id,current.vault_id,'completed',revision.createdAt,revision.updatedAt,JSON.stringify(revision));
+  const saved=JSON.parse(store.get<{payload:string}>('SELECT payload FROM source_reprocessing WHERE id=?',revision.id)!.payload) as SourceReprocessingRevision;
+  return {revision:saved,created:true,skipped};
+ };
+ return store.db.isTransaction?work():store.transaction(work);
+}
+
 /** Only sparse candidates enter editorial review. The baseline itself is never an all-added diff. */
 export function createSourceIngestionCorrectionRevision(file:SourceFile,document:SourceDocument,assembly:SourceIngestionAssembly,options:SourceIngestionReconciliationOptions):SourceReprocessingRevision|null {
  if(!assembly.repairs.length)return null;

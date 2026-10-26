@@ -52,7 +52,9 @@ export async function providerHTTP(transport:typeof fetch,url:string,options:Req
   try{detail=await readDocumentResponse(response,16*1024);}catch{/* Only bounded JSON errors contribute safe diagnostics. */}
   const error=detail?.error,statuses=new Set(['INVALID_ARGUMENT','UNAUTHENTICATED','PERMISSION_DENIED','NOT_FOUND','RESOURCE_EXHAUSTED','FAILED_PRECONDITION','ABORTED','OUT_OF_RANGE','UNIMPLEMENTED','INTERNAL','UNAVAILABLE','DEADLINE_EXCEEDED']);
   const providerStatus=typeof error?.status==='string'&&statuses.has(error.status)?error.status:undefined;
-  const codes=new Set(['invalid_request_error','invalid_json_schema','invalid_api_key','insufficient_quota','model_not_found','rate_limit_exceeded','context_length_exceeded','unsupported_parameter','invalid_value']);
+  // Interactions uses its own snake_case code vocabulary, without a gRPC status:
+  // https://ai.google.dev/gemini-api/docs/api-errors
+  const codes=new Set(['invalid_request_error','invalid_json_schema','invalid_api_key','insufficient_quota','model_not_found','rate_limit_exceeded','context_length_exceeded','unsupported_parameter','invalid_value','invalid_request','failed_precondition','out_of_range','parameter_unknown','authentication','payment_required','permission_denied','not_found','already_exists','aborted','quota_exceeded','too_many_requests','cancelled','api_error','unimplemented','service_unavailable','deadline_exceeded','bad_request','safety','recitation','language','prohibited_content','spii','blocklist','image_safety','image_prohibited_content','image_recitation','image_other','content_blocked','malformed_function_call','malformed_tool_call','unexpected_tool_call','no_image','too_many_tool_calls','missing_thought_signature']);
   const providerCode=typeof error?.code==='string'&&codes.has(error.code)?error.code:undefined;
   // Field locations are useful; free-form messages/descriptions may echo source
   // text, request payloads or credentials and must never enter persisted errors.

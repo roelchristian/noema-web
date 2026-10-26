@@ -20,6 +20,17 @@ test('provider rejections retain safe HTTP, phase and validation fields without 
  await assert.rejects(()=>providerHTTP(async()=>Response.json({error:{code:secret,status:secret,message:secret}},{status:403}),'https://generativelanguage.googleapis.com/upload/v1/files?key='+secret,{method:'POST'}),error=>{assert.equal(error.code,'credentials');assert.match(error.message,/file transfer \(HTTP 403\)/);assert.equal(error.message.includes(secret),false);return true;});
  await assert.rejects(()=>providerHTTP(async()=>new Response(secret.repeat(2000),{status:429,headers:{'retry-after':'2'}}),'https://example.com/v1/responses',{method:'POST'},true),error=>{assert.equal(error.code,'rate_limit');assert.equal(error.outcomeUncertain,false);assert.equal(error.retryAfterMs,2000);assert.match(error.message,/generation \(HTTP 429\)/);assert.equal(error.message.includes(secret),false);return true;});
 });
+test('Gemini Interactions documented errors expose their own code without free-form messages',async()=>{
+ const {providerHTTP}=await import('../dist/server/modules/document-provider.js');
+ const secret='private-source-and-key';
+ for(const code of ['invalid_request','parameter_unknown','failed_precondition','payment_required','quota_exceeded']){
+  const body={error:{code,message:`The value '${secret}' is not supported for 'type' at 'tools[0]'. Unknown field '${secret}'.`}};
+  await assert.rejects(()=>providerHTTP(async()=>Response.json(body,{status:400}),'https://generativelanguage.googleapis.com/v1/interactions',{method:'POST'},true),error=>{
+   assert.equal(error.outcomeUncertain,false);assert.ok(error.message.includes(`HTTP 400; ${code})`));assert.equal(error.message.includes(secret),false);assert.equal(error.message.includes('The value'),false);return true;
+  });
+ }
+ await assert.rejects(()=>providerHTTP(async()=>Response.json({error:{code:'invalid_request',message:'Invalid input received.'}},{status:400}),'https://generativelanguage.googleapis.com/v1/interactions',{method:'POST'},true),error=>{assert.match(error.message,/HTTP 400; invalid_request\)/);assert.equal(error.message.includes('Invalid input received'),false);return true;});
+});
 test('tsx development PDF platform launches the compiled isolated worker',async()=>{
  const {PdfPlatform:DevelopmentPdfPlatform}=await import('../src/server/modules/pdf-platform.ts');
  const document=await PDFDocument.create();document.addPage([200,300]);

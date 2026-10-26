@@ -366,3 +366,30 @@ test('completed enrichment IR roundtrip retains optional metadata evidence witho
   assert.deepEqual(JSON.parse(window.result_json),enriched);assert.equal(f.store.get('SELECT text FROM source_files WHERE vault_id=?',restored.id).text,f.assembly.text);
  }finally{f.cleanup();}
 });
+
+test('visual repair evidence manifest and exact transmitted hash survive vault backup restore',async()=>{
+ const f=fixture();try{
+  const evidence={version:1,algorithm:'pdfjs-context-crop-v1',pageMap:[1],ownedPages:[1],crops:[{physicalPage:1,blockId:'table',rect:{x:.1,y:.2,width:.3,height:.1},accuracy:'approximate'}],fallback:'none'};
+  Object.assign(f.rows.source_ingestion_attempts[0],{kind:'repair',transmitted_hash:sha('final-cropped-pdf'),evidence_json:JSON.stringify(evidence)});
+  f.store.transaction(()=>restoreIngestionBackup(f.store,'default',new Map([['old-file',f.file.id]]),f.rows));
+  const backups=new VaultBackups(f.store),archive=await backups.export('default'),restored=await backups.import(archive.bytes,'Restored crop audit');
+  const row=f.store.get('SELECT a.evidence_json,a.transmitted_hash FROM source_ingestion_attempts a JOIN source_ingestion_windows w ON w.id=a.window_id JOIN source_ingestion_runs r ON r.id=w.run_id WHERE r.vault_id=?',restored.id);
+  assert.deepEqual(JSON.parse(row.evidence_json),evidence);assert.equal(row.transmitted_hash,sha('final-cropped-pdf'));
+ }finally{f.cleanup();}
+});
+test('visual repair backup rejects out-of-scope geometry, blocks, pages and wrong attempt kinds atomically',()=>{
+ for(const change of [a=>a.kind='extraction',a=>a.transmitted_hash=null,a=>{const e=JSON.parse(a.evidence_json);e.crops[0].rect.width=2;a.evidence_json=JSON.stringify(e);},a=>{const e=JSON.parse(a.evidence_json);e.pageMap=[2];e.ownedPages=[2];e.crops[0].physicalPage=2;a.evidence_json=JSON.stringify(e);},a=>{const e=JSON.parse(a.evidence_json);e.crops[0].blockId='missing';a.evidence_json=JSON.stringify(e);}]){
+  const f=fixture();try{
+   const attempt=f.rows.source_ingestion_attempts[0];Object.assign(attempt,{kind:'repair',transmitted_hash:sha('final'),evidence_json:JSON.stringify({version:1,algorithm:'pdfjs-context-crop-v1',pageMap:[1],ownedPages:[1],crops:[{physicalPage:1,blockId:'table',rect:{x:.1,y:.2,width:.3,height:.1},accuracy:'approximate'}],fallback:'none'})});change(attempt);
+   assert.throws(()=>f.store.transaction(()=>restoreIngestionBackup(f.store,'default',new Map([['old-file',f.file.id]]),f.rows)),/Invalid PDF/);assert.equal(f.store.get('SELECT count(*) n FROM source_ingestion_attempts').n,0);
+  }finally{f.cleanup();}
+ }
+});
+test('input-budget visual fallback and quotation protocol version survive restore without crop claims',()=>{
+ const f=fixture();try{
+  const evidence={version:1,algorithm:'pdfjs-context-crop-v1',pageMap:[1],ownedPages:[1],crops:[],fallback:'input-budget'};
+  Object.assign(f.rows.source_ingestion_attempts[0],{kind:'repair',transmitted_hash:sha('original-window'),evidence_json:JSON.stringify(evidence),prompt_version:'pdf-repair-2'});
+  f.store.transaction(()=>restoreIngestionBackup(f.store,'default',new Map([['old-file',f.file.id]]),f.rows));
+  const row=f.store.get('SELECT evidence_json,prompt_version FROM source_ingestion_attempts');assert.deepEqual(JSON.parse(row.evidence_json),evidence);assert.equal(row.prompt_version,'pdf-repair-2');
+ }finally{f.cleanup();}
+});

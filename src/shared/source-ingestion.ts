@@ -1,6 +1,6 @@
 /** Provider output is untrusted. Only local assembly assigns citation IDs and offsets. */
 export const SOURCE_INGESTION_SCHEMA_VERSION=1 as const;
-export const SOURCE_INGESTION_PROMPT_VERSION='pdf-transcription-6';
+export const SOURCE_INGESTION_PROMPT_VERSION='pdf-transcription-7';
 export const SOURCE_INGESTION_ASSEMBLY_VERSION=1;
 export const SOURCE_INGESTION_MAX_CHARACTERS=16_000_000;
 export type SourceIngestionRoute='local'|'openai'|'gemini';
@@ -25,12 +25,21 @@ export interface SourceIngestionPage {
  unresolved:{description:string;blockId:string|null}[];
 }
 export type SourceIngestionBlockKind='paragraph'|'heading'|'table'|'equation'|'figure'|'caption'|'footnote'|'list'|'blockquote'|'code'|'theorem'|'lemma'|'proposition'|'corollary'|'definition'|'proof'|'example'|'remark'|'bibliography'|'furniture';
+export interface SourceIngestionDiagram {
+ nodes:{id:string;label:string;quote:string}[];
+ edges:{from:string;to:string;direction:'undirected'|'directed';label:string|null;quote:string|null}[];
+ uncertainty:string|null;
+}
 export interface SourceIngestionBlock {
  id:string;page:number;order:number;kind:SourceIngestionBlockKind;text:string;headingLevel:number|null;
  continues:string|null;
  table:{rows:number;columns:number;cells:{row:number;column:number;rowSpan:number;columnSpan:number;text:string}[]}|null;
  uncertainty:string|null;
- /** Any model location is approximate, never native citation geometry. */
+ /** Optional local layout diagnostics; never a transcription or mathematical defect. */
+ layoutWarnings?:string[];
+ /** Optional interpretation anchored in figure text; original page remains evidence. */
+ diagram?:SourceIngestionDiagram|null;
+ /** Normalized 0..1 top-left x/y plus width/height extents; approximate, never native citation geometry. */
  location:{x:number;y:number;width:number;height:number;accuracy:'approximate'}|null;
 }
 export interface SourceIngestionRelation {
@@ -62,4 +71,9 @@ export interface SourceProcessingRunView {
  windows?:{id:string;number:number;kind:'extraction'|'relations'|'page-recovery'|'enrichment';pages:number[];state:string;repairState:string;attempts:number;error:string|null}[];
  depth?:SourceIngestionDepth;reviewPolicy?:SourceIngestionReviewPolicy;
  enrichedWindows?:number;totalEnrichmentWindows?:number;canEnrich?:boolean;pendingMetadata?:number;
+}
+
+/** Shared by all provider prompts; direction is part of the persisted contract. */
+export function sourceIngestionRelationContract():string {
+ return 'Relation directions: heading-parent goes from child heading to parent heading; statement-proof from statement to its proof; footnote-callout from the content containing the callout to the footnote; caption from figure/table/equation to its caption; continuation and table-continuation from earlier block to later block in physical reading order; bibliography from heading to bibliography member or earlier bibliography block to later bibliography block. A proof continuing onto another page uses continuation between proof blocks. block.continues instead points from the later block backwards to the earlier same-kind block. Do not reverse endpoints to guess intent. Do not repeat the same continuation in both forms; retain ambiguous proposals as uncertainty.';
 }

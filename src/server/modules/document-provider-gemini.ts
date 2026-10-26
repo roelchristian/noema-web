@@ -1,4 +1,6 @@
+import {documentProviderRepairSchema} from './document-provider-repairs.js';
 import {candidateResult,checkDocumentRequest,documentRequestDeadline,documentRequestSystemPrompt,DocumentProviderError,providerHTTP,readDocumentResponse,tokenCount,type DocumentProvider,type DocumentRequest,type DocumentResult} from './document-provider.js';
+import {documentProviderGeometrySchema,normalizeDocumentProviderGeometry} from './document-provider-geometry.js';
 const base='https://generativelanguage.googleapis.com';
 export class GeminiDocumentProvider implements DocumentProvider {
  readonly provider='gemini' as const;
@@ -19,12 +21,13 @@ export class GeminiDocumentProvider implements DocumentProvider {
    request.signal?.throwIfAborted();request.onSubmitted?.();
    // Stable v1 accepts input steps; raw text/document content belongs inside
    // a user_input step (the bare content-array shorthand is v1beta-only).
-   const response=await providerHTTP(this.transport,`${base}/v1/interactions`,{method:'POST',headers:{...headers,'Content-Type':'application/json'},signal:request.signal,body:JSON.stringify({model:request.model,store:false,stream:false,system_instruction:documentRequestSystemPrompt(request),input:[{type:'user_input',content:[{type:'document',uri:file.uri,mime_type:'application/pdf'},{type:'text',text:request.prompt}]}],response_format:{type:'text',mime_type:'application/json',schema:request.schema},generation_config:{max_output_tokens:request.maxOutputTokens,thinking_level:request.reasoning??'medium',tool_choice:'none'}})},true);
+   const response=await providerHTTP(this.transport,`${base}/v1/interactions`,{method:'POST',headers:{...headers,'Content-Type':'application/json'},signal:request.signal,body:JSON.stringify({model:request.model,store:false,stream:false,system_instruction:documentRequestSystemPrompt(request),input:[{type:'user_input',content:[{type:'document',uri:file.uri,mime_type:'application/pdf'},{type:'text',text:request.prompt}]}],response_format:{type:'text',mime_type:'application/json',schema:documentProviderRepairSchema(documentProviderGeometrySchema('gemini',request.schema))},generation_config:{max_output_tokens:request.maxOutputTokens,thinking_level:request.reasoning??'medium',tool_choice:'none'}})},true);
    const result=await readDocumentResponse(response,undefined,true);if(typeof result.id==='string')request.onSubmitted?.(result.id);
    const content=Array.isArray(result.steps)?result.steps.flatMap((step:any)=>step?.type==='model_output'&&Array.isArray(step.content)?step.content:[]):[];
    const text=content.filter((part:any)=>part?.type==='text'&&typeof part.text==='string').map((part:any)=>part.text).join('');
    const usage=result.usage??{};
-   return candidateResult(result,request,text,content.some((part:any)=>part?.type==='refusal')?'refused':result.status==='completed'?'completed':'incomplete',{inputTokens:tokenCount(usage.total_input_tokens),outputTokens:tokenCount(usage.total_output_tokens),thinkingTokens:tokenCount(usage.total_thought_tokens),cachedInputTokens:tokenCount(usage.total_cached_tokens),cacheWriteTokens:0});
+   const extracted=candidateResult(result,request,text,content.some((part:any)=>part?.type==='refusal')?'refused':result.status==='completed'?'completed':'incomplete',{inputTokens:tokenCount(usage.total_input_tokens),outputTokens:tokenCount(usage.total_output_tokens),thinkingTokens:tokenCount(usage.total_thought_tokens),cachedInputTokens:tokenCount(usage.total_cached_tokens),cacheWriteTokens:0});
+   return extracted.status==='completed'?{...extracted,candidate:normalizeDocumentProviderGeometry('gemini',extracted.candidate)}:extracted;
   }finally{if(name)try{await providerHTTP(this.transport,`${base}/v1/${name}`,{method:'DELETE',headers,signal:AbortSignal.timeout(10000)});}catch{/* The provider also expires Files after 48 hours. */}}
  }
 }

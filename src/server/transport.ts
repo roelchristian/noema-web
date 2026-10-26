@@ -1,3 +1,5 @@
+import {sourceIngestionBlockNotes} from '../shared/source-evidence.js';
+import type {SourceIngestionPageEvidence} from '../shared/source-evidence.js';
 import {sourceIngestionEnabled,saveSourceIngestionSettings} from './modules/source-ingestion-settings.js';
 import {fetchSource} from './modules/source-import.js';
 import {parseSourceIngestionOptions} from './modules/source-ingestion-options.js';
@@ -176,7 +178,7 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
           if(!id && parts.length===2 && method==='POST') {
             const containsMath=url.searchParams.get('containsMath');
             if(containsMath!==null&&containsMath!=='true'&&containsMath!=='false')throw new HttpError(400,'Invalid math notation choice.');
-            let ingestion;
+            let ingestion:import('../shared/source-ingestion.js').SourceIngestionOptions|undefined;
             const encoded=url.searchParams.get('ingestion');
             if(encoded!==null){let value:unknown;try{value=JSON.parse(encoded);}catch{throw new HttpError(400,'Invalid PDF processing configuration.');}ingestion=parseSourceIngestionOptions(value);}
             const chunks:Buffer[]=[];let size=0;
@@ -194,7 +196,7 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
             const raw=evidence.rawExtraction as {ocrPages?:number;pageEvidence?:{page:number}[];unresolvedOutlines?:string[]}|undefined;
             const {originalAvailable,originalHash,originalBytes,admittedBytes,flattening,findings}=evidence;
             const authoritative=store.get<{document_json:string;provenance_json:string}>('SELECT document_json,provenance_json FROM source_ingestion_documents WHERE file_id=? AND vault_id=?',id,vault);
-            let ingestion;
+            let ingestion:SourceIngestionPageEvidence|undefined;
             if(authoritative){
               const document=JSON.parse(authoritative.document_json) as import('../shared/source-ingestion.js').SourceIngestionDocument;
               const provenance=JSON.parse(authoritative.provenance_json) as import('../shared/source-ingestion.js').SourceIngestionProvenance;
@@ -204,7 +206,7 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
               const frozen=store.get<{config_json:string}>('SELECT config_json FROM source_ingestion_runs WHERE published_document_id=(SELECT id FROM source_ingestion_documents WHERE file_id=?) AND vault_id=?',id,vault);
               const consent=frozen?JSON.parse(frozen.config_json) as import('../shared/source-ingestion.js').SourceIngestionOptions:null;
               const canRecoverPage=sourceIngestionEnabled(store)&&originalAvailable===true&&file.admitted===1&&consent?.transmissionConsent===true&&consent.route===provenance.provider&&['unreadable','image-only'].includes(physical.state)&&!blocks.some(block=>block.text.trim());
-              ingestion={provider:provenance.provider,model:provenance.returnedModel??provenance.requestedModel,page,pageState:physical.state,role:physical.role,canRecoverPage,text:blocks.map(block=>block.text).join('\n\n'),uncertainty:[...physical.unresolved.map(region=>region.description),...blocks.flatMap(block=>block.uncertainty?[block.uncertainty]:[]),...(physical.state==='unreadable'?['This physical page contains an unreadable region.']:physical.state==='image-only'?['This physical page has image-only content without a faithful textual representation.']:[])],coverage:provenance.coverage,independentEvidence:provenance.independentEvidence};
+              ingestion={provider:provenance.provider,model:provenance.returnedModel??provenance.requestedModel,page,pageState:physical.state,role:physical.role,canRecoverPage,layoutWarnings:[...new Set(blocks.flatMap(block=>sourceIngestionBlockNotes(block).layoutWarnings))],text:blocks.map(block=>block.text).join('\n\n'),uncertainty:[...physical.unresolved.map(region=>region.description),...blocks.flatMap(block=>{const note=sourceIngestionBlockNotes(block).uncertainty;return note?[note]:[];}),...(physical.state==='unreadable'?['This physical page contains an unreadable region.']:physical.state==='image-only'?['This physical page has image-only content without a faithful textual representation.']:[])],coverage:provenance.coverage,independentEvidence:provenance.independentEvidence};
             }
             return send(200,{originalAvailable,originalHash,originalBytes,admittedBytes,flattening,findings,ingestion,
               rawExtraction:raw?{ocrPages:raw.ocrPages,unresolvedOutlines:raw.unresolvedOutlines,pageEvidence:raw.pageEvidence?.filter(item=>item.page===page)}:undefined});

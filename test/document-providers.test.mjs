@@ -136,7 +136,7 @@ for(const provider of ['openai','gemini'])test(`${provider}: targeted task instr
   await adapter.extract({...base,model,task});
   const instructions=observed.instructions??observed.system_instruction;
   assert.match(instructions,/untrusted/);assert.match(instructions,/only/i);assert.doesNotMatch(instructions,/Transcribe the entire/);
-  assert.match(instructions,task==='relations'?/existing block IDs/:/exact-span repair/);
+  assert.match(instructions,task==='relations'?/existing block IDs/:/quotation-anchored transcription repair/);
  }
 });
 
@@ -154,4 +154,17 @@ test('Gemini stable v1 wraps PDF and prompt in a user_input step and reads only 
  }));
  const completed=await adapter.extract({...base,model:'gemini-3.8-flash'});
  assert.equal(generations,1);assert.equal(completed.status,'completed');assert.deepEqual(completed.candidate,result);assert.equal(completed.requestId,'interaction_1');
+});
+
+test('mathematical fidelity contract distinguishes decorated variables and printed-source errors',async()=>{
+ const {scholarlyMathPrompt}=await import('../src/server/modules/source-math-prompt.ts');
+ const {documentRequestSystemPrompt}=await import('../src/server/modules/document-provider.ts');
+ for(const notation of ['$H$','$\\bar{H}$','$\\widehat{H}$',"$H'$",'$G_{a.b}$','$r(a,b)$','$\\sqrt{-1}$'])assert.ok(scholarlyMathPrompt.includes(notation),notation);
+ const katex=(await import('katex')).default;
+ for(const [,expression] of scholarlyMathPrompt.matchAll(/(?<!\$)\$(?!\$)([^$\n]+)\$(?!\$)/g))if(expression!=='...')assert.doesNotThrow(()=>katex.renderToString(expression,{throwOnError:true,strict:'error',trust:false}));
+ assert.match(scholarlyMathPrompt,/never silently drop a bar, hat or prime/);
+ assert.match(scholarlyMathPrompt,/separate source-error review note/);
+ assert.match(scholarlyMathPrompt,/never an OCR repair or a corrected baseline/);
+ const system=documentRequestSystemPrompt({task:'repair'});
+ assert.match(system,/server calculates offsets/);assert.match(system,/never in OCR\/transcription repairs/);
 });

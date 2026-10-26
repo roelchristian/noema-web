@@ -1,7 +1,8 @@
+import {validateSourceIngestionVisualEvidence,type SourceIngestionVisualEvidenceInput,type SourceIngestionVisualEvidenceManifest} from './source-ingestion-visual-evidence.js';
 import {applySourceIngestionEnrichment,SOURCE_INGESTION_ENRICHMENT_PROMPT_VERSION} from './source-ingestion-enrichment.js';
 import {resolveSourceIngestionAssembly} from './source-ingestion-document.js';
 import {sourceIngestionBoundaryRelationRequests,reconcileSourceIngestionRelations,type SourceIngestionBoundaryRequest} from './source-ingestion-relations.js';
-import {validateSourceIngestionTargetedRepairs} from './source-ingestion-targeted-repair.js';
+import {SOURCE_INGESTION_TARGETED_REPAIR_PROMPT_VERSION,validateSourceIngestionTargetedRepairs} from './source-ingestion-targeted-repair.js';
 import {maxSourceTextBytes} from '../../shared/source-input.js';
 import {documentModel,documentPrice,documentRegistryVersion} from '../../shared/document-models.js';
 import {parseSourceIngestionOptions} from './source-ingestion-options.js';
@@ -26,7 +27,8 @@ export interface IngestionDependencies {
  extract(input:{vaultId:string;fileId:string;options:SourceIngestionOptions;pdf:Uint8Array;pageMap:number[];plan:SourceIngestionWindowPlan;context?:unknown;signal:AbortSignal;onSubmitted:(id?:string)=>void}):Promise<{status:string;candidate?:unknown;requestId?:string;usage:unknown;responseHash:string;returnedModel?:string|null}>;
  relate?:(input:Parameters<IngestionDependencies['extract']>[0]&{document:SourceIngestionDocument;request:SourceIngestionBoundaryRequest})=>ReturnType<IngestionDependencies['extract']>;
  enrich?:(input:Parameters<IngestionDependencies['extract']>[0]&{document:SourceIngestionDocument})=>ReturnType<IngestionDependencies['extract']>;
- repair?:(input:Parameters<IngestionDependencies['extract']>[0]&{document:SourceIngestionDocument})=>ReturnType<IngestionDependencies['extract']>;
+ prepareRepairEvidence?:(input:SourceIngestionVisualEvidenceInput)=>Promise<{bytes:Uint8Array;pageMap:number[];evidence:SourceIngestionVisualEvidenceManifest}>;
+ repair?:(input:Parameters<IngestionDependencies['extract']>[0]&{document:SourceIngestionDocument;visualEvidence?:SourceIngestionVisualEvidenceManifest})=>ReturnType<IngestionDependencies['extract']>;
  reconcile?:(file:SourceFile,document:SourceIngestionDocument,assembly:ReturnType<typeof assembleSourceIngestionDocument>,options:SourceIngestionOptions)=>void;
 }
 /** Durable paid-work boundary: submitted attempts never become retryable merely because a process died. */
@@ -232,13 +234,20 @@ export class SourceIngestion {
     if(!this.dependencies.repair||!shouldRepair){this.store.run("UPDATE source_ingestion_windows SET repair_state='skipped' WHERE id=?",window.id);continue;}
     if(run.published_document_id)preflightSourceIngestionRepairCapacity(this.store,this.file(run.vault_id,run.file_id));
     const plan=JSON.parse(window.plan_json) as SourceIngestionWindowPlan;
-    const pdf=await this.dependencies.split(prepared.bytes,[...plan.contextPages,...plan.ownedPages]);assertActive();
+    let pdf=await this.dependencies.split(prepared.bytes,[...plan.contextPages,...plan.ownedPages]);assertActive();
+    let visualEvidence:SourceIngestionVisualEvidenceManifest|undefined;
+    if(run.published_document_id&&this.dependencies.prepareRepairEvidence){
+     const visual=await this.dependencies.prepareRepairEvidence({pdf:pdf.bytes,pageMap:pdf.pageMap,document,plan,options,signal:controller.signal});assertActive();
+     visualEvidence=validateSourceIngestionVisualEvidence(visual.evidence);
+     if(JSON.stringify(visual.pageMap)!==JSON.stringify(pdf.pageMap)||JSON.stringify(visualEvidence.pageMap)!==JSON.stringify(pdf.pageMap)||JSON.stringify(visualEvidence.ownedPages)!==JSON.stringify(plan.ownedPages))throw new Error('Visual repair evidence changed physical page ownership');
+     pdf={bytes:visual.bytes,pageMap:visual.pageMap};
+    }
     try{this.checkBudget(run,options,pdf);}catch(error){this.store.run("UPDATE source_ingestion_windows SET repair_state='skipped',error=? WHERE id=?",error instanceof Error?error.message:'Optional repair budget exhausted',window.id);continue;}
     this.store.run("UPDATE source_ingestion_runs SET stage='repair',updated_at=? WHERE id=?",now(),run.id);
-    const attempt=randomUUID();this.store.run("INSERT INTO source_ingestion_attempts(id,window_id,state,kind,transmitted_hash,created_at,updated_at) VALUES(?,?,'prepared','repair',?,?,?)",attempt,window.id,hash(pdf.bytes),now(),now());
+    const attempt=randomUUID();this.store.run("INSERT INTO source_ingestion_attempts(id,window_id,state,kind,transmitted_hash,evidence_json,prompt_version,created_at,updated_at) VALUES(?,?,'prepared','repair',?,?,?,?,?)",attempt,window.id,hash(pdf.bytes),visualEvidence?JSON.stringify(visualEvidence):null,SOURCE_INGESTION_TARGETED_REPAIR_PROMPT_VERSION,now(),now());
     this.store.run("UPDATE source_ingestion_windows SET repair_state='running' WHERE id=?",window.id);
     try{
-     const response=await this.dependencies.repair({vaultId:run.vault_id,fileId:run.file_id,options,pdf:pdf.bytes,pageMap:pdf.pageMap,plan,context,document,signal:controller.signal,onSubmitted:id=>{this.store.run("UPDATE source_ingestion_attempts SET state='submitted',request_id=?,updated_at=? WHERE id=?",id??null,now(),attempt);}});
+     const response=await this.dependencies.repair({vaultId:run.vault_id,fileId:run.file_id,options,pdf:pdf.bytes,pageMap:pdf.pageMap,plan,context,document,visualEvidence,signal:controller.signal,onSubmitted:id=>{this.store.run("UPDATE source_ingestion_attempts SET state='submitted',request_id=?,updated_at=? WHERE id=?",id??null,now(),attempt);}});
      this.store.run("UPDATE source_ingestion_attempts SET state=?,request_id=?,usage_json=?,response_hash=?,returned_model=?,updated_at=? WHERE id=?",response.status==='completed'?'completed':'invalid',response.requestId??null,JSON.stringify(response.usage),response.responseHash,response.returnedModel??null,now(),attempt);
      if(response.status!=='completed')throw new Error('Optional targeted repair returned '+response.status+' output.');
      const repairs=validateSourceIngestionTargetedRepairs(response.candidate,document,{ownedPages:plan.ownedPages,depth:options.depth});
@@ -289,7 +298,8 @@ export class SourceIngestion {
    validated=validateSourceIngestionDocument(normalizeSourceIngestionCandidate(validated),{ownedPages:Array.from({length:prepared.pageCount},(_,index)=>index+1),pageCount:prepared.pageCount});
    const assembly=assembleSourceIngestionDocument(validated,{extractionId:run.id});
    if(Buffer.byteLength(assembly.text)>maxSourceTextBytes)throw new Error('Ingestion transcription exceeds the source text byte limit.');
-   const ledger=Object.fromEntries(['transcription','structure','metadata','math','apparatus','synopsis','authors'].map(key=>[key,{state:key==='math'&&!options.containsMath||!this.dependencies.enrich&&(key==='synopsis'&&!validated.metadata.synopsis||key==='authors'&&!validated.metadata.contributors.length)||key==='apparatus'&&!validated.blocks.some(b=>b.kind==='footnote')?'not-requested':key==='metadata'||key==='synopsis'&&!validated.metadata.synopsis||(key==='transcription'&&validated.pages.some(p=>p.state==='unreadable'||p.state==='image-only'||p.unresolved.length))||(key==='structure'&&(validated.relations.some(r=>r.uncertain)||validated.blocks.some(block=>block.uncertainty)))?'requires-review':'completed',fingerprint:run.fingerprint}])) as SourceIngestionCompletionLedger;
+   const ledger=Object.fromEntries(['transcription','structure','metadata','math','apparatus','synopsis','authors'].map(key=>[key,{state:key==='math'&&!options.containsMath||!this.dependencies.enrich&&(key==='synopsis'&&!validated.metadata.synopsis||key==='authors'&&!validated.metadata.contributors.length)||key==='apparatus'&&!validated.blocks.some(b=>b.kind==='footnote')?'not-requested':key==='metadata'||key==='synopsis'&&!validated.metadata.synopsis||(key==='transcription'&&validated.pages.some(p=>p.state==='unreadable'||p.state==='image-only'||p.unresolved.length))||(key==='structure'&&(validated.relations.some(r=>r.uncertain)||validated.blocks.some(block=>block.uncertainty||block.layoutWarnings?.length||block.diagram?.uncertainty)))?'requires-review':'completed',fingerprint:run.fingerprint}])) as SourceIngestionCompletionLedger;
+   if(options.containsMath&&sourceIngestionRepairFindings(validated).some(finding=>finding.kind==='math-review'))ledger.math.state='requires-review';
    if(validated.pages.some(p=>p.unresolved.length)){ledger.structure.state='requires-review';if(ledger.apparatus.state==='completed')ledger.apparatus.state='requires-review';}
    if(this.store.get("SELECT 1 FROM source_ingestion_windows WHERE run_id=? AND (repair_state='failed' OR repair_state='skipped' AND error IS NOT NULL)",run.id))ledger.structure.state='requires-review';
    assertActive();this.store.transaction(()=>{

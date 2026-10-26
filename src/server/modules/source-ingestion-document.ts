@@ -1,3 +1,5 @@
+import {sourceIngestionBlockNotes} from '../../shared/source-evidence.js';
+import {sourceMathAnnotations} from '../../shared/source-math-annotations.js';
 import {normalizeSourceIngestionCandidate} from './source-ingestion-validation.js';
 import {numberSourceNodes} from '../../shared/source-document.js';
 import type {SourceFile} from '../../shared/domain.js';
@@ -43,7 +45,16 @@ export function resolveSourceDocument(store:Store,file:SourceFile) {
  if(!row)return document;
  const assembly=resolveSourceIngestionAssembly(store,file)!;
  if(assembly.text!==file.text)throw new Error('Authoritative ingestion text does not match this reading.');
- document.semantic.children=numberSourceNodes(sourceIngestionSemanticTree(assembly.semanticNodes,assembly.relations));
+ const sourceBlocks=new Map(assembly.document.blocks.map(block=>[block.id,block]));
+ const byImmutableId=new Map(assembly.blockRanges.map(range=>[range.id,sourceBlocks.get(range.temporaryId)!]));
+ const leaves=assembly.semanticNodes.map(leaf=>{
+  const block=byImmutableId.get(leaf.id);if(!block)return leaf;
+  const math=sourceMathAnnotations(block.text),notes=sourceIngestionBlockNotes(block);
+  return {...leaf,ingestion:{...leaf.ingestion!,uncertainty:notes.uncertainty,...(notes.layoutWarnings.length?{layoutWarnings:notes.layoutWarnings}:{}),
+   ...(math.formulas.length||math.review.length?{math}:{}),...(block.diagram?{diagram:block.diagram}:{}),
+   ...(block.kind==='figure'?{figureEvidence:{physicalPage:block.page,location:block.location,representation:'original-page-image' as const,approximate:true as const}}:{})}};
+ });
+ document.semantic.children=numberSourceNodes(sourceIngestionSemanticTree(leaves,assembly.relations));
  const immutableIds=new Map(assembly.blockRanges.map(range=>[range.temporaryId,range.id]));
  return Object.assign(document,{ingestion:{documentId:row.id,contentHash:assembly.contentHash,assemblyVersion:row.assembly_version,relations:assembly.relations,blocks:assembly.document.blocks.map(block=>({...block,immutableId:immutableIds.get(block.id)!})),pages:assembly.document.pages,provenance:JSON.parse(row.provenance_json) as SourceIngestionProvenance}});
 }

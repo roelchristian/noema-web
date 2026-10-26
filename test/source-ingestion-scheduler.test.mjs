@@ -289,3 +289,41 @@ for(const depth of ['light','balanced','deep'])test(`fresh ${depth} PDF ingestio
  const attempts=f.store.all('SELECT kind FROM source_ingestion_attempts');assert.equal(attempts.length,view.totalWindows);assert.ok(attempts.every(attempt=>attempt.kind==='extraction'));const windows=f.store.all("SELECT repair_state FROM source_ingestion_windows WHERE kind='extraction'");assert.ok(windows.every(window=>window.repair_state==='skipped'));
  const file=f.files.require('default',f.file.id);assert.equal(file.generated_name,'Joint source output');assert.equal(file.language,'en');assert.match(file.summary,/returned with the faithful transcription/);assert.match(file.text,/physical boundary/);const doc=JSON.parse(f.store.get('SELECT document_json FROM source_ingestion_documents').document_json);assert.equal(doc.pages.length,10);assert.ok(doc.blocks.some(block=>block.uncertainty?.includes('heading')));assert.equal(f.store.get("SELECT count(*) n FROM source_ingestion_windows WHERE kind IN ('relations','enrichment')").n,0);
 });
+
+test('layout-only provider warnings mark structure for review without resending transcription',async t=>{
+ let repairs=0;
+ const f=setup(t,{extract:async input=>{input.onSubmitted();const candidate=ir(input.plan.ownedPages);candidate.blocks[0].layoutWarnings=['Approximate diagram layout requires review.'];return {status:'completed',candidate,usage:{inputTokens:1,outputTokens:2},responseHash:sha('layout')};}});
+ f.dependencies.repair=async()=>{repairs++;throw new Error('Layout-only warnings cannot trigger a transcription request');};
+ f.ingestion.stage('default',f.file.id,f.options);await f.ingestion.tick();
+ assert.equal(f.ingestion.view('default',f.file.id).state,'completed');assert.equal(f.calls(),1);assert.equal(repairs,0);
+ const record=f.store.get('SELECT capabilities_json,document_json FROM source_ingestion_documents WHERE file_id=?',f.file.id),ledger=JSON.parse(record.capabilities_json),document=JSON.parse(record.document_json);
+ assert.equal(ledger.structure.state,'requires-review');assert.equal(ledger.transcription.state,'completed');assert.equal(document.blocks[0].uncertainty,null);assert.deepEqual(document.blocks[0].layoutWarnings,['Approximate diagram layout requires review.']);
+});
+
+test('explicit published repair prepares visual bytes before recording exact attempt hash and evidence',async t=>{
+ let prepared=0,repairs=0;
+ const f=setup(t,{extract:async input=>{input.onSubmitted();const candidate=ir(input.plan.ownedPages);candidate.blocks[0].uncertainty='Unclear bar';return {status:'completed',candidate,usage:{inputTokens:1,outputTokens:2},responseHash:sha('first')};}});
+ const evidence={version:1,algorithm:'pdfjs-context-crop-v1',pageMap:[1,2],ownedPages:[1,2],crops:[{physicalPage:1,blockId:'b1',rect:{x:.1,y:.2,width:.3,height:.1},accuracy:'approximate'}],fallback:'none'};
+ const bytes=Buffer.from('full page context alongside magnified region');
+ f.dependencies.prepareRepairEvidence=async input=>{prepared++;assert.equal(f.store.get("SELECT count(*) n FROM source_ingestion_attempts WHERE kind='repair'").n,0);assert.deepEqual(input.pageMap,[1,2]);return {bytes,pageMap:input.pageMap,evidence};};
+ f.dependencies.repair=async input=>{repairs++;assert.deepEqual(input.pdf,bytes);assert.deepEqual(input.visualEvidence,evidence);const attempt=f.store.get("SELECT transmitted_hash,evidence_json,prompt_version FROM source_ingestion_attempts WHERE kind='repair'");assert.equal(attempt.transmitted_hash,sha(bytes));assert.equal(attempt.prompt_version,'pdf-repair-2');assert.deepEqual(JSON.parse(attempt.evidence_json),evidence);input.onSubmitted();return {status:'completed',candidate:{repairs:[]},usage:{inputTokens:1,outputTokens:2},responseHash:sha('visual-repair')};};
+ f.ingestion.stage('default',f.file.id,f.options);await f.ingestion.tick();assert.equal(prepared,0);assert.equal(repairs,0);const baseline=f.files.require('default',f.file.id).text;
+ retryLegacyOptionalFailure(f);await f.ingestion.tick();assert.equal(prepared,1);assert.equal(repairs,1);assert.equal(f.calls(),1);assert.equal(f.files.require('default',f.file.id).text,baseline);
+});
+test('visual derivative size is budgeted before a repair attempt or provider dispatch',async t=>{
+ let prepared=0,repairs=0;
+ const f=setup(t,{extract:async input=>{input.onSubmitted();const candidate=ir(input.plan.ownedPages);candidate.blocks[0].uncertainty='Unclear sign';return {status:'completed',candidate,usage:{inputTokens:1,outputTokens:2},responseHash:sha('first')};}});f.options.budget.maxCostUsd=1;
+ f.dependencies.prepareRepairEvidence=async input=>{prepared++;return {bytes:Buffer.alloc(2_000_000),pageMap:input.pageMap,evidence:{version:1,algorithm:'pdfjs-context-crop-v1',pageMap:input.pageMap,ownedPages:input.plan.ownedPages,crops:[],fallback:'no-valid-geometry'}};};
+ f.dependencies.repair=async()=>{repairs++;throw Error('Budget should prevent submission');};
+ f.ingestion.stage('default',f.file.id,f.options);await f.ingestion.tick();retryLegacyOptionalFailure(f);await f.ingestion.tick();
+ assert.equal(prepared,1);assert.equal(repairs,0);assert.equal(f.store.get("SELECT count(*) n FROM source_ingestion_attempts WHERE kind='repair'").n,0);assert.equal(f.files.require('default',f.file.id).status,'ready');
+});
+
+test('local math review findings mark math for review without a second paid request or canonical rewrite',async t=>{
+ let repairs=0;
+ const f=setup(t,{extract:async input=>{input.onSubmitted();return {status:'completed',candidate:ir(input.plan.ownedPages,'The source has $[unreadable sign]4$.'),usage:{inputTokens:1,outputTokens:2},responseHash:sha('math')};}});
+ f.options.containsMath=true;f.dependencies.repair=async()=>{repairs++;throw new Error('Local math review does not authorize a second request');};
+ f.ingestion.stage('default',f.file.id,f.options);await f.ingestion.tick();
+ assert.equal(f.ingestion.view('default',f.file.id).state,'completed');assert.equal(f.calls(),1);assert.equal(repairs,0);
+ const ledger=JSON.parse(f.store.get('SELECT capabilities_json FROM source_ingestion_documents WHERE file_id=?',f.file.id).capabilities_json);assert.equal(ledger.math.state,'requires-review');assert.match(f.files.require('default',f.file.id).text,/unreadable sign/);
+});

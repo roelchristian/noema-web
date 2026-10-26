@@ -280,3 +280,13 @@ test('LaTeX superscript footnote labels use Noema notes and retain complete cano
  const ambiguous=[{node:{...nodes[0],text:'Repeated.$^1$ Another.$^1$'},path:[]},entries[1]];assert.equal(sourceRelationFootnotes(ambiguous,[relations[0]],'f').links.size,0);
  assert.equal(sourceRelationFootnotes(entries,relations.map(r=>({...r,uncertain:true})),'f').links.size,0);
 });
+
+test('provider layout notes stay separate from transcription notes and never trigger recovery',async t=>{
+ const {setupDOM}=await import('./helpers/dom.mjs');const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
+ const calls=[];t.mock.method(globalThis,'fetch',async(route,options)=>{calls.push({route,options});return Response.json({originalAvailable:true,ingestion:{provider:'gemini',model:'fixture-model',page:1,pageState:'content',role:'owned',canRecoverPage:false,text:'Preserved $\\bar{H}$ formula.',uncertainty:['The printed exponent is unclear.'],layoutWarnings:['An approximate diagram connection needs review.']}});});
+ await act(async()=>root.render(React.createElement(SourceEvidence,{vaultId:'v',fileId:'layout.pdf',pageCount:1,page:1,onPage:()=>{}})));
+ const textNotes=document.querySelector('[aria-label="Transcription notes"]'),layoutNotes=document.querySelector('[aria-label="Layout notes"]');
+ assert.match(textNotes.textContent,/printed exponent/);assert.doesNotMatch(textNotes.textContent,/diagram connection/);
+ assert.match(layoutNotes.textContent,/diagram connection/);assert.doesNotMatch(layoutNotes.textContent,/printed exponent/);
+ assert.equal(document.querySelector('.source-evidence-comparison pre').textContent,'Preserved $\\bar{H}$ formula.');assert.ok(calls.every(call=>call.options.method==='GET'));assert.equal([...document.querySelectorAll('button')].some(button=>/Recover/.test(button.textContent)),false);
+});

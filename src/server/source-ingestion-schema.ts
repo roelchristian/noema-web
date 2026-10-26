@@ -34,5 +34,6 @@ export function setupSourceIngestionSchema(db:DatabaseSync) {
  if(!attempts.some(c=>c.name==='kind'))db.exec("ALTER TABLE source_ingestion_attempts ADD COLUMN kind TEXT NOT NULL DEFAULT 'extraction'");
  if(!attempts.some(c=>c.name==='returned_model'))db.exec('ALTER TABLE source_ingestion_attempts ADD COLUMN returned_model TEXT');
  if(!attempts.some(c=>c.name==='candidate_json'))db.exec('ALTER TABLE source_ingestion_attempts ADD COLUMN candidate_json TEXT');
+ if(!attempts.some(c=>c.name==='evidence_json'))db.exec('ALTER TABLE source_ingestion_attempts ADD COLUMN evidence_json TEXT');
  if(!attempts.some(c=>c.name==='prompt_version'))db.exec('ALTER TABLE source_ingestion_attempts ADD COLUMN prompt_version TEXT');
 }

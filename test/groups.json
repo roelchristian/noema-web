@@ -48,7 +48,13 @@
     "test/source-ingestion-security.test.mjs",
     "test/source-ingestion-options.test.mjs",
     "test/source-ingestion-targeted-repair.test.mjs",
-    "test/source-ingestion-relations.test.mjs"
+    "test/source-ingestion-visual-evidence.test.mjs",
+    "test/source-ingestion-relations.test.mjs",
+    "test/source-math-annotations.test.mjs",
+    "test/source-ingestion-geometry.test.mjs",
+    "test/source-ingestion-diagram.test.mjs",
+    "test/source-ingestion-layout-evidence.test.mjs",
+    "test/document-provider-diagnostics.test.mjs"
   ],
   "dom": [
     "test/trash-ui.test.mjs",
@@ -125,7 +131,8 @@
     "test/persona-comparison.test.mjs",
     "test/chat-research.test.mjs",
     "test/chat-evidence-panel.test.mjs",
-    "test/chat-reliability.test.mjs"
+    "test/chat-reliability.test.mjs",
+    "test/source-reader-math.test.mjs"
   ],
   "server": [
     "test/activity-page-titles.test.mjs",
@@ -277,6 +284,7 @@
     "test/page-read-overhead.test.mjs",
     "test/page-assessment-lifecycle.test.mjs",
     "test/document-providers.test.mjs",
+    "test/document-provider-repairs.test.mjs",
     "test/source-ingestion-corrections.test.mjs",
     "test/source-ingestion-restore.test.mjs",
     "test/source-ingestion-scheduler.test.mjs",

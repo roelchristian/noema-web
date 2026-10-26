@@ -1,3 +1,4 @@
+import {validateSourceIngestionVisualEvidence} from './source-ingestion-visual-evidence.js';
 import {randomUUID,createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {SourceFiles} from './source-files.js';
@@ -104,7 +105,20 @@ export function restoreIngestionBackup(store:Store,vault:string,files:Map<string
    if(Buffer.byteLength(candidate,'utf8')>24*1024*1024)throw invalid();
    try{object(JSON.parse(candidate));}catch{throw invalid();}
   }
-  store.run('INSERT INTO source_ingestion_attempts(id,window_id,state,kind,transmitted_hash,request_id,usage_json,response_hash,returned_model,candidate_json,prompt_version,error,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)',randomUUID(),window,state,kind,row.transmitted_hash==null?null:hash(row,'transmitted_hash'),null,row.usage_json==null?null:text(row,'usage_json',100_000),row.response_hash==null?null:hash(row,'response_hash'),returned,candidate,promptVersion,row.error==null?null:text(row,'error',20_000),date(row,'created_at'),date(row,'updated_at'));
+  let visualEvidence:string|null=null;
+  if(row.evidence_json!=null){
+   try{
+    if(kind!=='repair'||row.transmitted_hash==null)throw invalid();
+    const evidence=validateSourceIngestionVisualEvidence(JSON.parse(text(row,'evidence_json',16_000)));
+    const scope=store.get<{plan_json:string;result_json:string|null;page_count:number}>('SELECT w.plan_json,w.result_json,r.page_count FROM source_ingestion_windows w JOIN source_ingestion_runs r ON r.id=w.run_id WHERE w.id=?',window)!;
+    const windowPlan=JSON.parse(scope.plan_json) as SourceIngestionWindowPlan;
+    if(JSON.stringify(evidence.pageMap)!==JSON.stringify([...windowPlan.contextPages,...windowPlan.ownedPages])||JSON.stringify(evidence.ownedPages)!==JSON.stringify(windowPlan.ownedPages)||evidence.pageMap.some(page=>page>scope.page_count)||!scope.result_json)throw invalid();
+    const document=JSON.parse(scope.result_json) as SourceIngestionDocument;
+    if(evidence.crops.some(crop=>!document.blocks.some(block=>block.id===crop.blockId&&block.page===crop.physicalPage)))throw invalid();
+    visualEvidence=JSON.stringify(evidence);
+   }catch{throw invalid();}
+  }
+  store.run('INSERT INTO source_ingestion_attempts(id,window_id,state,kind,transmitted_hash,request_id,usage_json,response_hash,returned_model,candidate_json,prompt_version,evidence_json,error,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',randomUUID(),window,state,kind,row.transmitted_hash==null?null:hash(row,'transmitted_hash'),null,row.usage_json==null?null:text(row,'usage_json',100_000),row.response_hash==null?null:hash(row,'response_hash'),returned,candidate,promptVersion,visualEvidence,row.error==null?null:text(row,'error',20_000),date(row,'created_at'),date(row,'updated_at'));
  }
  const mergedByRun=new Map<string,SourceIngestionDocument>();
  for(const relation of relationResults.sort((a,b)=>a.plan.index-b.plan.index)){

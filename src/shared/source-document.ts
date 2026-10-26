@@ -1,3 +1,4 @@
+import type {SourceMathAnnotations} from './source-math-annotations.js';
 import type {SourceIngestionBlock,SourceIngestionPage,SourceIngestionProvenance} from './source-ingestion.js';
 import type {SourceStructureKind,SourceReference} from './domain.js';
 
@@ -18,7 +19,7 @@ export interface SourceDocumentNode {
  /** Local rules cannot always establish an exact statement/proof ending. */
  extent?:'explicit'|'inferred';
  /** Additive rich extraction data; geometry remains model-estimated and approximate. */
- ingestion?:{kind:SourceIngestionBlock['kind'];table:SourceIngestionBlock['table'];location:SourceIngestionBlock['location'];uncertainty:string|null;furniture:boolean;continues:string|null};
+ ingestion?:{kind:SourceIngestionBlock['kind'];table:SourceIngestionBlock['table'];location:SourceIngestionBlock['location'];uncertainty:string|null;layoutWarnings?:string[];math?:SourceMathAnnotations;diagram?:SourceIngestionBlock['diagram'];figureEvidence?:{physicalPage:number;location:SourceIngestionBlock['location'];representation:'original-page-image';approximate:true};furniture:boolean;continues:string|null};
  children?:SourceDocumentNode[];
 }
 export interface SourceDocument {

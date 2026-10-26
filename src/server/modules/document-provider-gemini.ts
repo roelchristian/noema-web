@@ -1,11 +1,11 @@
-import {candidateResult,checkDocumentRequest,documentSystemPrompt,DocumentProviderError,providerHTTP,readDocumentResponse,tokenCount,type DocumentProvider,type DocumentRequest,type DocumentResult} from './document-provider.js';
+import {candidateResult,checkDocumentRequest,documentRequestDeadline,documentSystemPrompt,DocumentProviderError,providerHTTP,readDocumentResponse,tokenCount,type DocumentProvider,type DocumentRequest,type DocumentResult} from './document-provider.js';
 const base='https://generativelanguage.googleapis.com';
 export class GeminiDocumentProvider implements DocumentProvider {
  readonly provider='gemini' as const;
  readonly capabilities={pdf:true as const,structuredOutput:true as const,remoteRetentionHours:48,retrieve:false,cancel:false,explicitCaching:false as const};
  constructor(private readKey:()=>string,private transport:typeof fetch=fetch){}
  async extract(request:DocumentRequest):Promise<DocumentResult>{
-  checkDocumentRequest(this.provider,request);const key=this.readKey();if(!key)throw new DocumentProviderError('credentials',503,'Configure the Gemini server credential first.');
+  request=documentRequestDeadline(request);checkDocumentRequest(this.provider,request);const key=this.readKey();if(!key)throw new DocumentProviderError('credentials',503,'Configure the Gemini server credential first.');
   const headers={'x-goog-api-key':key};let name:string|undefined;
   try{
    // Multipart Files upload: file handles are transport details, never a source of record.

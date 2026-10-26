@@ -199,8 +199,15 @@ export class Intelligence {
     return {configured:!!credential,expiresAt:credential?.expiresAt??null,credentialStorage:process.platform==='darwin'?'keychain':'server',modelAccess:'unchecked' as const,models:documentModels.filter(model=>model.provider===provider)};
   }
   documentProvider(provider:'openai'|'gemini') {
-    const readKey=()=>{const credential=provider==='openai'?this.credential():this.geminiCredential();if(!credential)throw new HttpError(409,'Configure an unexpired server credential for the selected document provider.');return credential.key;};
-    return provider==='openai'?new OpenAIDocumentProvider(readKey,this.transport):new GeminiDocumentProvider(readKey,this.transport);
+    const getCredential=()=>{const credential=provider==='openai'?this.credential():this.geminiCredential();if(!credential)throw new HttpError(409,'Configure an unexpired server credential for the selected document provider.');return credential;};
+    const create=(key:string)=>provider==='openai'?new OpenAIDocumentProvider(()=>key,this.transport):new GeminiDocumentProvider(()=>key,this.transport);
+    return {provider,capabilities:create('').capabilities,extract:async(request:import('./document-provider.js').DocumentRequest)=>{
+      // Freeze the key only for this attempt. Expiry and caller cancellation bound
+      // the same transport signal; no credential material enters the durable job.
+      const credential=getCredential(),remaining=Math.max(1,Date.parse(credential.expiresAt)-this.clock());
+      const expiry=AbortSignal.timeout(Math.min(remaining,2_147_483_647));
+      return create(credential.key).extract({...request,signal:request.signal?AbortSignal.any([request.signal,expiry]):expiry});
+    }};
   }
   selection(): IntelligencePreferences {return {...this.preferences};}
   editorialImageCapability(){return intelligenceModels.find(model=>model.id===this.selection().model)?.imageInput===true;}

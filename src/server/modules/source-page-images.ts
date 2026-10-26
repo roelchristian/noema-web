@@ -1,6 +1,8 @@
+import {PdfPlatform} from './pdf-platform.js';
+import {createHash} from 'node:crypto';
 import {preparePDFWorker} from './pdf-worker.js';
 import {spawn,type ChildProcess} from 'node:child_process';
-import {existsSync,statSync,mkdirSync,renameSync,rmSync,realpathSync} from 'node:fs';
+import {existsSync,readFileSync,statSync,mkdirSync,renameSync,rmSync,realpathSync} from 'node:fs';
 import {randomUUID} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
@@ -12,18 +14,27 @@ import {HttpError} from '../validation.js';
 export class SourcePageImages {
  private compiler?:Promise<string>;private children=new Set<ChildProcess>();private closed=false;
  private pending=new Map<string,Promise<Buffer>>();private cache=new Map<string,Buffer>();
+ private portable=new PdfPlatform();private portableControllers=new Set<AbortController>();
  constructor(private files:SourceFiles){}
  async get(vault:string,id:string,page:number){
   const file=this.files.require(vault,id);
   if(file.admitted!==1||file.status!=='ready'||file.format!=='pdf')throw new HttpError(409,'Page images are available for processed PDFs only.');
   if(!Number.isSafeInteger(page)||page<1||page>(file.pages??0))throw new HttpError(400,'Choose a valid source page.');
-  if(process.platform!=='darwin')throw new HttpError(501,'PDF page images currently require macOS.');
   if(this.closed)throw new HttpError(503,'Page rendering is shutting down.');
   const filename=this.files.filename(vault,id),stat=statSync(filename),key=`${filename}:${stat.mtimeMs}:${stat.size}:${page}`;
   const cached=this.cache.get(key);if(cached)return cached;
   const pending=this.pending.get(key);if(pending)return pending;
   if(this.pending.size>=2)throw new HttpError(429,'Page rendering is busy. Try again shortly.');
   const work=(async()=>{
+   if(process.platform!=='darwin'){
+    const bytes=readFileSync(filename),manifest=this.files.evidence(vault,id);
+    if(typeof manifest.admittedHash==='string'&&createHash('sha256').update(bytes).digest('hex')!==manifest.admittedHash)throw new HttpError(409,'Source PDF evidence checksum no longer matches the admitted asset.');
+    const controller=new AbortController();this.portableControllers.add(controller);
+    try{const image=await this.portable.render(bytes,page,controller.signal);
+     while([...this.cache.values()].reduce((size,value)=>size+value.length,0)+image.length>24*1024*1024&&this.cache.size)this.cache.delete(this.cache.keys().next().value!);
+     this.cache.set(key,image);return image;
+    }finally{this.portableControllers.delete(controller);}
+   }
    const executable=await (this.compiler??=this.compile().catch(error=>{this.compiler=undefined;throw error;}));
    const profile='(version 1)(allow default)(deny network*)(deny file-write*)(deny process-fork)(deny process-exec)(allow process-exec (literal '+JSON.stringify(realpathSync(executable))+'))(deny file-read* (subpath "/Users"))(allow file-read* (literal '+JSON.stringify(realpathSync(filename))+') (literal '+JSON.stringify(realpathSync(executable))+'))';
    const bytes=await this.command('/usr/bin/sandbox-exec',['-p',profile,executable,filename,String(page)],30000);
@@ -38,6 +49,7 @@ export class SourcePageImages {
   * Raster-only and rotated pages return no native alignment proof. */
  async layout(vault:string,id:string,page:number):Promise<{text:string;bounds:number[]}[]>{
   await this.get(vault,id,page);
+  if(process.platform!=='darwin')return []; // Portable text inspection is never AppleVision/PDFKit geometry proof.
   const executable=await this.compiler!,filename=this.files.filename(vault,id);
   const profile='(version 1)(allow default)(deny network*)(deny file-write*)(deny process-fork)(deny process-exec)(allow process-exec (literal '+JSON.stringify(realpathSync(executable))+'))(deny file-read* (subpath "/Users"))(allow file-read* (literal '+JSON.stringify(realpathSync(filename))+') (literal '+JSON.stringify(realpathSync(executable))+'))';
   const bytes=await this.command('/usr/bin/sandbox-exec',['-p',profile,executable,filename,String(page),'--layout'],30000);
@@ -67,5 +79,5 @@ export class SourcePageImages {
    child.on('close',code=>{clearTimeout(timer);this.children.delete(child);if(code===0)resolve(Buffer.concat(chunks));else reject(new HttpError(502,'Local page rendering failed or timed out.'));});
   }).finally(()=>prepared.dispose());
  }
- close(){this.closed=true;this.cache.clear();for(const child of this.children)child.kill('SIGKILL');}
+ close(){this.closed=true;this.cache.clear();for(const controller of this.portableControllers)controller.abort();for(const child of this.children)child.kill('SIGKILL');}
 }

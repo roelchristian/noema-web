@@ -1,10 +1,10 @@
-import {candidateResult,checkDocumentRequest,documentSystemPrompt,DocumentProviderError,providerHTTP,readDocumentResponse,tokenCount,type DocumentProvider,type DocumentRequest,type DocumentResult} from './document-provider.js';
+import {candidateResult,checkDocumentRequest,documentRequestDeadline,documentSystemPrompt,DocumentProviderError,providerHTTP,readDocumentResponse,tokenCount,type DocumentProvider,type DocumentRequest,type DocumentResult} from './document-provider.js';
 export class OpenAIDocumentProvider implements DocumentProvider {
  readonly provider='openai' as const;
  readonly capabilities={pdf:true as const,structuredOutput:true as const,remoteRetentionHours:1,retrieve:false,cancel:false,explicitCaching:false as const};
  constructor(private readKey:()=>string,private transport:typeof fetch=fetch){}
  async extract(request:DocumentRequest):Promise<DocumentResult>{
-  checkDocumentRequest(this.provider,request);const key=this.readKey();if(!key)throw new DocumentProviderError('credentials',503,'Configure the OpenAI server credential first.');
+  request=documentRequestDeadline(request);checkDocumentRequest(this.provider,request);const key=this.readKey();if(!key)throw new DocumentProviderError('credentials',503,'Configure the OpenAI server credential first.');
   const authorization={Authorization:`Bearer ${key}`};let fileId:string|undefined;
   try{
    const form=new FormData();form.set('purpose','user_data');form.set('expires_after[anchor]','created_at');form.set('expires_after[seconds]','3600');form.set('file',new Blob([new Uint8Array(request.pdf)],{type:'application/pdf'}),'window.pdf');

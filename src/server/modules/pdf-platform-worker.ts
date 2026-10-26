@@ -18,6 +18,40 @@ if(request.operation==='count'){
  const pages=request.pages!;if(!pages.length||pages.length>1000||pages.some(page=>!Number.isInteger(page)||page<1||page>document.getPageCount()))throw new Error('Invalid physical pages');
  for(const page of await out.copyPages(document,pages.map(page=>page-1)))out.addPage(page);
  const output=Buffer.from(await out.save({useObjectStreams:false,addDefaultPage:false}));scanSourcePDF(output);result={bytes:output.toString('base64'),pageMap:pages};
+}else if(request.operation==='context'){
+ const task=open(),document=await task.promise;try{
+  const metadata=await document.getMetadata(),info=metadata.info as Record<string,unknown>;
+  const clean=(value:unknown,max:number)=>typeof value==='string'?value.replace(/[\x00-\x1f\x7f]/g,' ').trim().slice(0,max):undefined;
+  const title=clean(info.Title??metadata.metadata?.get('dc:title'),1000),language=clean(info.Language??metadata.metadata?.get('dc:language'),100);
+  const sections:{page:number;title:string}[]=[];
+  type OutlineItem={title:string;dest:string|unknown[]|null;items:OutlineItem[]};
+  const outline=await document.getOutline(),queue:OutlineItem[]=(outline??[]) as OutlineItem[];let visited=0,total=0;
+  // A bounded context hint, never a claim of complete document structure.
+  while(queue.length&&visited++<512&&sections.length<256&&total<32000){
+   const item=queue.shift()!;if(Array.isArray(item.items))queue.unshift(...item.items);
+   const label=clean(item.title,300);if(!label)continue;
+   const destination=typeof item.dest==='string'?await document.getDestination(item.dest):item.dest;
+   if(!Array.isArray(destination)||!destination.length)continue;
+   const reference=destination[0];let page:number;
+   if(typeof reference==='number')page=reference+1;
+   else if(reference&&typeof reference==='object'&&'num' in reference&&'gen' in reference)page=await document.getPageIndex(reference as {num:number;gen:number})+1;
+   else continue;
+   if(Number.isSafeInteger(page)&&page>=1&&page<=document.numPages){sections.push({page,title:label});total+=label.length;}
+  }
+  result={...(title?{title}:{}),...(language?{language}:{}),sections};
+ }finally{await task.destroy();}
+}else if(request.operation==='texts'){
+ const task=open(),document=await task.promise;try{
+  const pages=request.pages!;if(!Array.isArray(pages)||pages.length>32||new Set(pages).size!==pages.length||pages.some(page=>!Number.isSafeInteger(page)||page<1||page>document.numPages))throw new Error('Native evidence pages exceed bounded inspection limits');
+  const output:{page:number;text:string;extractor:'pdfjs-dist/6.4.299'}[]=[];let total=0;
+  for(const number of pages){const page=await document.getPage(number);try{
+   const content=await page.getTextContent();let text='';
+   for(const item of content.items)if('str' in item){text+=item.str+(item.hasEOL?'\n':' ');if(text.length>200000)throw new Error('Native text page exceeds evidence budget');}
+   total+=text.length;if(total>1000000)throw new Error('Native evidence window exceeds text budget');
+   output.push({page:number,text,extractor:'pdfjs-dist/6.4.299'});
+  }finally{page.cleanup();}}
+  result=output;
+ }finally{await task.destroy();}
 }else if(request.operation==='text'){
  const task=open(),document=await task.promise;try{const page=await document.getPage(request.page!);const content=await page.getTextContent();result={text:content.items.map(item=>'str' in item?item.str:'').join(' ')};}finally{await task.destroy();}
 }else if(request.operation==='render'||request.operation==='sanitize'){

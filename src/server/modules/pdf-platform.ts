@@ -40,6 +40,20 @@ export class PdfPlatform {
  async count(bytes:Uint8Array,signal?:AbortSignal):Promise<number>{const result=await this.worker('count',bytes,{},signal);if(!Number.isSafeInteger(result.pages)||result.pages<1||result.pages>10000)throw new HttpError(413,'PDF physical page count exceeds the application limit.');return result.pages;}
  async split(bytes:Uint8Array,physicalPages:number[],signal?:AbortSignal):Promise<{bytes:Buffer;pageMap:number[]}>{const result=await this.worker('split',bytes,{pages:physicalPages},signal);const output=Buffer.from(result.bytes,'base64');scanSourcePDF(output);return {bytes:output,pageMap:physicalPages.slice()};}
  async inspectText(bytes:Uint8Array,page:number,signal?:AbortSignal):Promise<string>{const result=await this.worker('text',bytes,{page},signal);if(typeof result.text!=='string'||result.text.length>2_000_000)throw new HttpError(502,'Native PDF text exceeds the evidence budget.');return result.text;}
+ /** Optional bounded hints; callers must label these provisional PDF metadata. */
+ async inspectContext(bytes:Uint8Array,signal?:AbortSignal):Promise<{title?:string;language?:string;sections:{page:number;title:string}[]}>{
+  const result=await this.worker('context',bytes,{},signal);
+  if(!result||typeof result!=='object'||!Array.isArray(result.sections)||result.sections.length>256||result.sections.some((section:{page:unknown;title:unknown})=>!Number.isSafeInteger(section.page)||Number(section.page)<1||typeof section.title!=='string'||section.title.length>300)||result.title!==undefined&&(typeof result.title!=='string'||result.title.length>1000)||result.language!==undefined&&(typeof result.language!=='string'||result.language.length>100))throw new HttpError(502,'Portable PDF context inspection returned invalid hints.');
+  return result;
+ }
+ /** Native text is optional anomaly evidence, never independent geometry or OCR. */
+ async inspectTexts(bytes:Uint8Array,pages:number[],signal?:AbortSignal):Promise<{page:number;text:string;extractor:'pdfjs-dist/6.4.299'}[]>{
+  if(!Array.isArray(pages)||pages.length>32||new Set(pages).size!==pages.length||pages.some(page=>!Number.isSafeInteger(page)||page<1))throw new HttpError(400,'Inspect at most 32 distinct physical pages at a time.');
+  if(!pages.length)return [];
+  const result=await this.worker('texts',bytes,{pages},signal);
+  if(!Array.isArray(result)||result.length!==pages.length||result.some((entry,index)=>entry?.page!==pages[index]||typeof entry.text!=='string'||entry.text.length>200000||entry.extractor!=='pdfjs-dist/6.4.299')||result.reduce((sum,entry)=>sum+entry.text.length,0)>1000000)throw new HttpError(502,'Portable native PDF text inspection exceeded the evidence budget.');
+  return result;
+ }
  async render(bytes:Uint8Array,page:number,signal?:AbortSignal):Promise<Buffer>{const result=await this.worker('render',bytes,{page},signal),output=Buffer.from(result.bytes,'base64');if(!output.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])))throw new HttpError(502,'The portable PDF renderer returned an invalid PNG.');return output;}
  async admit(bytes:Uint8Array,signal?:AbortSignal):Promise<{bytes:Buffer;pages:number;flattened:boolean;method:string}>{
   const original=Buffer.from(bytes);try{scanSourcePDF(original);}catch{const result=await this.worker('sanitize',bytes,{},signal);const output=Buffer.from(result.bytes,'base64');scanSourcePDF(output);return {bytes:output,pages:result.pages,flattened:true,method:'portable-raster-pdfjs-6.4.299'};}

@@ -457,3 +457,25 @@ main > .chat-workspace:not([hidden]) { flex: 1; height: auto; min-height: 0; }
  .chat-citation { min-width: 44px; min-height: 44px; }
 }
 @media (pointer: coarse) { .chat-citation, .chat-references { min-height: 44px; min-width: 44px; } }
+
+/* Scope controls and optional research starting points. */
+.chat-scope-dialog{width:min(560px,calc(100vw - 32px));max-height:min(720px,calc(100dvh - 32px));}
+.chat-scope-content{padding:0 20px 20px;overflow:auto;}
+.chat-scope-content>.chat-history-search{margin:16px 0;}
+.chat-scope-group h3{font-size:12px;font-weight:600;color:var(--text-muted);margin:16px 0 6px;}
+.chat-scope-option{display:flex;align-items:center;gap:10px;width:100%;min-height:48px;padding:10px 12px;border:1px solid transparent;border-radius:8px;background:transparent;text-align:left;color:var(--text);}
+.chat-scope-option:hover,.chat-scope-option[aria-pressed=true]{background:var(--surface-hover);border-color:var(--line);}
+.chat-scope-option span{display:grid;gap:3px;min-width:0;}
+.chat-scope-option strong{font-size:14px;overflow-wrap:anywhere;}
+.chat-scope-option small{font-size:12px;color:var(--text-muted);overflow-wrap:anywhere;}
+.chat-research-prompts{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;max-width:65ch;margin:12px auto 0;}
+.chat-research-prompts button{max-width:100%;min-height:44px;padding:9px 13px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--text);font-size:13px;text-align:left;}
+.chat-research-prompts button:hover{background:var(--surface-hover);}
+.chat-scope-option:focus-visible,.chat-research-prompts button:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+
+.chat-mention-trigger { min-height: 36px; padding: 6px 8px; border: 0; border-radius: 8px; background: transparent; color: var(--chat-muted); font-size: 12px; }
+.chat-mention-trigger:hover { background: var(--chat-selected); color: var(--text); }
+.chat-privacy { color: var(--chat-muted); font-size: 11px; margin-top: 6px; }
+.chat-privacy summary { width: fit-content; cursor: pointer; min-height: 28px; padding: 5px 0; }
+.chat-privacy .chat-provider-note { text-align: left; margin-top: 0; }
+@media (pointer: coarse) { .chat-mention-trigger, .chat-privacy summary { min-height: 44px; } }

@@ -13,14 +13,16 @@ export interface PdfProcessingCapabilities {
 export const initialPdfIngestionOptions:SourceIngestionOptions={route:'local',model:null,depth:'balanced',reviewPolicy:'verified',containsMath:false,guidance:'',transmissionConsent:false,budget:{maxRequests:64,maxOutputTokens:32000,maxCostUsd:null}};
 const providerLabels={local:'Local extraction',openai:'OpenAI PDF enrichment',gemini:'Gemini PDF enrichment'};
 /** Only the server capability gate exposes API routes. Consent is never remembered. */
-export function SourcePdfProcessing({vaultId,value,onChange,onReady,disabled}:{vaultId:string;value:SourceIngestionOptions;onChange:(value:SourceIngestionOptions)=>void;onReady:(ready:boolean)=>void;disabled:boolean}){
- const [capabilities,setCapabilities]=useState<PdfProcessingCapabilities|null>(null);
- useEffect(()=>{const controller=new AbortController();void request<PdfProcessingCapabilities>('source-ingestion/capabilities','GET',undefined,vaultId,controller.signal).then(setCapabilities).catch(()=>{});return()=>controller.abort();},[vaultId]);
+export function SourcePdfProcessing({vaultId,value,onChange,onReady,onEnabled,disabled}:{vaultId:string;value:SourceIngestionOptions;onChange:(value:SourceIngestionOptions)=>void;onReady:(ready:boolean)=>void;onEnabled?:(enabled:boolean)=>void;disabled:boolean}){
+ const [capabilities,setCapabilities]=useState<PdfProcessingCapabilities|null>(null),[checked,setChecked]=useState(false);
+ useEffect(()=>{const controller=new AbortController();setChecked(false);void request<PdfProcessingCapabilities>('source-ingestion/capabilities','GET',undefined,vaultId,controller.signal).then(value=>{if(!controller.signal.aborted)setCapabilities(value);}).catch(()=>{}).finally(()=>{if(!controller.signal.aborted)setChecked(true);});return()=>controller.abort();},[vaultId]);
  useEffect(()=>{if(!capabilities?.enabled)return;let saved:string|null=null;try{saved=localStorage.getItem(`noema:pdf-route:${vaultId}`);}catch{}if(saved==='openai'||saved==='gemini'){const provider=capabilities.providers.find(item=>item.provider===saved);const model=provider?.models.find(item=>item.available!==false);if(provider?.available&&model)onChange({...value,route:saved,model:model.id,transmissionConsent:false,budget:{...value.budget,maxOutputTokens:Math.min(value.budget.maxOutputTokens,Math.floor((documentModel(model.id)?.maxOutputTokens??40000)*0.8))}});}},[capabilities,vaultId]);
  const maxOutputTokens=Math.floor((documentModel(value.model??'')?.maxOutputTokens??40000)*0.8);
+ useEffect(()=>{onEnabled?.(!!capabilities?.enabled);},[capabilities?.enabled,onEnabled]);
  const selected=capabilities?.providers.find(item=>item.provider===value.route);
- const ready=!capabilities?.enabled||value.route==='local'?capabilities?.localExtraction!==false:!!selected?.available&&!!value.model&&selected.models.some(model=>model.id===value.model&&model.available!==false)&&value.transmissionConsent;
+ const ready=checked&&(!capabilities?.enabled||value.route==='local'?capabilities?.localExtraction!==false:!!selected?.available&&!!value.model&&selected.models.some(model=>model.id===value.model&&model.available!==false)&&value.transmissionConsent);
  useEffect(()=>{onReady(ready);},[ready,onReady]);
+ if(!checked)return <p role="status" className="section-hint">{uiText('Checking PDF processing capabilities…')}</p>;
  if(!capabilities?.enabled)return null;
  function choose(route:SourceIngestionRoute){const provider=capabilities!.providers.find(item=>item.provider===route),model=provider?.models.find(model=>model.available!==false)?.id??null;onChange({...value,route,model,transmissionConsent:false,budget:{...value.budget,maxOutputTokens:Math.min(value.budget.maxOutputTokens,Math.floor((documentModel(model??'')?.maxOutputTokens??40000)*0.8))}});try{localStorage.setItem(`noema:pdf-route:${vaultId}`,route);}catch{}}
  return <fieldset disabled={disabled} className="source-pdf-processing"><legend>{uiText('PDF processing')}</legend>
@@ -41,6 +43,7 @@ export function SourcePdfProcessing({vaultId,value,onChange,onReady,disabled}:{v
     <label>{uiText('Document model')}<Select aria-label={uiText('Document model')} value={value.model??''} onChange={event=>onChange({...value,model:event.target.value,transmissionConsent:false,budget:{...value.budget,maxOutputTokens:Math.min(value.budget.maxOutputTokens,Math.floor((documentModel(event.target.value)?.maxOutputTokens??40000)*0.8))}})}>{selected?.models.map(model=><option key={model.id} value={model.id} disabled={model.available===false}>{model.label??model.id}</option>)}</Select></label>
     <label>{uiText('Maximum requests')}<input type="number" min={1} max={512} value={value.budget.maxRequests} onChange={event=>onChange({...value,budget:{...value.budget,maxRequests:Math.max(1,Math.min(512,Number(event.target.value)||1))}})}/></label>
     <label>{uiText('Maximum output tokens per request')}<input type="number" min={1024} max={maxOutputTokens} value={value.budget.maxOutputTokens} onChange={event=>onChange({...value,budget:{...value.budget,maxOutputTokens:Math.max(1024,Math.min(maxOutputTokens,Number(event.target.value)||1024))}})}/></label>
+    <label>{uiText('Maximum estimated provider cost (USD, optional)')}<input type="number" min={0.01} max={10000} step={0.01} value={value.budget.maxCostUsd??''} onChange={event=>onChange({...value,budget:{...value.budget,maxCostUsd:event.target.value===''?null:Math.max(0.01,Math.min(10000,Number(event.target.value)||0.01))}})}/></label>
     <label>{uiText('Processing guidance (optional)')}<textarea maxLength={4000} value={value.guidance} onChange={event=>onChange({...value,guidance:event.target.value})}/></label>
    </details>
   </>}

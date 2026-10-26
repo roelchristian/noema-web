@@ -21,6 +21,7 @@ export function SourceIngestionProgress({vaultId,fileId,onPresence}:{vaultId:str
   <progress max={Math.max(1,run.pageCount)} value={run.completedPages} aria-label={uiText('Validated physical pages')}/>
   <p>{run.completedPages} {uiText('of')} {run.pageCount} {uiText('physical pages validated')} · {run.completedWindows} {uiText('of')} {run.totalWindows} {uiText('windows complete')}{run.pendingReview>0?` · ${run.pendingReview} ${uiText('proposals need review')}`:''}</p>
   <p>{Math.floor(elapsed/60)}m {elapsed%60}s {uiText('elapsed')} · {uiText('Last update:')} <time dateTime={run.updatedAt}>{new Date(run.updatedAt).toLocaleTimeString()}</time></p>
+  {!!run.warnings?.length&&<ul>{run.warnings.map((warning,index)=><li key={index}>{warning}</li>)}</ul>}
   {run.error&&<p role="alert">{run.error}</p>}{error&&<p role="alert">{error}</p>}
   {run.unknownOutcome&&<><p role="alert">{uiText('A submitted provider request has an unknown outcome. Resuming may repeat paid work. Completed window results are retained.')}</p><label><input type="checkbox" checked={allowUnknown} onChange={event=>setAllowUnknown(event.target.checked)} disabled={busy}/>{uiText('I understand the possible duplicate cost and want to retry this unknown request.')}</label></>}
   <div className="source-actions">

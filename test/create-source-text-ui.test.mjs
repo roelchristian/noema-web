@@ -85,7 +85,7 @@ test('existing file and URL source paths still stage an attachment',async t=>{
   await act(async()=>input[Object.keys(input).find(key=>key.startsWith('__reactProps'))].onChange({target:{files:[file]}}));
   await f.submit();assert.equal(f.requests[0].options.body,file);assert.equal(f.created[0].type,'source');
   await f.method('url');await f.enter(document.querySelector('input[type=url]'),'https://example.com/reference.txt');
-  await f.submit();assert.equal(f.requests[1].route,'/api/source-files/url');
+  await f.submit();assert.equal(f.requests[1].route,'/api/source-files/url/preview');
   assert.equal(JSON.parse(f.requests[1].options.body).url,'https://example.com/reference.txt');
   assert.equal(f.created[1].type,'source');assert.equal(f.requests.length,2);
 });
@@ -112,4 +112,28 @@ test('PDF provider upload freezes consent and options and retries entity creatio
  const changedUploads=f.requests.filter(item=>new URL(item.route,'http://localhost').pathname==='/api/source-files');assert.equal(changedUploads.length,2,'Changing frozen options invalidates the staged attachment');
  assert.equal(JSON.parse(new URL(changedUploads[1].route,'http://localhost').searchParams.get('ingestion')).depth,'light');
  assert.notEqual(new URL(changedUploads[0].route,'http://localhost').searchParams.get('stagingKey'),new URL(changedUploads[1].route,'http://localhost').searchParams.get('stagingKey'));
+ await act(async()=>input[Object.keys(input).find(key=>key.startsWith('__reactProps'))].onChange({target:{files:[new File(['%PDF second synthetic'],'second.pdf',{type:'application/pdf'})]}}));
+ assert.equal([...document.querySelectorAll('input[type=checkbox]')].find(item=>item.closest('label').textContent.includes('Allow selected source evidence')).checked,false,'Changing the PDF clears document transmission consent');
+ await f.submit();assert.equal(f.requests.filter(item=>new URL(item.route,'http://localhost').pathname==='/api/source-files').length,2);
+});
+
+test('URL content is identified as PDF before provider choice and consent, with one retained fetch',async t=>{
+ let failEntity=true;
+ const f=await fixture(t,{onSubmit:async()=>{if(failEntity)throw new Error('Entity not saved');},upload:async(route,options)=>{
+  if(route.includes('capabilities'))return Response.json({enabled:true,localExtraction:false,providers:[{provider:'openai',available:true,models:[{id:'fixture-pdf-model'}]}]});
+  if(route.endsWith('/url/preview'))return Response.json({id:'fetched.pdf',name:'detected.pdf',format:'pdf'});
+  assert.equal(route,'/api/source-files/fetched.pdf/ingestion');return Response.json({id:'fetched.pdf',name:'detected.pdf',format:'pdf',ingestion_origin:JSON.parse(options.body).options.route});
+ }});
+ await f.method('url');await f.enter(document.querySelector('input[type=url]'),'https://example.com/document-without-extension');
+ assert.equal(document.querySelector('[aria-label="PDF processing"]'),null,'URL suffix never authorizes PDF transmission');
+ await f.submit();assert.equal(f.created.length,0);assert.equal(f.requests.filter(item=>item.route.endsWith('/url/preview')).length,1);
+ assert.ok(document.querySelector('[aria-label="PDF processing"]'));assert.match(document.body.textContent,/fetched content is a PDF/);
+ await f.enter(document.querySelector('[aria-label="PDF processing"]'),'openai');await f.submit();assert.equal(f.requests.filter(item=>item.route.endsWith('/ingestion')).length,0,'No stage/transmission without consent');
+ await f.enter(document.querySelector('[aria-label="Reconstruction depth"]'),'deep');
+ const consent=[...document.querySelectorAll('input[type=checkbox]')].find(item=>item.closest('label').textContent.includes('Allow selected source evidence'));
+ await act(async()=>consent[Object.keys(consent).find(key=>key.startsWith('__reactProps'))].onChange({target:{checked:true}}));
+ await f.submit();assert.equal(f.requests.filter(item=>item.route.endsWith('/url/preview')).length,1,'Options reuse the already fetched PDF');
+ const stages=f.requests.filter(item=>item.route.endsWith('/ingestion'));assert.equal(stages.length,1);assert.equal(JSON.parse(stages[0].options.body).options.transmissionConsent,true);assert.equal(JSON.parse(stages[0].options.body).options.depth,'deep');
+ failEntity=false;await f.submit();assert.equal(f.requests.filter(item=>item.route.endsWith('/ingestion')).length,1,'Entity retry reuses frozen stage');assert.equal(f.created.length,2);
+ await f.enter(document.querySelector('input[type=url]'),'https://example.com/other');assert.equal(document.querySelector('[aria-label="PDF processing"]'),null,'Changing URL invalidates fetched content and consent');
 });

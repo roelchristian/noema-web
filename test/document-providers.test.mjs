@@ -18,6 +18,21 @@ function gemini(status='completed'){return {id:'interaction_1',status,model:'gem
 function transport(provider,response,check=()=>{}){return async(url,options)=>{assert.equal(options.redirect,'error');assert.ok(!url.includes('secret'));if(options.method==='DELETE')return Response.json({});if(url.includes('/files')){check('upload',url,options);return Response.json(provider==='openai'?{id:'file-test'}:{file:{name:'files/test',uri:'https://generativelanguage.googleapis.com/v1/files/test',state:'ACTIVE',expirationTime:'2099-01-01T00:00:00Z'}});}check('generation',url,options);return Response.json(response);};}
 for(const provider of ['openai','gemini']){
  const Class=provider==='openai'?OpenAIDocumentProvider:GeminiDocumentProvider,model=provider==='openai'?'gpt-6.1-sol':'gemini-3.8-flash';
+ test(`${provider}: extraction wire instructions distinguish table evidence and define cell coordinates`,async()=>{
+  let instructions;
+  const adapter=new Class(()=> 'synthetic',transport(provider,provider==='openai'?openai():gemini(),(kind,url,options)=>{if(kind==='generation'){const body=JSON.parse(options.body);instructions=body.instructions??body.system_instruction;}}));
+  await adapter.extract({...base,model});
+  assert.match(instructions,/actual visible row-and-column table/);
+  assert.match(instructions,/ordinary paragraphs, headings, lists/);
+  assert.match(instructions,/checkbox distribution forms, signatures and page layout columns are not tables/);
+  assert.match(instructions,/table=null on every non-table block/);
+  assert.match(instructions,/zero-based indices/);
+  assert.match(instructions,/rowSpan and columnSpan are positive counts/);
+  assert.match(instructions,/row\+rowSpan<=rows and column\+columnSpan<=columns/);
+  assert.match(instructions,/retain the faithful block text with table=null/);
+  assert.match(instructions,/earlier same-kind block/);
+  assert.match(instructions,/together in this single response/);assert.match(instructions,/metadata\.candidates/);assert.match(instructions,/institutional issuing body/);assert.match(instructions,/concise AI synopsis/);
+ });
  test(`${provider}: current envelope, one generation, normalized usage and cleanup`,async()=>{
   let generation=0,uploads=0,deletes=0;
   const mocked=transport(provider,provider==='openai'?openai():gemini(),(kind,url,options)=>{if(kind==='upload'){uploads++;if(provider==='openai'){assert.equal(options.body.get('purpose'),'user_data');assert.equal(options.body.get('expires_after[seconds]'),'3600');}return;}generation++;const sent=JSON.parse(options.body);assert.equal(sent.store,false);assert.equal(sent.tools,undefined);assert.equal(sent.model,model);if(provider==='openai'){assert.equal(sent.text.format.strict,true);assert.equal(sent.input[0].content[0].type,'input_file');}else{assert.ok(url.endsWith('/v1/interactions'));assert.equal(sent.input[0].type,'document');assert.equal(sent.response_format.mime_type,'application/json');assert.equal(sent.generation_config.tool_choice,'none');}});

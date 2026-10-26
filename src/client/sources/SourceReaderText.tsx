@@ -6,6 +6,7 @@ import {discoverSourceBibliography} from '../../shared/source-bibliography';
 import {renderMath} from '../editor/math';
 
 type ReaderProps={text:string;startOffset?:number;highlights?:SourceHighlight[];footnotePrefix?:string};
+export const SourceInlineFootnoteLinks=createContext<ReadonlyMap<number,{end:number;target:string;label:string}>|null>(null);
 export const SourceFootnoteDefinitions=createContext<ReadonlySet<string>|null>(null);
 export const SourceBibliography=createContext<ReturnType<typeof discoverSourceBibliography>|null>(null);
 const expressions=/(`+)([\s\S]*?)\1|\[([^\]]+)\]\(([^\s)]+)\)|\*\*([^*]+)\*\*|__([^_]+)__|~~([^~]+)~~|\*([^*]+)\*|_([^_]+)_|(?<!\\)\$\$([\s\S]+?)(?<!\\)\$\$|(?<!\\)\\\[([\s\S]+?)(?<!\\)\\\]|(?<![\\$])\$(?![\s$])((?:\\.|[^$\n\\])+?)(?<![\s\\])\$(?![$\d])|(?<!\\)\\\(([^\n]*?)(?<!\\)\\\)|(?<!\\)\[\^([^\]\n]+)\](?!:)|(?<!\\)\[(\d{1,4})\](?![(:])/g;
@@ -32,9 +33,9 @@ function MathLeaf({source,display,start,end,highlights}:{source:string;display:b
 }
 /** Raw offsets belong to the immutable imported text, including Markdown delimiters. */
 export function SourceReaderInline({text,startOffset=0,highlights=[],footnotePrefix='source-footnote'}:ReaderProps) {
-  const definitions=useContext(SourceFootnoteDefinitions),bibliography=useContext(SourceBibliography);
+  const definitions=useContext(SourceFootnoteDefinitions),bibliography=useContext(SourceBibliography),footnoteLinks=useContext(SourceInlineFootnoteLinks);
   const parts:ReactNode[]=[];
-  const plain=(value:string,offset:number)=>{
+  const plainText=(value:string,offset:number)=>{
     // Decode escaped table pipes and style printed checkboxes without changing raw positions.
     let cursor=0;
     for(const match of value.matchAll(/\\\||[☐☑☒]/g)) {
@@ -44,6 +45,17 @@ export function SourceReaderInline({text,startOffset=0,highlights=[],footnotePre
       cursor=match.index!+match[0].length;
     }
     if(cursor<value.length)parts.push(<TextLeaf key={`p${offset+cursor}`} text={value.slice(cursor)} start={offset+cursor} highlights={highlights}/>);
+  };
+  const plain=(value:string,offset:number)=>{
+    if(!footnoteLinks?.size){plainText(value,offset);return;}
+    let cursor=0;
+    for(let index=0;index<value.length;index++){
+      const start=offset+index,link=footnoteLinks.get(start);if(!link||link.end>offset+value.length)continue;
+      if(start>offset+cursor)plainText(value.slice(cursor,start-offset),offset+cursor);
+      parts.push(<sup key={`relation-${start}`} className="source-reader-footnote-reference"><a href={`#${link.target}`} data-footnote-reference={link.target} data-source-start={start} data-source-end={link.end} data-source-atomic="true" aria-label={uiText('Footnote {value0}',{value0:link.label})} onClick={event=>{event.preventDefault();const note=document.getElementById(link.target);if(note){window.dispatchEvent(new Event('noema:before-reading-jump'));note.scrollIntoView({block:'center'});note.focus({preventScroll:true});}}}><TextLeaf text={value.slice(start-offset,link.end-offset)} start={start} highlights={highlights}/></a></sup>);
+      cursor=link.end-offset;index=cursor-1;
+    }
+    if(cursor<value.length)plainText(value.slice(cursor),offset+cursor);
   };
   let cursor=0;
   for(const match of text.matchAll(expressions)) {
@@ -77,6 +89,11 @@ export function SourceReaderInline({text,startOffset=0,highlights=[],footnotePre
   }
   if(cursor<text.length)plain(text.slice(cursor),startOffset+cursor);
   return <>{parts}</>;
+}
+
+/** Shared Noema footnote row for Markdown definitions and exact IR notes. */
+export function SourceFootnote({label,target,text,startOffset,highlights=[],footnotePrefix='source-footnote',labelSource}:{label:string;target:string;text:string;startOffset:number;highlights?:SourceHighlight[];footnotePrefix?:string;labelSource?:{text:string;start:number}}){
+ return <aside id={target} tabIndex={-1} role="doc-footnote" className="source-reader-footnote" aria-label={uiText('Footnote {value0}',{value0:label})}><span className="source-reader-footnote-label">{labelSource?<SourceReaderInline text={labelSource.text} startOffset={labelSource.start} highlights={highlights} footnotePrefix={footnotePrefix}/>:label.replace(/^p\d+-/,'')}</span><SourceReaderText text={text} startOffset={startOffset} highlights={highlights} footnotePrefix={footnotePrefix}/><button type="button" className="source-reader-footnote-back" aria-label={uiText('Back to footnote {value0} reference',{value0:label})} onClick={()=>{const reference=Array.from(document.querySelectorAll<HTMLAnchorElement>('a[data-footnote-reference]')).find(element=>element.dataset.footnoteReference===target);reference?.scrollIntoView({block:'center'});reference?.focus({preventScroll:true});}}>↩</button></aside>;
 }
 
 type Line={text:string;start:number;end:number};
@@ -126,7 +143,7 @@ export function sourceReaderBlocks({text,kind,startOffset=0,highlights=[],footno
       let end=i;
       while(end+1<lines.length&&(/^(?: {4}|\t)/.test(lines[end+1]!.text)||!lines[end+1]!.text.trim()&&/^(?: {4}|\t)/.test(lines[end+2]?.text??'')))end++;
       const from=line.start+footnote[0].length,to=lines[end]!.end;
-      const note=<aside key={key} id={target} tabIndex={-1} className="source-reader-footnote" aria-label={uiText("Footnote {value0}",{value0: label})}><span className="source-reader-footnote-label">{label.replace(/^p\d+-/, '')}</span><SourceReaderText text={text.slice(from-startOffset,to-startOffset)} startOffset={from} highlights={highlights} footnotePrefix={footnotePrefix}/><button type="button" className="source-reader-footnote-back" aria-label={uiText("Back to footnote {value0} reference",{value0: label})} onClick={()=>{const reference=Array.from(document.querySelectorAll<HTMLAnchorElement>('a[data-footnote-reference]')).find(element=>element.dataset.footnoteReference===target);reference?.scrollIntoView({block:'center'});reference?.focus({preventScroll:true});}}>↩</button></aside>;
+      const note=<SourceFootnote key={key} label={label} target={target} text={text.slice(from-startOffset,to-startOffset)} startOffset={from} highlights={highlights} footnotePrefix={footnotePrefix}/>;
       notes.push(note);blocks.push(note);
       i=end;continue;
     }

@@ -9,6 +9,7 @@ import {Store} from '../src/server/store.ts';
 import {SourceFiles} from '../src/server/modules/source-files.ts';
 import {SourceIngestion} from '../src/server/modules/source-ingestion.ts';
 import {SourceDocuments} from '../src/server/modules/source-documents.ts';
+import {applySourceIngestionEnrichment} from '../src/server/modules/source-ingestion-enrichment.ts';
 import {DocumentProviderError} from '../src/server/modules/document-provider.ts';
 const options=route=>({route,model:route==='openai'?'gpt-6.1-sol':'gemini-3.8-flash',depth:'balanced',reviewPolicy:'verified',containsMath:false,guidance:'',transmissionConsent:true,budget:{maxRequests:20,maxOutputTokens:32000,maxCostUsd:null}});
 const sha=value=>createHash('sha256').update(value).digest('hex');
@@ -23,6 +24,10 @@ function setup(t,{route='openai',pages=2,extract}={}){
  t.after(()=>{ingestion.close();files.close();db.close();rmSync(root,{recursive:true,force:true});});
  return {store,files,file,ingestion,dependencies,calls:()=>calls,options:options(route)};
 }
+// These fixtures represent retained optional failures/checkpoints created by
+// older workflows. Retrying them is explicit and must never replay extraction.
+function retryLegacyOptionalFailure(f){f.store.run("UPDATE source_ingestion_windows SET repair_state='failed',error='Retained optional repair failure' WHERE kind='extraction' AND run_id=?",f.ingestion.view('default',f.file.id).id);f.ingestion.retry('default',f.file.id);}
+function resumeLegacyRelationCheckpoint(f,pages=[5,6]){const run=f.ingestion.view('default',f.file.id);f.store.run("INSERT INTO source_ingestion_windows(id,run_id,ordinal,kind,plan_json,repair_state) VALUES('legacy-relation',?,999,'relations',?,'skipped')",run.id,JSON.stringify({index:999,ownedPages:pages,contextPages:[],estimatedOutputTokens:8000}));f.store.run("UPDATE source_ingestion_runs SET state='paused' WHERE id=?",run.id);f.ingestion.resume('default',f.file.id);}
 for(const route of ['openai','gemini'])test(`${route} complete direct import publishes once and rebuilds identical citation anchors without generation`,async t=>{
  const f=setup(t,{route});f.ingestion.stage('default',f.file.id,f.options);f.ingestion.stage('default',f.file.id,f.options);
  await f.files.tick();assert.equal(f.files.require('default',f.file.id).status,'queued');
@@ -71,20 +76,20 @@ test('truncated window splits within budget and publishes only complete smaller 
  assert.equal(f.store.get("SELECT count(*) n FROM source_ingestion_windows WHERE state='superseded'").n,1);
  assert.equal(f.store.get('SELECT count(*) n FROM source_ingestion_attempts').n,3);
 });
-test('clean Balanced result does not schedule optional repair and localized uncertain span does',async t=>{
+test('fresh uncertain transcription retains inline sparse proposals without scheduling a repair pass',async t=>{
  let repairs=0;
- const f=setup(t,{extract:async input=>{input.onSubmitted();const candidate=ir(input.plan.ownedPages,'The ﬁrst source reading.');candidate.blocks[0].uncertainty='Ligature needs inspection';return {status:'completed',candidate,usage:{inputTokens:1,outputTokens:2},responseHash:sha('first')};}});
- f.dependencies.repair=async input=>{repairs++;input.onSubmitted('repair');const block=input.document.blocks[0],start=block.text.indexOf('ﬁrst');return {status:'completed',candidate:{repairs:[{blockId:block.id,start,end:start+4,original:'ﬁrst',replacement:'first',category:'ocr',reason:'Equivalent ligature.'}]},usage:{inputTokens:3,outputTokens:4},responseHash:sha('repair')};};
- f.ingestion.stage('default',f.file.id,f.options);await f.ingestion.tick();assert.equal(f.ingestion.view('default',f.file.id).state,'completed',f.ingestion.view('default',f.file.id).error);assert.equal(f.calls(),1);assert.equal(repairs,1);
+ const f=setup(t,{extract:async input=>{input.onSubmitted();const candidate=ir(input.plan.ownedPages,'The ﬁrst source reading.');const block=candidate.blocks[0],start=block.text.indexOf('ﬁrst');block.uncertainty='Ligature needs inspection';candidate.repairs=[{blockId:block.id,start,end:start+4,original:'ﬁrst',replacement:'first',category:'ocr',reason:'Equivalent ligature.'}];return {status:'completed',candidate,usage:{inputTokens:1,outputTokens:2},responseHash:sha('first')};}});
+ f.dependencies.repair=async()=>{repairs++;throw new Error('Fresh input cannot request a second pass');};
+ f.ingestion.stage('default',f.file.id,f.options);await f.ingestion.tick();assert.equal(f.ingestion.view('default',f.file.id).state,'completed',f.ingestion.view('default',f.file.id).error);assert.equal(f.calls(),1);assert.equal(repairs,0);
  assert.match(f.files.require('default',f.file.id).text,/ﬁrst/);assert.equal(f.ingestion.view('default',f.file.id).pendingReview,0);
  const revision=JSON.parse(f.store.get('SELECT payload FROM source_reprocessing').payload);assert.equal(revision.patches[0].decision,'accepted');assert.match(revision.reprocessed.text,/first/);
- assert.equal(f.store.get("SELECT count(*) n FROM source_ingestion_attempts WHERE kind='repair'").n,1);
+ assert.equal(f.store.get("SELECT count(*) n FROM source_ingestion_attempts WHERE kind='repair'").n,0);assert.equal(f.store.get("SELECT repair_state FROM source_ingestion_windows WHERE kind='extraction'").repair_state,'skipped');
 });
 test('unknown targeted repair cannot replay extraction and explicit recovery retries repair only',async t=>{
  let repairs=0;
  const f=setup(t,{extract:async input=>{input.onSubmitted();const candidate=ir(input.plan.ownedPages);candidate.blocks[0].uncertainty='Synthetic localized issue';return {status:'completed',candidate,usage:{inputTokens:1,outputTokens:2},responseHash:sha('first')};}});
  f.dependencies.repair=async input=>{repairs++;input.onSubmitted('repair');if(repairs===1)throw new DocumentProviderError('transport',502,'uncertain paid repair',true);return {status:'completed',candidate:{repairs:[]},usage:{inputTokens:1,outputTokens:2},responseHash:sha('repair')};};
- f.ingestion.stage('default',f.file.id,f.options);await f.ingestion.tick();assert.equal(f.ingestion.view('default',f.file.id).state,'unknown');assert.equal(f.calls(),1);assert.throws(()=>f.ingestion.resume('default',f.file.id),/duplicate-cost/);
+ f.ingestion.stage('default',f.file.id,f.options);await f.ingestion.tick();assert.equal(repairs,0);retryLegacyOptionalFailure(f);await f.ingestion.tick();assert.equal(f.ingestion.view('default',f.file.id).state,'unknown');assert.equal(f.calls(),1);assert.throws(()=>f.ingestion.resume('default',f.file.id),/duplicate-cost/);
  f.ingestion.recover();f.ingestion.resume('default',f.file.id,true);await f.ingestion.tick();assert.equal(f.ingestion.view('default',f.file.id).state,'completed',f.ingestion.view('default',f.file.id).error);assert.equal(f.calls(),1);assert.equal(repairs,2);
 });
 test('two scheduler instances exclusively claim one paid source run',async t=>{
@@ -135,7 +140,7 @@ test('failed optional repair retries after publication without extraction, metad
  const f=setup(t,{extract:async input=>{input.onSubmitted();const candidate=ir(input.plan.ownedPages,'The ﬁrst source reading.');candidate.blocks[0].uncertainty='Ligature needs inspection';return {status:'completed',candidate,usage:{inputTokens:1,outputTokens:2},responseHash:sha('first')};}});
  f.dependencies.reconcile=()=>{reconciliations++;};
  f.dependencies.repair=async input=>{repairs++;input.onSubmitted('repair');if(repairs===1)throw new DocumentProviderError('rate_limit',429,'Known optional quota rejection.',false);const block=input.document.blocks[0],start=block.text.indexOf('ﬁrst');return {status:'completed',candidate:{repairs:[{blockId:block.id,start,end:start+4,original:'ﬁrst',replacement:'first',category:'ocr',reason:'Equivalent ligature.'}]},usage:{inputTokens:3,outputTokens:4},responseHash:sha('derivative-repair')};};
- f.ingestion.stage('default',f.file.id,f.options);await f.ingestion.tick();assert.equal(f.ingestion.view('default',f.file.id).state,'completed');assert.equal(f.ingestion.view('default',f.file.id).canRetryOptional,true);
+ f.ingestion.stage('default',f.file.id,f.options);await f.ingestion.tick();assert.equal(repairs,0);retryLegacyOptionalFailure(f);await f.ingestion.tick();assert.equal(f.ingestion.view('default',f.file.id).state,'completed');assert.equal(f.ingestion.view('default',f.file.id).canRetryOptional,true);
  const file=f.files.require('default',f.file.id),before=f.store.get('SELECT * FROM source_ingestion_documents WHERE file_id=?',file.id),sourceDocument=new SourceDocuments(f.store).get(file);
  f.ingestion.retry('default',file.id);assert.equal(f.files.require('default',file.id).status,'ready');await f.ingestion.tick();assert.equal(f.ingestion.view('default',file.id).state,'completed',f.ingestion.view('default',file.id).error);
  assert.equal(f.calls(),1);assert.equal(repairs,2);assert.equal(reconciliations,1);assert.equal(f.files.require('default',file.id).text,file.text);assert.deepEqual(f.store.get('SELECT * FROM source_ingestion_documents WHERE file_id=?',file.id),before);assert.deepEqual(new SourceDocuments(f.store).get(f.files.require('default',file.id)),sourceDocument);
@@ -145,7 +150,7 @@ test('failed optional repair retries after publication without extraction, metad
 test('optional retry enforces revision capacity before paid work while the published source remains readable',async t=>{
  let repairs=0;
  const f=setup(t,{extract:async input=>{input.onSubmitted();const candidate=ir(input.plan.ownedPages);candidate.blocks[0].uncertainty='Synthetic localized issue';return {status:'completed',candidate,usage:{inputTokens:1,outputTokens:2},responseHash:sha('first')};}});
- f.dependencies.repair=async input=>{repairs++;input.onSubmitted();throw new DocumentProviderError('rate_limit',429,'Known quota rejection.',false);};f.ingestion.stage('default',f.file.id,f.options);await f.ingestion.tick();assert.equal(repairs,1);
+ f.dependencies.repair=async input=>{repairs++;input.onSubmitted();throw new DocumentProviderError('rate_limit',429,'Known quota rejection.',false);};f.ingestion.stage('default',f.file.id,f.options);await f.ingestion.tick();assert.equal(repairs,0);retryLegacyOptionalFailure(f);await f.ingestion.tick();assert.equal(repairs,1);
  for(let i=0;i<4;i++)f.store.run("INSERT INTO source_reprocessing(id,file_id,vault_id,status,created_at,updated_at,payload) VALUES(?,?,'default','completed','2026-10-26','2026-10-26',?)",`slot-${i}`,f.file.id,JSON.stringify({patches:[],report:{},status:'completed'}));
  assert.throws(()=>f.ingestion.retry('default',f.file.id),/limit|capacity/i);assert.equal(repairs,1);assert.equal(f.files.require('default',f.file.id).status,'ready');assert.equal(f.ingestion.view('default',f.file.id).state,'completed');
 });
@@ -158,18 +163,18 @@ test('postpublication paid repair survives a capacity race and later creates der
  f.dependencies.repair=async input=>{repairs++;input.onSubmitted();if(repairs===1)throw new DocumentProviderError('rate_limit',429,'Known quota rejection.',false);
   for(let i=0;i<4;i++)f.store.run("INSERT INTO source_reprocessing(id,file_id,vault_id,status,created_at,updated_at,payload) VALUES(?,?,'default','completed','2026-10-26','2026-10-26',?)",`racing-slot-${i}`,f.file.id,JSON.stringify({patches:[],report:{},status:'completed'}));
   const block=input.document.blocks[0],start=block.text.indexOf('ﬁrst');return {status:'completed',candidate:{repairs:[{blockId:block.id,start,end:start+4,original:'ﬁrst',replacement:'first',category:'ocr',reason:'Equivalent ligature.'}]},usage:{inputTokens:3,outputTokens:4},responseHash:sha('retained-derivative')};};
- f.ingestion.stage('default',f.file.id,f.options);await f.ingestion.tick();const canonical=f.files.require('default',f.file.id).text;f.ingestion.retry('default',f.file.id);await f.ingestion.tick();assert.equal(f.ingestion.view('default',f.file.id).state,'failed');assert.equal(f.store.get("SELECT repair_state FROM source_ingestion_windows").repair_state,'candidate');assert.equal(f.files.require('default',f.file.id).status,'ready');
+ f.ingestion.stage('default',f.file.id,f.options);await f.ingestion.tick();assert.equal(repairs,0);retryLegacyOptionalFailure(f);await f.ingestion.tick();const canonical=f.files.require('default',f.file.id).text;f.ingestion.retry('default',f.file.id);await f.ingestion.tick();assert.equal(f.ingestion.view('default',f.file.id).state,'failed');assert.equal(f.store.get("SELECT repair_state FROM source_ingestion_windows").repair_state,'candidate');assert.equal(f.files.require('default',f.file.id).status,'ready');
  f.dependencies.prepare=async()=>{throw new Error('Retained candidates must not need PDF evidence or provider work.');};
  f.store.run("DELETE FROM source_reprocessing WHERE id LIKE 'racing-slot-%'");f.ingestion.retry('default',f.file.id);await f.ingestion.tick();assert.equal(f.ingestion.view('default',f.file.id).state,'completed',f.ingestion.view('default',f.file.id).error);assert.equal(f.calls(),1);assert.equal(repairs,2);assert.equal(f.files.require('default',f.file.id).text,canonical);assert.equal(f.store.all('SELECT id FROM source_reprocessing WHERE file_id=?',f.file.id).length,1);
 });
 test('PDF route staging cannot take ownership from active local extraction',async t=>{
  const f=setup(t);f.store.run("UPDATE source_files SET status='processing' WHERE id=?",f.file.id);assert.throws(()=>f.ingestion.stage('default',f.file.id,f.options),/workflow owns/);assert.equal(f.store.all('SELECT id FROM source_ingestion_runs').length,0);
 });
-test('cross-window continuation uses one bounded relation request and durable structural assembly',async t=>{
+test('explicit resumed legacy cross-window checkpoint uses one bounded relation request and durable structural assembly',async t=>{
  let relationCalls=0;
  const f=setup(t,{pages:10,extract:async input=>{input.onSubmitted();const candidate=ir(input.plan.ownedPages);for(const block of candidate.blocks)if(block.page===5)block.text='A paragraph that continues';return {status:'completed',candidate,usage:{inputTokens:1,outputTokens:2},responseHash:sha('window')};}});
  f.dependencies.relate=async input=>{relationCalls++;assert.deepEqual(input.plan.ownedPages,[5,6]);assert.deepEqual(input.pageMap,[5,6]);assert.equal(input.options.route,'openai');input.onSubmitted('relations');return {status:'completed',candidate:{relations:[{kind:'continuation',from:'w0:b5',to:'w1:b6',uncertain:false,reason:'The sentence continues on the adjacent physical page.'}]},usage:{inputTokens:3,outputTokens:4},responseHash:sha('relations')};};
- f.ingestion.stage('default',f.file.id,f.options);await f.ingestion.tick();assert.equal(f.ingestion.view('default',f.file.id).state,'completed',f.ingestion.view('default',f.file.id).error);assert.equal(f.calls(),2);assert.equal(relationCalls,1);
+ f.ingestion.stage('default',f.file.id,f.options);resumeLegacyRelationCheckpoint(f);await f.ingestion.tick();assert.equal(f.ingestion.view('default',f.file.id).state,'completed',f.ingestion.view('default',f.file.id).error);assert.equal(f.calls(),2);assert.equal(relationCalls,1);
  const row=f.store.get('SELECT document_json FROM source_ingestion_documents WHERE file_id=?',f.file.id),document=JSON.parse(row.document_json);assert.equal(document.relations.length,1);assert.equal(document.relations[0].from,'w0:b5');assert.equal(document.relations[0].to,'w1:b6');assert.equal(f.ingestion.view('default',f.file.id).completedPages,10);assert.equal(f.ingestion.view('default',f.file.id).totalWindows,2);
  const rich=new SourceDocuments(f.store).get(f.files.require('default',f.file.id));assert.equal(rich.ingestion.relations.length,1);assert.equal(rich.ingestion.provenance.independentEvidence,'not-checked');
  await f.ingestion.tick();assert.equal(relationCalls,1);
@@ -178,7 +183,7 @@ test('unknown boundary relation response pauses paid work and resumes only that 
  let relations=0;
  const f=setup(t,{pages:10,extract:async input=>{input.onSubmitted();const candidate=ir(input.plan.ownedPages);for(const block of candidate.blocks)if(block.page===5)block.text='A paragraph that continues';return {status:'completed',candidate,usage:{inputTokens:1,outputTokens:2},responseHash:sha('window')};}});
  f.dependencies.relate=async input=>{relations++;input.onSubmitted();if(relations===1)throw new DocumentProviderError('transport',502,'Unknown relation outcome',true);return {status:'completed',candidate:{relations:[]},usage:{inputTokens:1,outputTokens:2},responseHash:sha('relations')};};
- f.ingestion.stage('default',f.file.id,f.options);await f.ingestion.tick();assert.equal(f.ingestion.view('default',f.file.id).state,'unknown');assert.equal(f.calls(),2);assert.throws(()=>f.ingestion.resume('default',f.file.id),/duplicate-cost/);f.ingestion.resume('default',f.file.id,true);await f.ingestion.tick();assert.equal(f.ingestion.view('default',f.file.id).state,'completed',f.ingestion.view('default',f.file.id).error);assert.equal(f.calls(),2);assert.equal(relations,2);
+ f.ingestion.stage('default',f.file.id,f.options);resumeLegacyRelationCheckpoint(f);await f.ingestion.tick();assert.equal(f.ingestion.view('default',f.file.id).state,'unknown');assert.equal(f.calls(),2);assert.throws(()=>f.ingestion.resume('default',f.file.id),/duplicate-cost/);f.ingestion.resume('default',f.file.id,true);await f.ingestion.tick();assert.equal(f.ingestion.view('default',f.file.id).state,'completed',f.ingestion.view('default',f.file.id).error);assert.equal(f.calls(),2);assert.equal(relations,2);
  const document=JSON.parse(f.store.get('SELECT document_json FROM source_ingestion_documents').document_json);assert.ok(document.pages.find(p=>p.number===6).unresolved.length>0);
 });
 function missingPageExtraction(input){const candidate=ir(input.plan.ownedPages);const missing=candidate.pages.find(p=>p.number===2);if(missing){missing.state='unreadable';missing.unresolved=[{description:'The physical page could not be read.',blockId:null}];candidate.blocks=candidate.blocks.filter(b=>b.page!==2);}return candidate;}
@@ -205,11 +210,11 @@ test('explicit unknown-outcome replay retains a conservative charge bound within
  f.ingestion.stage('default',f.file.id,f.options);await f.ingestion.tick();assert.equal(f.calls(),1);assert.equal(f.ingestion.view('default',f.file.id).state,'unknown');
  f.ingestion.resume('default',f.file.id,true);await f.ingestion.tick();assert.equal(f.calls(),1);assert.equal(f.ingestion.view('default',f.file.id).state,'failed');assert.match(f.ingestion.view('default',f.file.id).error,/cost budget/);assert.equal(f.store.get("SELECT usage_json FROM source_ingestion_attempts WHERE state='unknown'").usage_json,null);
 });
-test('truncation preserves durable window namespaces while reconciling physically adjacent boundaries',async t=>{
+test('explicit resumed legacy relation after truncation preserves durable window namespaces while reconciling physically adjacent boundaries',async t=>{
  let relationCalls=0;
  const f=setup(t,{pages:10,extract:async(input,n)=>{input.onSubmitted();if(n===1)return {status:'incomplete',usage:{inputTokens:1,outputTokens:2},responseHash:sha('truncated')};const candidate=ir(input.plan.ownedPages);for(const block of candidate.blocks)if(block.page===5)block.text='The paragraph continues';return {status:'completed',candidate,usage:{inputTokens:1,outputTokens:2},responseHash:sha('window')};}});
  f.dependencies.relate=async input=>{relationCalls++;input.onSubmitted();assert.deepEqual(input.pageMap,[5,6]);const from=input.document.blocks.find(b=>b.page===5).id,to=input.document.blocks.find(b=>b.page===6).id;return {status:'completed',candidate:{relations:[{kind:'continuation',from,to,uncertain:false,reason:'Adjacent physical-page continuation.'}]},usage:{inputTokens:1,outputTokens:2},responseHash:sha('relation')};};
- f.ingestion.stage('default',f.file.id,f.options);await f.ingestion.tick();assert.equal(f.ingestion.view('default',f.file.id).state,'completed',f.ingestion.view('default',f.file.id).error);assert.equal(f.calls(),4);assert.equal(relationCalls,1);const document=JSON.parse(f.store.get('SELECT document_json FROM source_ingestion_documents').document_json);assert.deepEqual(document.relations[0],{kind:'continuation',from:'w2:b5',to:'w0:b6',uncertain:false});assert.equal(f.ingestion.view('default',f.file.id).completedPages,10);
+ f.ingestion.stage('default',f.file.id,f.options);resumeLegacyRelationCheckpoint(f);await f.ingestion.tick();assert.equal(f.ingestion.view('default',f.file.id).state,'completed',f.ingestion.view('default',f.file.id).error);assert.equal(f.calls(),4);assert.equal(relationCalls,1);const document=JSON.parse(f.store.get('SELECT document_json FROM source_ingestion_documents').document_json);assert.deepEqual(document.relations[0],{kind:'continuation',from:'w2:b5',to:'w0:b6',uncertain:false});assert.equal(f.ingestion.view('default',f.file.id).completedPages,10);
 });
 test('each paid attempt preserves its exact transmitted PDF hash across repeated window requests',async t=>{
  const transmitted=[];
@@ -229,4 +234,58 @@ test('processing view exposes durable window checkpoints without dispatching wor
  assert.equal(view.depth,'balanced');assert.equal(view.reviewPolicy,'verified');assert.equal(view.windows.length,1);
  assert.deepEqual(view.windows[0].pages,[1,2]);assert.equal(view.windows[0].state,'completed');assert.equal(view.windows[0].attempts,1);assert.equal(view.windows[0].error,null);
  assert.equal(f.calls(),before);
+});
+
+test('malformed optional table layout preserves five-page transcription in one provider request',async t=>{
+ const f=setup(t,{pages:5,extract:async input=>{input.onSubmitted('table-layout');const candidate=ir(input.plan.ownedPages);candidate.blocks[1].kind='table';candidate.blocks[1].table={rows:1,columns:2,cells:[{row:0,column:0,rowSpan:1,columnSpan:1,text:'Notified prosecutor'},{row:0,column:2,rowSpan:1,columnSpan:1,text:'Notified defence'}]};return {status:'completed',candidate,usage:{inputTokens:100,outputTokens:200},responseHash:sha('layout-response')};}});
+ f.ingestion.stage('default',f.file.id,f.options);await f.ingestion.tick();
+ const view=f.ingestion.view('default',f.file.id);assert.equal(view.state,'completed',view.error);assert.equal(f.calls(),1);assert.equal(view.completedPages,5);
+ const file=f.files.require('default',f.file.id);assert.equal(file.status,'ready');assert.match(file.text,/Notified prosecutor/);assert.match(file.text,/Notified defence/);assert.match(file.text,/Faithful synthetic 😀 source text. Page 5/);
+ const authoritative=JSON.parse(f.store.get('SELECT document_json FROM source_ingestion_documents WHERE file_id=?',file.id).document_json);assert.equal(authoritative.blocks[1].table,null);assert.ok(authoritative.blocks[1].uncertainty);
+ const ledger=JSON.parse(f.store.get('SELECT capabilities_json FROM source_ingestion_documents WHERE file_id=?',file.id).capabilities_json);assert.equal(ledger.structure.state,'requires-review');
+ await f.ingestion.tick();assert.equal(f.calls(),1,'Published source never repeats extraction');
+});
+
+test('completed raw response survives failed validation and resumes locally with no new paid request',async t=>{
+ const f=setup(t,{extract:async input=>{input.onSubmitted('retained');const candidate=ir(input.plan.ownedPages);candidate.pages[0].state='blank';return {status:'completed',candidate,usage:{inputTokens:40,outputTokens:80},responseHash:sha('retained-response')};}});
+ f.ingestion.stage('default',f.file.id,f.options);await f.ingestion.tick();assert.equal(f.ingestion.view('default',f.file.id).state,'failed');assert.equal(f.calls(),1);
+ const paid=f.store.get('SELECT id,candidate_json,usage_json FROM source_ingestion_attempts');assert.ok(paid.candidate_json);assert.equal(JSON.parse(paid.candidate_json).pages[0].state,'blank');
+ f.dependencies.split=async()=>{throw new Error('Retained candidate must not be split or uploaded again');};
+ f.ingestion.resume('default',f.file.id);await f.ingestion.tick();assert.equal(f.calls(),1);assert.equal(f.ingestion.view('default',f.file.id).state,'failed');assert.match(f.ingestion.view('default',f.file.id).error,/Blank page contains text/);assert.equal(f.store.get('SELECT count(*) n FROM source_ingestion_attempts').n,1);assert.equal(f.store.get('SELECT usage_json FROM source_ingestion_attempts').usage_json,paid.usage_json);
+ // Simulate a later parser correction against the retained response, without a
+ // network call; actual recovery must still pass every strict publication gate.
+ const candidate=JSON.parse(paid.candidate_json);candidate.pages[0].state='content';f.store.run('UPDATE source_ingestion_attempts SET candidate_json=? WHERE id=?',JSON.stringify(candidate),paid.id);
+ f.ingestion.resume('default',f.file.id);await f.ingestion.tick();assert.equal(f.ingestion.view('default',f.file.id).state,'completed',f.ingestion.view('default',f.file.id).error);assert.equal(f.calls(),1);assert.equal(f.store.get('SELECT count(*) n FROM source_ingestion_attempts').n,1);
+});
+
+test('unsupported optional correction category cannot block readable source publication',async t=>{
+ const f=setup(t,{pages:5,extract:async input=>{input.onSubmitted('unsupported-category');const candidate=ir(input.plan.ownedPages,'HEREBY CONSITUTES Trial Chamber III.');candidate.repairs=[{blockId:candidate.blocks[0].id,start:7,end:17,original:'CONSITUTES',replacement:'CONSTITUTES',category:'possible source typo',reason:'Possible omitted letter; retain original.'}];return {status:'completed',candidate,usage:{inputTokens:100,outputTokens:200},responseHash:sha('unsupported-category')};}});
+ f.ingestion.stage('default',f.file.id,f.options);await f.ingestion.tick();assert.equal(f.ingestion.view('default',f.file.id).state,'completed',f.ingestion.view('default',f.file.id).error);assert.equal(f.calls(),1);
+ const file=f.files.require('default',f.file.id);assert.match(file.text,/CONSITUTES/);assert.doesNotMatch(file.text,/CONSTITUTES/);assert.equal(f.store.get('SELECT count(*) n FROM source_reprocessing').n,0);
+ const doc=JSON.parse(f.store.get('SELECT document_json FROM source_ingestion_documents WHERE file_id=?',file.id).document_json);assert.equal(doc.repairs.length,0);assert.ok(doc.blocks[0].uncertainty);
+});
+
+function enrichmentCandidate(document){return {metadata:{title:document.blocks[0].text,language:'en',synopsis:'A concise AI synopsis of the supplied source pages.',candidates:[{field:'title',value:document.blocks[0].text,blockId:document.blocks[0].id,quote:document.blocks[0].text,reason:'Explicit title in supplied source evidence.'},{field:'language',value:'en',blockId:document.blocks[0].id,quote:document.blocks[0].text,reason:'The supplied source passage is in English.'}]},blocks:document.blocks.map((block,index)=>({id:block.id,kind:index===0?'heading':block.kind,headingLevel:index===0?1:block.headingLevel,table:null,quote:block.text,uncertainty:null})),relations:[]};}
+test('PDF ingestion produces transcription, structure and metadata from one input request',async t=>{
+ const f=setup(t,{pages:5,extract:async input=>{input.onSubmitted('joint-processing');const document=ir(input.plan.ownedPages);return {status:'completed',candidate:applySourceIngestionEnrichment(enrichmentCandidate(document),document,{ownedPages:input.plan.ownedPages}),usage:{inputTokens:100,outputTokens:200},responseHash:sha('joint-processing')};}});let enrichments=0;
+ f.dependencies.enrich=async input=>{enrichments++;input.onSubmitted('enrichment');return {status:'completed',candidate:enrichmentCandidate(input.document),usage:{inputTokens:100,outputTokens:200},responseHash:sha('enrichment')};};
+ f.ingestion.stage('default',f.file.id,f.options);await f.ingestion.tick();const view=f.ingestion.view('default',f.file.id);assert.equal(view.state,'completed',view.error);assert.equal(f.calls(),1);assert.equal(enrichments,0,'Fresh processing must not resend the PDF for a second enrichment pass');assert.equal(view.enrichedWindows,1);
+ const file=f.files.require('default',f.file.id);assert.match(file.summary,/concise AI synopsis/);assert.equal(file.generated_name,'Faithful synthetic 😀 source text. Page 1.');assert.equal(file.language,'en');assert.match(file.text,/Faithful synthetic/);
+ const doc=JSON.parse(f.store.get('SELECT document_json FROM source_ingestion_documents WHERE file_id=?',file.id).document_json);assert.equal(doc.blocks[0].kind,'heading');assert.equal(doc.blocks[0].headingLevel,1);
+ await f.ingestion.tick();assert.equal(enrichments,0);assert.equal(f.store.get("SELECT count(*) n FROM source_ingestion_attempts").n,1);
+});
+test('already published PDF enriches retained text without a second transcription or canonical identity change',async t=>{
+ const f=setup(t);f.ingestion.stage('default',f.file.id,f.options);await f.ingestion.tick();const file=f.files.require('default',f.file.id),original=f.store.get('SELECT document_json,assembly_json FROM source_ingestion_documents WHERE file_id=?',file.id);
+ let enrichments=0;f.dependencies.enrich=async input=>{enrichments++;input.onSubmitted('later-enrichment');return {status:'completed',candidate:enrichmentCandidate(input.document),usage:{inputTokens:10,outputTokens:20},responseHash:sha('later-enrichment')};};
+ f.ingestion.enrich('default',file.id);await f.ingestion.tick();assert.equal(f.ingestion.view('default',file.id).state,'completed',f.ingestion.view('default',file.id).error);assert.equal(f.calls(),1);assert.equal(enrichments,1);
+ assert.equal(f.files.require('default',file.id).text,file.text);assert.match(f.files.require('default',file.id).summary,/AI synopsis/);assert.deepEqual(f.store.get('SELECT document_json,assembly_json FROM source_ingestion_documents WHERE file_id=?',file.id),original);
+ const {resolveSourceIngestionAssembly}=await import('../src/server/modules/source-ingestion-document.ts');const projected=resolveSourceIngestionAssembly(f.store,f.files.require('default',file.id));assert.equal(projected.document.blocks[0].kind,'heading');assert.deepEqual(projected.blockRanges.map(b=>[b.id,b.range,b.text]),JSON.parse(original.assembly_json).blockRanges.map(b=>[b.id,b.range,b.text]));
+});
+
+for(const depth of ['light','balanced','deep'])test(`fresh ${depth} PDF ingestion retains joint outputs with no automatic repair, relations or enrichment pass`,async t=>{
+ const f=setup(t,{pages:10,extract:async input=>{input.onSubmitted('joint-single-pass');const candidate=ir(input.plan.ownedPages);candidate.metadata={...candidate.metadata,title:'Joint source output',language:'en',synopsis:'An AI synopsis returned with the faithful transcription.'};candidate.blocks[0].kind='heading';candidate.blocks[0].headingLevel=8;candidate.blocks[0].uncertainty='Uncertain heading classification requires review.';candidate.blocks.at(-1).text='A paragraph continues across a physical boundary';return {status:'completed',candidate,usage:{inputTokens:100,outputTokens:200},responseHash:sha('joint-'+input.plan.index)};}});f.options.depth=depth;
+ let repairs=0,relations=0,enrichments=0;f.dependencies.repair=async()=>{repairs++;throw new Error('No automatic repair pass allowed');};f.dependencies.relate=async()=>{relations++;throw new Error('No automatic relation pass allowed');};f.dependencies.enrich=async()=>{enrichments++;throw new Error('No automatic enrichment pass allowed');};
+ f.ingestion.stage('default',f.file.id,f.options);await f.ingestion.tick();const view=f.ingestion.view('default',f.file.id);assert.equal(view.state,'completed',view.error);assert.equal(view.completedPages,10);assert.equal(f.calls(),view.totalWindows);assert.equal(repairs,0);assert.equal(relations,0);assert.equal(enrichments,0);
+ const attempts=f.store.all('SELECT kind FROM source_ingestion_attempts');assert.equal(attempts.length,view.totalWindows);assert.ok(attempts.every(attempt=>attempt.kind==='extraction'));const windows=f.store.all("SELECT repair_state FROM source_ingestion_windows WHERE kind='extraction'");assert.ok(windows.every(window=>window.repair_state==='skipped'));
+ const file=f.files.require('default',f.file.id);assert.equal(file.generated_name,'Joint source output');assert.equal(file.language,'en');assert.match(file.summary,/returned with the faithful transcription/);assert.match(file.text,/physical boundary/);const doc=JSON.parse(f.store.get('SELECT document_json FROM source_ingestion_documents').document_json);assert.equal(doc.pages.length,10);assert.ok(doc.blocks.some(block=>block.uncertainty?.includes('heading')));assert.equal(f.store.get("SELECT count(*) n FROM source_ingestion_windows WHERE kind IN ('relations','enrichment')").n,0);
 });

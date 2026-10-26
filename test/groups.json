@@ -44,6 +44,7 @@
     "test/domain-shortlist-multilingual.test.mjs",
     "test/page-block-evidence.test.mjs",
     "test/source-ingestion-contracts.test.mjs",
+    "test/source-ingestion-enrichment.test.mjs",
     "test/source-ingestion-security.test.mjs",
     "test/source-ingestion-options.test.mjs",
     "test/source-ingestion-targeted-repair.test.mjs",

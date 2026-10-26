@@ -26,7 +26,7 @@ import {SourceLifecycleService} from './modules/source-lifecycle.js';
 import {readingNoteMaxWords,readingNoteWordCount} from '../shared/source-reading.js';
 import {sourceProgress} from './modules/source-progress.js';
 import {mathSource} from './modules/source-math-text.js';
-import {resolveSourceDocument} from './modules/source-ingestion-document.js';
+import {resolveSourceDocument,resolveSourceIngestionAssembly} from './modules/source-ingestion-document.js';
 import {EntityScanStream} from './modules/entity-scan-stream.js';
 import {DOMAINS,TAXONOMY_VERSION} from '../shared/domains.js';
 import {Domains} from './modules/domains.js';
@@ -136,6 +136,7 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
                 if(!Number.isSafeInteger(body.page)||(body.page as number)<1)throw new HttpError(400,'Choose a physical page to recover.');
                 return send(202,runtime.sourceIngestion.recoverPage(vault,id,body.page as number));
               }
+              if(parts[4]==='enrich'){if(!sourceIngestionEnabled(store))throw new HttpError(409,'PDF provider ingestion is not enabled on this server.');return send(202,runtime.sourceIngestion.enrich(vault,id));}
               if(parts[4]==='stop')return send(200,runtime.sourceIngestion.stop(vault,id));
               if(parts[4]==='retry')return send(202,runtime.sourceIngestion.retry(vault,id));
               if(parts[4]==='resume') {
@@ -266,6 +267,15 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
           if(id && parts.length===3 && method==='DELETE')return send(200,sourceFiles.remove(vault,id));
           if(id && parts.length===4 && parts[3]==='retry' && method==='POST')return send(200,sourceFiles.retry(vault,id));
           if(id && parts.length===4 && parts[3]==='retry-enrichment' && method==='POST')return send(200,sourceEnrichments.retry(vault,id));
+          if(id && parts.length===4 && parts[3]==='enriched-json' && method==='GET') {
+            const file=sourceFiles.require(vault,id);
+            if(file.admitted!==1||file.status!=='ready'||!file.text.trim())throw new HttpError(409,'Enriched JSON is available after PDF processing completes.');
+            const assembly=resolveSourceIngestionAssembly(store,file);if(!assembly)throw new HttpError(404,'This source has no direct PDF processing result.');
+            const filename=encodeURIComponent((file.name.replace(/\.[^.]+$/,'')||'source')+'.enriched.json').replace(/['()*]/g,char=>'%'+char.charCodeAt(0).toString(16).toUpperCase());
+            res.writeHead(200,{'Content-Type':'application/json; charset=utf-8','Content-Disposition':`attachment; filename="source.enriched.json"; filename*=UTF-8''${filename}`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; sandbox"});
+            // Reuse the saved structured result; no model request or second text/tree copy.
+            return res.end(JSON.stringify(assembly.document,null,2));
+          }
           if(id && parts.length===4 && parts[3]==='download-processed' && method==='GET') {
             const file=sourceFiles.require(vault,id);
             if(file.admitted!==1||file.status!=='ready'||!file.text.trim())throw new HttpError(409,'Processed text is available after source processing completes.');

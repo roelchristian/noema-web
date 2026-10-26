@@ -1,3 +1,4 @@
+import {SOURCE_INGESTION_ENRICHMENT_SCHEMA,sourceIngestionEnrichmentPrompt} from './modules/source-ingestion-enrichment.js';
 import {sourceIngestionWithActivity} from './modules/source-ingestion-activity.js';
 import {SOURCE_INGESTION_RELATIONS_SCHEMA,sourceIngestionRelationsPrompt} from './modules/source-ingestion-relations.js';
 import {sourceIngestionContextManifest} from './modules/source-ingestion-planner.js';
@@ -81,6 +82,10 @@ export function createRuntime(store: Store, intelligence: Intelligence, network:
         return {...result,candidate:document};
       }
       return result;
+    },
+    enrich:async({vaultId,fileId,options,pdf,pageMap,plan,document,signal,onSubmitted})=>{
+      if(options.route==='local'||!options.model)throw new HttpError(400,'Choose a document provider and model.');
+      return sourceIngestionWithActivity(activity,store,{vaultId,fileId,phase:'enrich'},intelligence.documentProvider(options.route),{task:'enrichment',model:options.model,pdf,pages:pageMap.length,prompt:sourceIngestionEnrichmentPrompt(document,{ownedPages:plan.ownedPages,contextPages:plan.contextPages,pageMap,depth:options.depth}),schema:SOURCE_INGESTION_ENRICHMENT_SCHEMA,maxOutputTokens:Math.min(options.budget.maxOutputTokens,16000),signal,onSubmitted});
     },
     relate:async({vaultId,fileId,options,pdf,pageMap,document,request,signal,onSubmitted})=>{
       if(options.route==='local'||!options.model)throw new HttpError(400,'Choose a document provider and model.');

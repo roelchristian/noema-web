@@ -1,6 +1,6 @@
 /** Provider output is untrusted. Only local assembly assigns citation IDs and offsets. */
 export const SOURCE_INGESTION_SCHEMA_VERSION=1 as const;
-export const SOURCE_INGESTION_PROMPT_VERSION='pdf-transcription-1';
+export const SOURCE_INGESTION_PROMPT_VERSION='pdf-transcription-3';
 export const SOURCE_INGESTION_ASSEMBLY_VERSION=1;
 export const SOURCE_INGESTION_MAX_CHARACTERS=16_000_000;
 export type SourceIngestionRoute='local'|'openai'|'gemini';
@@ -18,6 +18,7 @@ export interface SourceIngestionMetadata {
  title:string|null;language:string|null;synopsis:string|null;
  contributors:{name:string;role:string;page:number;blockId:string|null}[];
  bibliographic:{field:string;value:string;page:number;blockId:string|null}[];
+ candidates?:{field:string;value:string;blockId:string;page:number;quote:string;reason:string}[];
 }
 export interface SourceIngestionPage {
  number:number;printedLabel:string|null;role:'owned'|'context';state:'content'|'blank'|'image-only'|'unreadable';
@@ -53,11 +54,12 @@ export interface SourceIngestionProvenance {
 export interface SourceIngestionWindowPlan {index:number;ownedPages:number[];contextPages:number[];estimatedOutputTokens:number}
 export type SourceIngestionRunState='pending'|'running'|'paused'|'failed'|'completed'|'cancelled'|'unknown';
 export interface SourceProcessingRunView {
- id:string;fileId:string;mode:'ingestion';state:SourceIngestionRunState;
- stage:'preparation'|'upload'|'extraction'|'validation'|'repair'|'publication'|'indexing';
+ id:string;fileId:string;sourceId?:string|null;mode:'ingestion';state:SourceIngestionRunState;
+ stage:'preparation'|'upload'|'extraction'|'validation'|'repair'|'enrichment'|'publication'|'indexing';
  provider:SourceIngestionRoute;model:string|null;pageCount:number;completedPages:number;completedWindows:number;totalWindows:number;
  activePages:number[];pendingReview:number;startedAt:string;updatedAt:string;
  error:string|null;warnings?:string[];canRetryOptional?:boolean;unknownOutcome:boolean;canResume:boolean;
- windows?:{id:string;number:number;kind:'extraction'|'relations'|'page-recovery';pages:number[];state:string;repairState:string;attempts:number;error:string|null}[];
+ windows?:{id:string;number:number;kind:'extraction'|'relations'|'page-recovery'|'enrichment';pages:number[];state:string;repairState:string;attempts:number;error:string|null}[];
  depth?:SourceIngestionDepth;reviewPolicy?:SourceIngestionReviewPolicy;
+ enrichedWindows?:number;totalEnrichmentWindows?:number;canEnrich?:boolean;pendingMetadata?:number;
 }

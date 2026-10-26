@@ -1,17 +1,24 @@
 import {SOURCE_INGESTION_MAX_CHARACTERS,type SourceIngestionDocument} from '../../shared/source-ingestion.js';
-type Schema={type?:string;properties?:Record<string,Schema>;required?:string[];additionalProperties?:boolean;items?:Schema;enum?:unknown[];anyOf?:Schema[]};
+import {wellFormedUnicode} from './source-reprocessing-patches.js';
+export const SOURCE_INGESTION_REPAIR_CATEGORIES=['ocr','line_breaks','footnote','apparatus','metadata','citation','math','formatting'] as const;
+const repairCategories=new Set<string>(SOURCE_INGESTION_REPAIR_CATEGORIES);
+type Schema={description?:string;type?:string;properties?:Record<string,Schema>;required?:string[];additionalProperties?:boolean;items?:Schema;enum?:unknown[];anyOf?:Schema[]};
 const str:Schema={type:'string'},num:Schema={type:'integer'},bool:Schema={type:'boolean'};
 const nullable=(value:Schema):Schema=>({anyOf:[value,{type:'null'}]});
 const array=(items:Schema):Schema=>({type:'array',items});
 const object=(properties:Record<string,Schema>):Schema=>({type:'object',properties,required:Object.keys(properties),additionalProperties:false});
 export const SOURCE_INGESTION_JSON_SCHEMA=object({
  schemaVersion:{type:'integer',enum:[1]},
- metadata:object({title:nullable(str),language:nullable(str),synopsis:nullable(str),contributors:array(object({name:str,role:str,page:num,blockId:nullable(str)})),bibliographic:array(object({field:str,value:str,page:num,blockId:nullable(str)}))}),
+ metadata:object({title:nullable(str),language:nullable(str),synopsis:nullable(str),contributors:array(object({name:str,role:str,page:num,blockId:nullable(str)})),bibliographic:array(object({field:str,value:str,page:num,blockId:nullable(str)})),candidates:array(object({field:str,value:str,blockId:str,page:num,quote:str,reason:str}))}),
  pages:array(object({number:num,printedLabel:nullable(str),role:{type:'string',enum:['owned','context']},state:{type:'string',enum:['content','blank','image-only','unreadable']},unresolved:array(object({description:str,blockId:nullable(str)}))})),
- blocks:array(object({id:str,page:num,order:num,kind:{type:'string',enum:['paragraph','heading','table','equation','figure','caption','footnote','list','blockquote','code','theorem','lemma','proposition','corollary','definition','proof','example','remark','bibliography','furniture']},text:str,headingLevel:nullable(num),continues:nullable(str),table:nullable(object({rows:num,columns:num,cells:array(object({row:num,column:num,rowSpan:num,columnSpan:num,text:str}))})),uncertainty:nullable(str),location:nullable(object({x:{type:'number'},y:{type:'number'},width:{type:'number'},height:{type:'number'},accuracy:{type:'string',enum:['approximate']}}))})),
+ blocks:array(object({id:str,page:num,order:num,kind:{type:'string',enum:['paragraph','heading','table','equation','figure','caption','footnote','list','blockquote','code','theorem','lemma','proposition','corollary','definition','proof','example','remark','bibliography','furniture']},text:str,headingLevel:nullable(num),continues:nullable(str),table:nullable(object({rows:{...num,description:'Number of rows, not the last row index.'},columns:{...num,description:'Number of columns, not the last column index.'},cells:array(object({row:{...num,description:'Zero-based starting row; first row is 0.'},column:{...num,description:'Zero-based starting column; first column is 0.'},rowSpan:{...num,description:'Positive number of rows occupied, usually 1.'},columnSpan:{...num,description:'Positive number of columns occupied, usually 1.'},text:str}))})),uncertainty:nullable(str),location:nullable(object({x:{type:'number'},y:{type:'number'},width:{type:'number'},height:{type:'number'},accuracy:{type:'string',enum:['approximate']}}))})),
  relations:array(object({kind:{type:'string',enum:['heading-parent','statement-proof','footnote-callout','caption','table-continuation','bibliography','continuation']},from:str,to:str,uncertain:bool})),
- repairs:array(object({blockId:str,start:num,end:num,original:str,replacement:str,category:str,reason:str})),
+ repairs:array(object({blockId:str,start:num,end:num,original:str,replacement:str,category:{...str,description:'Exactly one of: '+SOURCE_INGESTION_REPAIR_CATEGORIES.join(', ')+'. Other concerns belong in block uncertainty, not repairs.'},reason:str})),
 });
+const internalMetadata=SOURCE_INGESTION_JSON_SCHEMA.properties!.metadata!;
+/** Fresh provider output requires candidates, even when empty. Legacy authoritative
+ * IR and retained responses may omit this later-added evidence array. */
+const internalSchema:Schema={...SOURCE_INGESTION_JSON_SCHEMA,properties:{...SOURCE_INGESTION_JSON_SCHEMA.properties,metadata:{...internalMetadata,required:internalMetadata.required!.filter(key=>key!=='candidates')}}};
 function matches(value:unknown,schema:Schema,path:string):void {
  if(schema.anyOf){for(const choice of schema.anyOf)try{matches(value,choice,path);return;}catch{}throw new Error(`${path}: invalid nullable value`);}
  if(schema.type==='null'){if(value!==null)throw new Error(`${path}: expected null`);return;}
@@ -25,9 +32,142 @@ function matches(value:unknown,schema:Schema,path:string):void {
  if(schema.type==='integer'?typeof value!=='number'||!Number.isSafeInteger(value):schema.type==='number'?typeof value!=='number'||!Number.isFinite(value):typeof value!==schema.type)throw new Error(`${path}: expected ${schema.type}`);
  if(schema.enum&&!schema.enum.includes(value))throw new Error(`${path}: unsupported value`);
 }
+type IngestionBlock=SourceIngestionDocument['blocks'][number];
+type IngestionTable=NonNullable<IngestionBlock['table']>;
+function tableGrid(table:IngestionTable,rowShift=0,columnShift=0):Set<string>|null {
+ if(table.rows<1||table.columns<1||table.rows*table.columns>100_000)return null;
+ const occupied=new Set<string>();
+ for(const cell of table.cells){
+  const row=cell.row-rowShift,column=cell.column-columnShift;
+  if(row<0||column<0||cell.rowSpan<1||cell.columnSpan<1||row+cell.rowSpan>table.rows||column+cell.columnSpan>table.columns)return null;
+  for(let r=row;r<row+cell.rowSpan;r++)for(let c=column;c<column+cell.columnSpan;c++){const key=`${r}:${c}`;if(occupied.has(key))return null;occupied.add(key);}
+ }
+ return occupied;
+}
+/** Provider-only recovery of optional layout hints. Authoritative and restored IR
+ * continues to use strict validation; ownership, IDs and source text are not repaired. */
+export function normalizeSourceIngestionCandidate(input:unknown):SourceIngestionDocument {
+ matches(input,internalSchema,'document');
+ const doc=structuredClone(input as SourceIngestionDocument);
+ const originalTexts=new Map(doc.blocks.map(block=>[block.id,block.text]));
+ const note=(block:IngestionBlock,message:string)=>{if(!block.uncertainty?.includes(message))block.uncertainty=[block.uncertainty,message].filter(Boolean).join(' ');};
+ for(const block of doc.blocks){
+  if(block.headingLevel!==null&&(block.kind!=='heading'||block.headingLevel<1||block.headingLevel>6)||block.kind==='heading'&&block.headingLevel===null){
+   if(block.kind==='heading')block.kind='paragraph';block.headingLevel=null;note(block,'An inconsistent provider heading level was omitted. The original text is retained; heading structure requires review.');
+  }
+  if(block.location&&([block.location.x,block.location.y,block.location.width,block.location.height].some(n=>n<0||n>1)||block.location.x+block.location.width>1||block.location.y+block.location.height>1)){
+   block.location=null;note(block,'An out-of-bounds provider location hint was omitted. Inspect the original PDF for visual placement.');
+  }
+  const table=block.table;if(!table)continue;
+  if(block.kind==='table'&&tableGrid(table))continue;
+  // A unique complete-grid conversion establishes the origin convention. Sparse
+  // or ambiguous grids cannot justify guessing new dimensions or missing cells.
+  const shifts=block.kind==='table'?[[1,0],[0,1],[1,1]].filter(([row,column])=>tableGrid(table,row,column)?.size===table.rows*table.columns):[];
+  if(shifts.length===1){const [row,column]=shifts[0]!;for(const cell of table.cells){cell.row-=row!;cell.column-=column!;}note(block,'Provider table coordinates used a one-based origin; normalized to zero-based coordinates. Table layout requires review.');continue;}
+  // Table cells are redundant layout, but their strings may contain content not
+  // repeated in the plain transcription. Retain every supplied string in order.
+  const transcription=block.text;let consumed=0;
+  // Match monotonically in supplied cell order: each original occurrence can
+  // account for one cell only. Unmatched values stay explicit, including repeats.
+  for(const cell of table.cells){
+   if(!cell.text)continue;const match=transcription.indexOf(cell.text,consumed);
+   if(match>=0)consumed=match+cell.text.length;else block.text+=(block.text?'\n':'')+cell.text;
+  }
+  block.table=null;
+  note(block,'Provider table layout was inconsistent and was omitted. All supplied text is retained as a plain transcription; inspect the original PDF to review the layout.');
+ }
+ // Optional continuation hints must never prevent readable, otherwise valid
+ // source text from publishing. Unknown or ambiguous IDs remain strict errors.
+ const ids=new Map<string,IngestionBlock>();const duplicate=new Set<string>();
+ for(const block of doc.blocks){if(ids.has(block.id))duplicate.add(block.id);ids.set(block.id,block);}
+ const before=(from:IngestionBlock,to:IngestionBlock)=>from.page<to.page||from.page===to.page&&from.order<to.order;
+ const tables=(from:IngestionBlock,to:IngestionBlock)=>from.kind==='table'&&to.kind==='table'&&!!from.table&&!!to.table&&from.table.columns===to.table.columns;
+ for(const block of doc.blocks){
+  if(!block.continues||duplicate.has(block.id)||duplicate.has(block.continues))continue;
+  const previous=ids.get(block.continues);if(!previous)continue;
+  if(!before(previous,block)||previous.kind!==block.kind||block.kind==='table'&&!tables(previous,block)){block.continues=null;note(block,'An inconsistent provider continuation hint was omitted. The separate text blocks are retained; their relationship requires review.');}
+ }
+ const relationKeys=new Set<string>();
+ doc.relations=doc.relations.filter(relation=>{
+  if(duplicate.has(relation.from)||duplicate.has(relation.to))return true;
+  const from=ids.get(relation.from),to=ids.get(relation.to);if(!from||!to)return true;
+  const key=`${relation.kind}:${from.id}:${to.id}`;
+  const omit=()=>{note(from,`An inconsistent provider ${relation.kind} relation was omitted. Both text blocks are retained; their relationship requires review.`);note(to,`An inconsistent provider ${relation.kind} relation was omitted. Both text blocks are retained; their relationship requires review.`);return false;};
+  if(from===to||relationKeys.has(key))return omit();
+  let valid:boolean;
+  switch(relation.kind){
+   case 'heading-parent':valid=from.kind==='heading'&&to.kind==='heading'&&from.headingLevel!==null&&to.headingLevel!==null&&from.headingLevel>to.headingLevel;break;
+   case 'footnote-callout':valid=from.kind!=='footnote'&&to.kind==='footnote';break;
+   case 'statement-proof':valid=['theorem','lemma','proposition','corollary','definition','example','remark'].includes(from.kind)&&to.kind==='proof';break;
+   case 'table-continuation':valid=tables(from,to)&&before(from,to);break;
+   case 'continuation':valid=from.kind===to.kind&&['paragraph','footnote','list','blockquote','code','bibliography','table'].includes(from.kind)&&(from.kind!=='table'||tables(from,to))&&before(from,to);break;
+   case 'caption':valid=['figure','table','equation'].includes(from.kind)&&to.kind==='caption';break;
+   case 'bibliography':valid=['heading','bibliography'].includes(from.kind)&&to.kind==='bibliography'&&(from.kind!=='bibliography'||before(from,to));break;
+  }
+  if(!valid)return omit();relationKeys.add(key);return true;
+ });
+ // Resolve contradictory definite relationships as uncertainty, never choose an
+ // arbitrary winner. Heading hierarchies cannot retain multiple parents at all.
+ const headingParents=new Map<string,Set<string>>(),footnotes=new Map<string,Set<string>>(),successors=new Map<string,Set<string>>(),predecessors=new Map<string,Set<string>>();
+ const add=(map:Map<string,Set<string>>,key:string,value:string)=>{const entries=map.get(key)??new Set<string>();entries.add(value);map.set(key,entries);};
+ for(const relation of doc.relations){
+  if(!ids.has(relation.from)||!ids.has(relation.to)||duplicate.has(relation.from)||duplicate.has(relation.to))continue;
+  if(relation.kind==='heading-parent')add(headingParents,relation.from,relation.to);
+  if(relation.kind==='footnote-callout'&&!relation.uncertain)add(footnotes,relation.from,relation.to);
+  if(relation.kind==='table-continuation'&&!relation.uncertain){add(successors,relation.from,relation.to);add(predecessors,relation.to,relation.from);}
+ }
+ doc.relations=doc.relations.filter(relation=>{
+  const from=ids.get(relation.from),to=ids.get(relation.to);if(!from||!to||duplicate.has(relation.from)||duplicate.has(relation.to))return true;
+  const ambiguous=relation.kind==='heading-parent'&&(headingParents.get(from.id)?.size??0)>1||relation.kind==='footnote-callout'&&(footnotes.get(from.id)?.size??0)>1||relation.kind==='table-continuation'&&((successors.get(from.id)?.size??0)>1||(predecessors.get(to.id)?.size??0)>1);
+  if(!ambiguous)return true;
+  note(from,`Conflicting provider ${relation.kind} relationships require review. No definite relationship is asserted.`);note(to,`Conflicting provider ${relation.kind} relationships require review. No definite relationship is asserted.`);
+  if(relation.kind==='heading-parent')return false;relation.uncertain=true;return true;
+ });
+ // Strictly decreasing heading levels and increasing physical reading order
+ // above rule out hierarchy/continuation cycles without dropping source blocks.
+
+ doc.repairs=doc.repairs.filter(repair=>{
+  const block=ids.get(repair.blockId);if(!block||duplicate.has(block.id))return true;
+  // Appended cell-only text cannot make an originally invalid repair valid.
+  const original=originalTexts.get(block.id)!;
+  const splitsSurrogate=[repair.start,repair.end].some(at=>at>0&&at<original.length&&/[\uD800-\uDBFF]/.test(original[at-1]!)&&/[\uDC00-\uDFFF]/.test(original[at]!));
+  if(repair.start>=0&&repair.end>repair.start&&repair.end<=original.length&&original.slice(repair.start,repair.end)===repair.original&&!splitsSurrogate&&wellFormedUnicode(repair.replacement)&&repair.original!==repair.replacement&&repair.original.length<=16000&&repair.replacement.length<=16000&&repair.reason.length<=2000&&repairCategories.has(repair.category)&&!(/<!--\s*Page\s+\d+\s*-->/i.test(repair.original+repair.replacement)))return true;
+  note(block,'An inconsistent provider repair suggestion was omitted because it did not satisfy exact-span editorial review constraints. The original transcription is unchanged.');return false;
+ });
+ // Overlapping alternatives cannot be applied or arbitrarily preferred. Omit
+ // each connected overlap group and retain a clear review finding on the block.
+ const unsafe=new Set<SourceIngestionDocument['repairs'][number]>();
+ const repairsByBlock=new Map<string,SourceIngestionDocument['repairs']>();
+ for(const repair of doc.repairs){if(!ids.has(repair.blockId)||duplicate.has(repair.blockId))continue;const list=repairsByBlock.get(repair.blockId)??[];list.push(repair);repairsByBlock.set(repair.blockId,list);}
+ for(const [id,repairs] of repairsByBlock){
+  const ordered=repairs.slice().sort((a,b)=>a.start-b.start||a.end-b.end);let end=-1,group:typeof repairs=[];
+  const finish=()=>{if(group.length>1){for(const repair of group)unsafe.add(repair);note(ids.get(id)!,'Overlapping provider repair suggestions were omitted. No competing edit is selected; the original transcription is unchanged.');}};
+  for(const repair of ordered){if(repair.start>=end){finish();group=[];end=-1;}group.push(repair);end=Math.max(end,repair.end);}finish();
+ }
+ let retainedRepairs=0;
+ doc.repairs=doc.repairs.filter(repair=>{
+  const block=ids.get(repair.blockId);if(!block||duplicate.has(block.id))return true;
+  if(unsafe.has(repair))return false;
+  if(retainedRepairs++<6400)return true;
+  note(block,'Provider repair suggestions beyond the 6400-item editorial review budget were omitted. The original transcription is unchanged.');return false;
+ });
+ const evidence=(candidate:SourceIngestionDocument['metadata']['contributors'][number]|SourceIngestionDocument['metadata']['bibliographic'][number])=>{
+  const block=candidate.blockId===null?null:ids.get(candidate.blockId);
+  if(candidate.blockId!==null&&(!block||duplicate.has(candidate.blockId)))return true;
+  if(doc.pages.some(page=>page.number===candidate.page)&&(!block||block.page===candidate.page))return true;
+  const message='An inconsistent provider metadata evidence claim was omitted. Source text is retained; bibliographic details require review.';
+  if(block)note(block,message);else{const page=doc.pages.find(page=>page.role==='owned');if(page&&!page.unresolved.some(region=>region.description===message))page.unresolved.push({description:message,blockId:null});}
+  return false;
+ };
+ doc.metadata.contributors=doc.metadata.contributors.filter(evidence);doc.metadata.bibliographic=doc.metadata.bibliographic.filter(evidence);
+ if(doc.metadata.candidates)doc.metadata.candidates=doc.metadata.candidates.filter(candidate=>{const block=ids.get(candidate.blockId);if(!block||duplicate.has(candidate.blockId))return true;if(evidence(candidate)&&candidate.quote.trim()&&block.text.includes(candidate.quote))return true;note(block,'An inconsistent provider metadata quotation was omitted. Bibliographic details require review.');return false;});
+
+ return doc;
+}
+
 /** Strictly validate untrusted provider data before assigning any trusted IDs or coordinates. */
 export function validateSourceIngestionDocument(input:unknown,options:{ownedPages:number[];pageCount:number}):SourceIngestionDocument {
- matches(input,SOURCE_INGESTION_JSON_SCHEMA,'document');
+ matches(input,internalSchema,'document');
  const doc=input as SourceIngestionDocument;
  if(!Number.isSafeInteger(options.pageCount)||options.pageCount<1)throw new Error('Invalid original page count');
  const requested=new Set(options.ownedPages);
@@ -90,6 +230,7 @@ export function validateSourceIngestionDocument(input:unknown,options:{ownedPage
  if(visited!==indegrees.size)throw new Error('Continuation relation cycle');
  for(const id of parents.keys()){const seen=new Set<string>();let cursor:string|undefined=id;while(cursor){if(seen.has(cursor))throw new Error('Hierarchy cycle');seen.add(cursor);cursor=parents.get(cursor);}}
  for(const candidate of [...doc.metadata.contributors,...doc.metadata.bibliographic]){if(!pages.has(candidate.page))throw new Error('Metadata evidence page missing');if(candidate.blockId!==null&&reference(candidate.blockId).page!==candidate.page)throw new Error('Metadata evidence mismatch');}
+ for(const candidate of doc.metadata.candidates??[]){const block=reference(candidate.blockId);if(!pages.has(candidate.page)||block.page!==candidate.page||!candidate.quote.trim()||!block.text.includes(candidate.quote))throw new Error('Metadata candidate evidence mismatch');}
  for(const repair of doc.repairs){const block=reference(repair.blockId);if(repair.start<0||repair.end<=repair.start||repair.end>block.text.length||block.text.slice(repair.start,repair.end)!==repair.original)throw new Error('Repair must match exact UTF-16 source span');for(const at of [repair.start,repair.end])if(at>0&&at<block.text.length&&/[\uD800-\uDBFF]/.test(block.text[at-1]!)&&/[\uDC00-\uDFFF]/.test(block.text[at]!))throw new Error('Repair splits a Unicode surrogate pair');}
  return structuredClone(doc);
 }

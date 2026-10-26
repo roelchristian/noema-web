@@ -112,3 +112,50 @@ test('Unicode corrections respect the same UTF-8 byte budget enforced at ingesti
  assert.ok(Buffer.byteLength(f.file.text)>16*1024*1024);
  assert.throws(()=>f.revision(),/baseline/);
 });
+
+test('PDF enrichment reconciles normalized date and title evidence while distinguishing issuing body from signatory',async t=>{
+ const {mkdtempSync,rmSync}=await import('node:fs');const {join}=await import('node:path');const {tmpdir}=await import('node:os');
+ const {openDatabase}=await import('../src/server/database.ts');const {Store}=await import('../src/server/store.ts');const {SourceFiles}=await import('../src/server/modules/source-files.ts');const {Knowledge}=await import('../src/server/modules/knowledge.ts');
+ const {SourceMetadata}=await import('../src/server/modules/source-metadata.ts');const {Bibliography}=await import('../src/server/modules/bibliography.ts');const {reconcileSourceIngestion}=await import('../src/server/modules/source-ingestion-corrections.ts');
+ const directory=mkdtempSync(join(tmpdir(),'noema-pdf-enrichment-metadata-')),db=openDatabase(join(directory,'synthetic.sqlite')),store=new Store(db),files=new SourceFiles(store);
+ t.after(()=>{files.close();db.close();rmSync(directory,{recursive:true,force:true});});
+ const titleQuote='DECISION CONSTITUTING\nTRIAL CHAMBER III',dateQuote='Done on 23 October 2026',issuerQuote='Issued by: International Criminal Court';
+ const f=fixture(titleQuote+'\n'+issuerQuote+'\n'+dateQuote+'\nJudge Jane Example\nPresiding Judge\n\nThe ﬁrst paragraph.');f.assembly.repairs=[];
+ f.ir.metadata.candidates=[{field:'title',value:'Decision Constituting Trial Chamber III',blockId:'b1',page:1,quote:titleQuote,reason:'The printed document title; normalized capitalization and line wrapping.'},{field:'date',value:'2026-10-23',blockId:'b1',page:1,quote:dateQuote,reason:'Explicit date of issuance, normalized to ISO.'},{field:'author',value:'International Criminal Court',blockId:'b1',page:1,quote:issuerQuote,reason:'The credited institutional issuing body, distinct from the individual judge who signs.'}];
+ f.ir.metadata.contributors=[{name:'Judge Jane Example',role:'signatory',blockId:'b1',page:1}];
+ const staged=files.add('default','legal-decision.md',Buffer.from(f.assembly.text)),source=new Knowledge(store).create('default',{name:'Manual source name',type:'source',attachmentIds:[staged.id]});
+ store.run("UPDATE source_files SET status='ready',text=?,admitted=1,enrichment_status='completed' WHERE id=?",f.assembly.text,staged.id);
+ const file=files.require('default',staged.id),metadata=new SourceMetadata(store);metadata.setPolicy('default',source.id,'fill_validated_empty');
+ const title=metadata.snapshot('default',source.id).fields.find(field=>field.key==='bibliography:title');metadata.save('default',source.id,{fieldKey:title.key,fingerprint:title.fingerprint,value:'Manual catalog title'});
+ const first=reconcileSourceIngestion(store,file,f.ir,f.assembly,options),again=reconcileSourceIngestion(store,file,f.ir,f.assembly,options);
+ assert.equal(first.diagnostics.length,0);assert.equal(again.diagnostics.length,0);assert.equal(first.metadataPending,3);
+ const snapshot=metadata.snapshot('default',source.id),proposals=snapshot.fields.flatMap(field=>field.proposals);
+ assert.equal(proposals.length,3);assert.ok(proposals.some(proposal=>proposal.fieldKey==='bibliography:date'&&proposal.value==='2026-10-23'));assert.ok(proposals.some(proposal=>proposal.fieldKey==='bibliography:title'&&proposal.value==='Decision Constituting Trial Chamber III'));
+ assert.deepEqual(proposals.filter(proposal=>proposal.fieldKey==='bibliography:author').map(proposal=>proposal.value),['International Criminal Court']);
+ assert.equal(new Bibliography(store).get('default',source.id).fields.title,'Manual catalog title');assert.equal(store.get('SELECT name FROM entities WHERE id=?',source.id).name,'Manual source name');
+ const evidence=store.all('SELECT evidence_json FROM source_metadata_candidates').flatMap(row=>JSON.parse(row.evidence_json));
+ assert.ok(evidence.some(item=>item.value==='2026-10-23'&&item.excerpt===dateQuote&&file.text.slice(item.start,item.end)===dateQuote));assert.ok(evidence.every(item=>item.validated===false));
+});
+
+test('PDF metadata with ambiguous quotations or wrong page remains pending with diagnostics',async t=>{
+ const {mkdtempSync,rmSync}=await import('node:fs');const {join}=await import('node:path');const {tmpdir}=await import('node:os');const {openDatabase}=await import('../src/server/database.ts');const {Store}=await import('../src/server/store.ts');const {SourceFiles}=await import('../src/server/modules/source-files.ts');const {Knowledge}=await import('../src/server/modules/knowledge.ts');const {reconcileSourceIngestion}=await import('../src/server/modules/source-ingestion-corrections.ts');
+ const directory=mkdtempSync(join(tmpdir(),'noema-pdf-invalid-metadata-')),db=openDatabase(join(directory,'synthetic.sqlite')),store=new Store(db),files=new SourceFiles(store);t.after(()=>{files.close();db.close();rmSync(directory,{recursive:true,force:true});});
+ const f=fixture('Court date: 23 October 2026\nCourt date: 23 October 2026\nThe ﬁrst paragraph.');f.assembly.repairs=[];
+ f.ir.metadata.candidates=[{field:'date',value:'2026-10-23',blockId:'b1',page:1,quote:'23 October 2026',reason:'Ambiguous repeated date.'},{field:'title',value:'Court date',blockId:'b1',page:2,quote:'The ﬁrst paragraph.',reason:'Wrong physical page.'}];
+ const staged=files.add('default','ambiguous.md',Buffer.from(f.assembly.text));new Knowledge(store).create('default',{name:'Manual name',type:'source',attachmentIds:[staged.id]});store.run("UPDATE source_files SET status='ready',text=?,admitted=1,enrichment_status='completed' WHERE id=?",f.assembly.text,staged.id);
+ const result=reconcileSourceIngestion(store,files.require('default',staged.id),f.ir,f.assembly,options);assert.equal(result.metadataPending,2);assert.equal(result.diagnostics.length,2);assert.equal(store.get('SELECT count(*) n FROM source_metadata_candidates').n,0);
+});
+
+test('window assembly namespaces enrichment metadata evidence without dropping normalized values',async()=>{
+ const {mergeSourceIngestionWindows}=await import('../src/server/modules/source-ingestion-assembly.ts');
+ const first=fixture('Done on 23 October 2026\nThe ﬁrst paragraph.').ir;first.repairs=[];first.metadata.candidates=[{field:'date',value:'2026-10-23',blockId:'b1',page:1,quote:'Done on 23 October 2026',reason:'Document issue date.'}];
+ const second=structuredClone(first);second.pages[0].number=2;second.blocks[0].page=2;second.blocks[0].text='Issued by: International Criminal Court';second.metadata.candidates=[{field:'author',value:'International Criminal Court',blockId:'b1',page:2,quote:'Issued by: International Criminal Court',reason:'Institutional issuing body.'}];
+ const merged=mergeSourceIngestionWindows([{index:0,document:first},{index:1,document:second}],2);
+ assert.deepEqual(merged.metadata.candidates.map(candidate=>[candidate.field,candidate.blockId,candidate.page,candidate.value]),[['date','w0:b1',1,'2026-10-23'],['author','w1:b1',2,'International Criminal Court']]);
+});
+
+test('document decision date aliases to date without treating stamp dates as publication facts',async()=>{
+ const {extractModelMetadataCandidates}=await import('../src/server/modules/source-metadata-extraction.ts');const canonical='Decision issued on 23 October 2026. Filing stamp: 24 October 2026.';
+ const candidates=[{field:'decision_date',value:'2026-10-23',blockId:'cover',quote:'Decision issued on 23 October 2026.',reason:'Date of the decision itself.'},{field:'stamp_date',value:'2026-10-24',blockId:'cover',quote:'Filing stamp: 24 October 2026.',reason:'Filing stamp date.'}];
+ const result=extractModelMetadataCandidates(candidates,[{id:'cover',text:canonical,start:0,end:canonical.length}],canonical);assert.deepEqual(result.facts.map(fact=>[fact.fieldKey,fact.value]),[['bibliography:date','2026-10-23']]);assert.equal(result.diagnostics.length,1);
+});

@@ -2,7 +2,7 @@
 
 Date: 26 October 2026. Base: fetched `roelchristian/noema-web` main at `65983e2dfe209c7dcee009fb5d27d187984eb7a4`. Isolated branch: `codex/pdf-provider-ingestion`. The root `AGENTS.md` was read; no repository `.agents/skills/SKILL.md` files exist in this checkout. Work used coordinated contract, provider/PDF, durability, UI, correction and independent-review ownership.
 
-The implementation remains behind `NOEMA_PDF_PROVIDER_INGESTION=1`, off by default. No user documents, live provider evaluations, real credentials/settings or deployment were used. Publication and merge are separately authorized, subject to final checks and the parent’s merge-order gate. `scripts/check-chat-browser.mjs` was not modified.
+The implementation remains behind `NOEMA_PDF_PROVIDER_INGESTION=1`, off by default. No user documents, live provider evaluations, real credentials/settings or deployment were used. Publication and merge are separately authorized, subject to final checks and the parent’s merge-order gate. The persona/mobile assertions from PR #122 are preserved. A later integration check required a two-line fixture-only source-automation pause in `scripts/check-chat-browser.mjs`; the overlap is disclosed below.
 
 ## Implemented
 
@@ -80,3 +80,16 @@ Browser QA found and fixed stale monitor counts after review, misleading labels 
 Evidence is generated under `output/pdf-ingestion-browser/`: `validation.json` (2026-10-26T11:41:44.612Z) and 28 screenshots, including `gemini-390-full-app-restored.png` and `openai-1440-full-app-restored.png`. These generated artifacts are ignored by Git; the committed replay script reproduces them. The latest final-code replay passed again after both legacy guards. Its build and exhaustive preintegration results appear in the verification table. The fresh-main integration gate is separate.
 
 The final legacy guards reject initial provider ingestion over any retained canonical text (including a failed/queued local retry), and reject flattened legacy viewing bytes as original evidence when the original is missing. Fresh imports and local publication of retained paid candidates are unchanged. Independent targeted guard tests passed.
+
+## Main integration and final publication checks
+
+The parent confirmed PR #122 and Meno PR #123 merged, with green exact-head/post-main CI. Verified `origin/main` was `cfc9dd8b3727b4eb083e79bbbc726d91202fc098`; it was integrated without conflicts in `e2f21a369e2b300c01515c41632c88f5feb48773`. Package scripts/dependencies and test groups merged cleanly. Validation was rerun on the combined tree, rather than relying on preintegration results.
+
+- Combined build passed (`/tmp/pdf-publication-build.log`).
+- Combined PDF Chromium replay passed 32/32 again at 2026-10-26T11:46:59.800Z; same two providers/viewports, actual HTTP backup and full App-shell restored-source checks,0livecalls/pageerrors.
+- Existing Meno research browser suite passed all 4 desktop/mobile × light/dark cases (`/tmp/pdf-integrated-meno-browser.log`).
+- Existing chat browser suite initially exposed a test-harness race under concurrent load: its ready TXT fixture still queued background enrichment/backfill, which appended non-Chat payloads to the shared mock request array before Chat-only assertions failed. Independent disposable-DB reproduction confirmed this; an isolated diagnostic replay passed, establishing that the failure did not prove a Chat repeat-flow regression.
+- The only intentional overlap with `scripts/check-chat-browser.mjs` adds a comment and one `source_automation_pauses` insert in its disposable fixture before workers start. It does not change application behavior, persona/mobile/repeat assertions, or source retrieval. Independent review approved the scope. The actual fixed script passed all 4 desktop/mobile × light/dark cases with 0 browser errors (`/tmp/pdf-integrated-chat-browser-fixed.log`). The diagnostic copy was removed.
+- Fresh exhaustive validation after the last fixture edit passed **2,109 tests: 2,101 passed, 8 skipped, 0 failed**, 193.4 seconds (`/tmp/pdf-final-publish-all.tap`). The final build passed (`/tmp/pdf-publication-build.log`). No production defaults, credentials or deployment were changed; root environment flag remained unset/default-off.
+
+Draft publication must still be followed by `noema/core` success on the exact final PR head before ready/expected-head merge, then success of the push-to-main workflow at the resulting merge SHA. Those remote outcomes are not inferred from these local results.

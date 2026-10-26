@@ -213,6 +213,7 @@
  .chat-history-dialog .chat-inbox-heading h2 { font-size: 12px; }
  .chat-history-dialog .chat-inbox-heading > .chat-icon { display: none; }
  .topbar:has(> #chat-toolbar:not([hidden])) { padding-inline: 8px; gap: 4px; }
+ .topbar:has(> #chat-toolbar:not([hidden])) > .top-actions { flex: 0 0 auto; width: auto; }
  .chat-copy, .chat-regenerate { width: 44px; min-height: 44px; }
 }
 @media (pointer: coarse) {
@@ -278,13 +279,14 @@ main > .chat-workspace:not([hidden]) { flex: 1; height: auto; min-height: 0; }
 .chat-toolbar .chat-heading-title .chat-rename { width: 100%; }
 .chat-toolbar .chat-rename input { min-width: 0; font-size: 12px; }
 @media (max-width: 750px) {
- .chat-heading.chat-toolbar { grid-template-columns: 80px minmax(0,1fr) 80px; gap: 4px; }
+ .topbar:has(> #chat-toolbar:not([hidden])) { align-items: flex-start; }
+ .chat-heading.chat-toolbar { grid-template-columns: max-content minmax(0,1fr) max-content; gap: 4px; }
+ .chat-toolbar .chat-toolbar-controls { grid-column: 1; grid-row: 1; }
+ .chat-toolbar .chat-heading-actions { grid-column: 3; grid-row: 1; }
  .chat-contact > .meno-avatar { width: 52px; height: 52px; }
- .chat-contact { grid-template-columns: auto; }
- .chat-toolbar .chat-heading-title { max-width: none; }
- .chat-toolbar .chat-heading-title h1 { visibility: hidden; }
- .chat-toolbar .chat-heading-title:has(.chat-rename) { grid-column: 1 / -1; grid-row: 2; padding-top: 36px; }
- .chat-toolbar:has(.chat-rename) .chat-heading-actions { grid-column: 3; grid-row: 1; }
+ .chat-contact { grid-template-columns: auto; left: 50%; }
+ .chat-toolbar .chat-heading-title { grid-column: 1 / -1; grid-row: 2; max-width: none; padding-top: 24px; }
+ .chat-toolbar .chat-title-button, .chat-toolbar .chat-rename input { min-height: 44px; }
 }
 
 /* Character details retain their own pastel palette in both themes. */

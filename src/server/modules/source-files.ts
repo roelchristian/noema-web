@@ -1,3 +1,6 @@
+import type {PdfPlatform} from './pdf-platform.js';
+import type {SourceIngestionOptions} from '../../shared/source-ingestion.js';
+import type {SourceIngestion} from './source-ingestion.js';
 import {maxSourceBytes,maxSourceTextBytes} from '../../shared/source-input.js';
 export {maxSourceBytes,maxSourceTextBytes} from '../../shared/source-input.js';
 import {getNameProvenance,recordEntityNameProvenance} from './property-provenance.js';
@@ -34,6 +37,8 @@ export function syncDownloadedSourceName(store:Store,file:SourceFile,downloadedN
 }
 export class SourceFiles {
   readonly root: string;
+  private ingestion?:SourceIngestion;
+  bindIngestion(ingestion:SourceIngestion){this.ingestion=ingestion;}
   private closed = false;
   private running = false;
   private pageMapAttempts=new Set<string>();
@@ -141,10 +146,50 @@ export class SourceFiles {
     }catch(error){unlinkSync(filename);throw error;}
     return this.require(vault,id);
   }
-  async admit(vault:string,name:string,bytes:Buffer,entityId:string|undefined,requireOpen:()=>void,sourceUrl?:string,containsMath=false) {
+  async admit(vault:string,name:string,bytes:Buffer,entityId:string|undefined,requireOpen:()=>void,sourceUrl?:string,containsMath=false,ingestion?:SourceIngestionOptions,stagingKey?:string) {
     if(this.closed)throw new HttpError(503,'Source processing is shutting down. Try again after restarting.');
+    if(stagingKey!==undefined){
+      if(!/^[A-Za-z0-9_-]{16,128}$/.test(stagingKey))throw new HttpError(400,'Invalid staged upload identity.');
+      const previous=this.store.get<SourceFile&{staging_config_json:string|null}>('SELECT * FROM source_files WHERE vault_id=? AND staging_key=?',vault,stagingKey);
+      if(previous){
+        requireOpen();
+        const config=this.store.get<{config_json:string}>('SELECT config_json FROM source_ingestion_runs WHERE file_id=?',previous.id);
+        if(previous.name!==name||this.hash(readFileSync(this.assetFilename(vault,previous.id)))!==this.hash(bytes)||previous.contains_math!==(containsMath?1:0)||JSON.stringify(ingestion??null)!==(previous.staging_config_json??config?.config_json??'null'))throw new HttpError(409,'Staged upload options or bytes changed. Use a new staged upload identity.');
+        return previous;
+      }
+    }
     requireOpen();
-    return this.add(vault,name,bytes,entityId,sourceUrl,false,true,undefined,containsMath);
+    if(ingestion&&ingestion.route!=='local'){
+      if(process.env.NOEMA_PDF_PROVIDER_INGESTION!=='1')throw new HttpError(409,'PDF provider ingestion is not enabled on this server.');
+      if(!name.toLowerCase().endsWith('.pdf'))throw new HttpError(400,'Provider ingestion applies only to PDF uploads.');
+      if(!this.ingestion)throw new HttpError(503,'PDF provider ingestion is unavailable.');
+    }
+    const file=this.add(vault,name,bytes,entityId,sourceUrl,false,true,undefined,containsMath);
+    if(stagingKey)this.store.run('UPDATE source_files SET staging_key=?,staging_config_json=? WHERE id=?',stagingKey,JSON.stringify(ingestion??null),file.id);
+    if(ingestion&&ingestion.route!=='local')try{this.ingestion!.stage(vault,file.id,ingestion);}catch(error){this.removeAssets(vault,file.id);this.store.run('DELETE FROM source_files WHERE id=?',file.id);throw error;}
+    return this.require(vault,file.id);
+  }
+  /** Admit before any provider upload. Unsupported sanitization fails closed on every platform. */
+  async prepareProviderPDF(vault:string,id:string,pdf:PdfPlatform,signal?:AbortSignal) {
+    const file=this.require(vault,id);if(file.format!=='pdf')throw new HttpError(400,'PDF input required');
+    const asset=readFileSync(this.assetFilename(vault,id)),originalPath=path.join(this.evidenceDirectory(vault,id),'original');
+    if(file.pdf_flattened===1&&!existsSync(originalPath))throw new HttpError(409,'Original PDF evidence is unavailable for this flattened source. Re-upload the original PDF to use provider ingestion.');
+    const original=existsSync(originalPath)?readFileSync(originalPath):asset;
+    this.preserveOriginal(vault,id,original);
+    // Legacy fallback diagnostics describe a missing manifest, not this fresh preserved PDF.
+    const originalHash=this.hash(original),previous:Record<string,unknown>=existsSync(path.join(this.evidenceDirectory(vault,id),'manifest.json'))?this.evidence(vault,id):{};
+    if(previous.originalHash!==undefined&&previous.originalHash!==originalHash)throw new HttpError(409,'Original PDF provenance changed.');
+    const admitted=previous.admittedHash===this.hash(asset)&&file.admitted===1?{bytes:asset,pages:await pdf.count(asset,signal),flattened:file.pdf_flattened===1,method:typeof previous.admissionMethod==='string'?previous.admissionMethod:'screened-original'}:await pdf.admit(original,signal);
+    scanSourcePDF(admitted.bytes);
+    const admittedHash=this.hash(admitted.bytes);
+    const evidence={...previous,version:1,originalAvailable:true,originalHash,admittedHash,originalBytes:original.length,admittedBytes:admitted.bytes.length,admissionMethod:admitted.method,createdAt:now(),origin:'provider',independentEvidence:false};
+    this.replaceFile(path.join(this.evidenceDirectory(vault,id),'manifest.json'),Buffer.from(JSON.stringify(evidence)));
+    if(file.admitted!==1||this.hash(asset)!==admittedHash){this.replaceFile(this.filename(vault,id),admitted.bytes);this.store.run('UPDATE source_files SET admitted=1,size=?,pdf_flattened=? WHERE id=?',admitted.bytes.length,admitted.flattened?1:0,id);rmSync(this.inboxFilename(vault,id),{force:true});}
+    return {bytes:admitted.bytes,originalHash,admittedHash,pageCount:admitted.pages};
+  }
+  publishProviderEvidence(vault:string,id:string,canonicalText:string,provenance:Record<string,unknown>) {
+    const manifest=this.evidence(vault,id);
+    this.replaceFile(path.join(this.evidenceDirectory(vault,id),'manifest.json'),Buffer.from(JSON.stringify({...manifest,canonicalHash:this.hash(canonicalText),providerTranscription:provenance,completedAt:now()})));
   }
   private sanitizerHash() {return this.hash(readFileSync(fileURLToPath(new URL('../../../scripts/flatten-source.swift',import.meta.url))));}
   private cachedSanitized(vault:string,originalHash:unknown,sanitizerHash:string) {
@@ -222,6 +267,7 @@ export class SourceFiles {
   }
   retry(vault:string,id:string) {
     const file=this.require(vault,id);
+    if(this.store.get('SELECT 1 FROM source_ingestion_runs WHERE file_id=?',id)){this.ingestion?.retry(vault,id);return this.require(vault,id);}
     if(file.status==='processing'||file.status==='queued')throw new HttpError(409,'Extraction is already in progress');
     this.store.transaction(()=>{
       this.store.run("UPDATE source_files SET status='queued',error=NULL,progress=0,enrichment_status='pending',enrichment_attempts=0,enrichment_error=NULL,enrichment_next_attempt_at='' WHERE id=?",id);
@@ -230,7 +276,7 @@ export class SourceFiles {
     return this.require(vault,id);
   }
   recover() {
-    this.store.run("UPDATE source_files SET status='queued',progress=0 WHERE status='processing'");
+    this.store.run("UPDATE source_files SET status='queued',progress=0 WHERE status='processing' AND NOT EXISTS(SELECT 1 FROM source_ingestion_runs r WHERE r.file_id=source_files.id)");
     this.cleanup();
   }
   cleanup() {
@@ -239,7 +285,7 @@ export class SourceFiles {
   }
   async tick() {
     if(this.closed || this.running)return;
-    let file=this.store.get<SourceFile>("SELECT f.* FROM source_files f JOIN vaults v ON v.id=f.vault_id WHERE f.status='queued' AND f.entity_id IS NOT NULL AND v.locked=0 ORDER BY f.created_at LIMIT 1");
+    let file=this.store.get<SourceFile>("SELECT f.* FROM source_files f JOIN vaults v ON v.id=f.vault_id WHERE f.status='queued' AND NOT EXISTS(SELECT 1 FROM source_ingestion_runs r WHERE r.file_id=f.id) AND f.entity_id IS NOT NULL AND v.locked=0 ORDER BY f.created_at LIMIT 1");
     if(!file){await this.backfillPageMap();return;}
     this.running=true;
     this.store.run("UPDATE source_files SET status='processing',error=NULL WHERE id=?",file.id);

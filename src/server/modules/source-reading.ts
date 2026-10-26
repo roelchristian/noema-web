@@ -14,7 +14,7 @@ import {pageLanguage} from './page-language.js';
 import {Store} from '../store.js';
 import {HttpError,now,required,text} from '../validation.js';
 import {mathSource,sourceTextHash} from './source-math-text.js';
-import {processedSourceDocument} from './source-document.js';
+import {resolveSourceDocument} from './source-ingestion-document.js';
 import {sourceDocumentEntries,sourceReferenceLocator,sourceNodeLabel} from '../../shared/source-document.js';
 import {sourcePageRange} from '../../shared/source-text.js';
 import {PageEnrichmentState} from './page-enrichment-state.js';
@@ -58,7 +58,7 @@ export class SourceReading {
   const displayedOffset=body.offset as number;
   const mapped=view.reverse({startOffset:Math.min(displayedOffset,Math.max(0,view.text.length-1)),endOffset:Math.min(view.text.length,displayedOffset+1)});
   if(!mapped)throw new HttpError(409,'This reading position has no reliable original passage.');
-  const anchor=createReadingAnchor(fileId,sourceTextHash(file.text),file.text,displayedOffset===view.text.length?file.text.length:mapped.startOffset,processedSourceDocument(file),body.atEnd===true);
+  const anchor=createReadingAnchor(fileId,sourceTextHash(file.text),file.text,displayedOffset===view.text.length?file.text.length:mapped.startOffset,resolveSourceDocument(this.store,file),body.atEnd===true);
   if(!anchor.quote.trim())throw new HttpError(400,'This source has no readable passage.');
   this.store.run('INSERT INTO source_reading_locations (vault_id,file_id,id,label,anchor_json) VALUES (?,?,?,?,?) ON CONFLICT(vault_id,file_id,id) DO UPDATE SET label=excluded.label,anchor_json=excluded.anchor_json',vault,fileId,id,label,JSON.stringify(anchor));
   const displayed=createReadingAnchor(fileId,view.hash,view.text,displayedOffset,view.document,body.atEnd===true);
@@ -96,7 +96,7 @@ export class SourceReading {
   }
   const startLine=file.text.slice(0,start as number).split('\n').length,endLine=startLine+excerpt.split('\n').length-1;
   const ref:SourceReference={id:randomUUID(),sourceId:raw.entity_id!,fileId,sourceHash:sourceTextHash(file.text),startOffset:start as number,endOffset:end as number,startLine,endLine,excerpt};
-  const entries=sourceDocumentEntries(processedSourceDocument(file));
+  const entries=sourceDocumentEntries(resolveSourceDocument(this.store,file));
   const node=typeof body.nodeId==='string'?entries.find(entry=>entry.node.id===body.nodeId&&entry.node.range.startOffset<=ref.startOffset!&&entry.node.range.endOffset>=ref.endOffset!):undefined;
   if(node){ref.nodeId=node.node.id;ref.contextLabel=sourceNodeLabel(node.path);}
   ref.appLocator=sourceReferenceLocator(entries,ref);

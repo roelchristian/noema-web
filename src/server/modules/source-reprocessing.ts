@@ -1,3 +1,6 @@
+import {maxSourceTextBytes} from '../../shared/source-input.js';
+import {SOURCE_INGESTION_MAX_CHARACTERS} from '../../shared/source-ingestion.js';
+import {mapSourceIngestionRevision} from './source-ingestion-revision-mapping.js';
 import {sourceEditorialRevisionLimit} from '../../shared/source-reprocessing.js';
 import {gatherReprocessingEvidence,type SourceReprocessingEvidence} from './source-reprocessing-evidence.js';
 import {assertAtomicPatchGroups} from './source-reprocessing-apparatus.js';
@@ -77,7 +80,8 @@ export function materializeSourceRevision(r:SourceReprocessingRevision){
   if(!patches.length){r.reprocessed=structuredClone(r.original);r.nodeLinks=sourceDocumentEntries(r.original.document).map(({node})=>({originalNodeId:node.id,reprocessedNodeIds:[node.id]}));r.report.validationDiagnostics=editorialDiagnostics(r.original.text,r.original.text);return;}
   let text='',offset=0;for(const p of patches){text+=r.original.text.slice(offset,p.range.startOffset)+(p.userReplacement??p.replacement);offset=p.range.endOffset;}text+=r.original.text.slice(offset);
   const boundaryProblems=pageBoundaryDiagnostics(r.original.text,text);if(boundaryProblems.length)throw new HttpError(400,boundaryProblems.join(' '));
-  if(text.length>1024000)throw new HttpError(400,'The edited reading version exceeds the beta limit of 1,024,000 characters. Reduce custom replacements.');
+  if(text.length>(r.origin?.kind==='ingestion'?SOURCE_INGESTION_MAX_CHARACTERS:1024000)||r.origin?.kind==='ingestion'&&Buffer.byteLength(text)>maxSourceTextBytes)throw new HttpError(400,'The edited reading version exceeds the beta limit of 1,024,000 characters. Reduce custom replacements.');
+  if(r.origin?.kind==='ingestion'){mapSourceIngestionRevision(r,text);r.report.validationDiagnostics=editorialDiagnostics(r.original.text,text);return;}
   const mapped=(position:number)=>{let delta=0;for(const p of patches){const replacement=p.userReplacement??p.replacement;if(position>=p.range.endOffset){delta+=replacement.length-p.original.length;continue;}if(position>p.range.startOffset)return p.range.startOffset+delta+Math.round((position-p.range.startOffset)/p.original.length*replacement.length);break;}return position+delta;};
   const boundaryExact=(position:number)=>!patches.some(p=>p.range.startOffset<position&&p.range.endOffset>position);
   const pageStarts=r.original.document.physical.pages.map(page=>text.slice(0,mapped(page.range.startOffset)).split(/\r\n?|\n/).length);
@@ -115,7 +119,7 @@ export function materializeSourceRevision(r:SourceReprocessingRevision){
   document.source=structuredClone(source);
   document.physical={pageCount:r.original.document.physical.pageCount,pages:r.original.document.physical.pages.map(page=>({...page,range:{...page.range,startOffset:mapped(page.range.startOffset),endOffset:mapped(page.range.endOffset),startLine:text.slice(0,mapped(page.range.startOffset)).split(/\r\n?|\n/).length,endLine:text.slice(0,Math.max(mapped(page.range.startOffset),mapped(page.range.endOffset)-1)).split(/\r\n?|\n/).length}}))};
   const originals=sourceDocumentEntries(r.original.document),derived=sourceDocumentEntries(document),used=new Set<string>();
-  if(originals.length>5000||derived.length>5000)throw new HttpError(400,'This beta supports at most 5,000 semantic nodes per version. Reduce custom formatting changes.');
+  if(originals.length>(r.origin?.kind==='ingestion'?100000:5000)||derived.length>(r.origin?.kind==='ingestion'?100000:5000))throw new HttpError(400,'This beta supports at most 5,000 semantic nodes per version. Reduce custom formatting changes.');
   for(const {node} of derived){
    const match=originals.find(({node:old})=>!used.has(old.id)&&boundaryExact(old.range.startOffset)&&boundaryExact(old.range.endOffset)&&old.kind===node.kind&&mapped(old.range.startOffset)===node.range.startOffset&&mapped(old.range.endOffset)===node.range.endOffset);
    if(match){node.id=match.node.id;used.add(node.id);}else node.id='editorial-'+hash(`${r.id}:${node.kind}:${node.range.startOffset}:${node.range.endOffset}`).slice(0,24);
@@ -217,6 +221,7 @@ export class SourceReprocessing {
   const acceptanceThreshold=body.acceptanceThreshold??0.9;
   if(typeof acceptanceThreshold!=='number'||!Number.isFinite(acceptanceThreshold)||acceptanceThreshold<0||acceptanceThreshold>1)throw new HttpError(400,'Acceptance threshold must be a number between 0 and 1.');
   const file=this.files.require(vault,id);if(file.status!=='ready'||!file.admitted||!file.text.trim())throw new HttpError(409,'Wait for a processed source before starting an editorial pass.');
+  if(this.store.get("SELECT 1 FROM sqlite_master WHERE type='table' AND name='source_ingestion_runs'")&&this.store.get("SELECT 1 FROM source_ingestion_runs WHERE file_id=? AND vault_id=? AND state IN ('pending','running','paused','unknown')",id,vault))throw new HttpError(409,'Finish or resolve the active PDF ingestion recovery before starting an editorial pass.');
   if(['pending','running'].includes(file.enrichment_status))throw new HttpError(409,'Wait for original source enrichment to finish before reprocessing; it may still change math, metadata, and structure.');
   if(file.text.length>512000)throw new HttpError(413,'This beta supports up to 512,000 extracted characters per source. No partial pass was started.');
   if(this.store.get("SELECT 1 FROM source_reprocessing WHERE file_id=? AND status IN ('queued','running')",id))throw new HttpError(409,'An editorial pass for this source is already queued or running.');
@@ -256,6 +261,7 @@ export class SourceReprocessing {
  resume(vault:string,id:string,revisionId:string){
   this.requireOpen(vault);if(this.closed)throw new HttpError(503,'Editorial processing is shutting down.');
   const r=this.detail(vault,id,revisionId);
+  if(this.store.get("SELECT 1 FROM sqlite_master WHERE type='table' AND name='source_ingestion_runs'")&&this.store.get("SELECT 1 FROM source_ingestion_runs WHERE file_id=? AND vault_id=? AND state IN ('pending','running','paused','unknown')",id,vault))throw new HttpError(409,'Finish or resolve the active PDF ingestion recovery before resuming an editorial pass.');
   if(!['failed','interrupted'].includes(r.status)||this.activeRevisionId===revisionId)throw new HttpError(409,'Wait for interruption to finish before resuming.');
   if(r.stale)throw new HttpError(409,'Canonical source changed. Start a new editorial pass.');
   const selection=this.intelligence.editorialSelection();

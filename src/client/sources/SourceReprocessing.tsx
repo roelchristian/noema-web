@@ -189,6 +189,7 @@ export function SourceReprocessing({sourceId,vaultId,fileId,visible,onShow,onOri
   function finishAction(){actionRunning.current=false;if(mounted.current)setBusy(false);}
   useEffect(()=>setSelected([]),[revisionId]);
   const route=`source-files/${encodeURIComponent(fileId)}/reprocessing`;
+  useEffect(()=>{const refresh=(event:Event)=>{const detail=(event as CustomEvent<{vaultId:string;fileId:string}>).detail;if(detail?.vaultId===vaultId&&detail.fileId===fileId)setReload(value=>value+1);};window.addEventListener('noema:source-ingestion-completed',refresh);return()=>window.removeEventListener('noema:source-ingestion-completed',refresh);},[vaultId,fileId]);
   const [evidenceOptions,setEvidenceOptions]=useState<SourceReprocessingConfiguration['evidence']>({originalPages:false,ocr:false,allowExternalTransmission:false}),[evidenceCapabilities,setEvidenceCapabilities]=useState<EvidenceCapabilities|null>(null),[evidenceError,setEvidenceError]=useState('');
   useEffect(()=>{
     if(!prompt)return;const controller=new AbortController();setEvidenceOptions({originalPages:false,ocr:false,allowExternalTransmission:false});setEvidenceCapabilities(null);setEvidenceError('');
@@ -250,6 +251,7 @@ export function SourceReprocessing({sourceId,vaultId,fileId,visible,onShow,onOri
       group.forEach(item=>clearEditorialDraft(patchDraftKey(item)));
       if(latestRevisionId.current===value.id)setRevision(value);
       setSelected(ids=>ids.filter(id=>!group.some(item=>item.id===id)));setReload(n=>n+1);
+      if(value.origin?.kind==='ingestion')window.dispatchEvent(new CustomEvent('noema:source-ingestion-updated',{detail:{vaultId,fileId}}));
     }catch(cause){if(mounted.current)setError(cause instanceof Error?cause.message:String(cause));}finally{finishAction();}
   }
   async function control(action:'cancel'|'resume'){
@@ -271,6 +273,7 @@ export function SourceReprocessing({sourceId,vaultId,fileId,visible,onShow,onOri
       targets.forEach(patch=>clearEditorialDraft(patchDraftKey(patch)));
       if(latestRevisionId.current===value.id)setRevision(value);
       setSelected(current=>current.filter(id=>!targets.some(patch=>patch.id===id)));setReload(n=>n+1);
+      if(value.origin?.kind==='ingestion')window.dispatchEvent(new CustomEvent('noema:source-ingestion-updated',{detail:{vaultId,fileId}}));
     }catch(cause){if(mounted.current)setError(cause instanceof Error?cause.message:String(cause));}finally{finishAction();}
   }
   async function decideSelected(decision:'accepted'|'rejected'){

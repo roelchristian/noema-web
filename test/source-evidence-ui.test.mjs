@@ -24,3 +24,92 @@ test('OCR gaps expose recoveries, honest coverage limits, and correctly position
  await act(async()=>{const select=document.querySelector('select');select.value='2';select.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
  assert.equal(page,2);assert.equal(document.querySelector('.source-evidence-region-box'),null);assert.match(document.body.textContent,/Next page/);
 });
+
+test('provider PDF baseline is labeled as transcription with localized uncertainty',async t=>{
+ const dom=new JSDOM('<div id="mount"></div>');
+ const keys=['window','document','Node','Element','HTMLElement','MutationObserver','Event','IS_REACT_ACT_ENVIRONMENT'],prior=keys.map(key=>Object.getOwnPropertyDescriptor(globalThis,key));
+ for(const key of keys)Object.defineProperty(globalThis,key,{configurable:true,writable:true,value:key==='IS_REACT_ACT_ENVIRONMENT'?true:dom.window[key]});
+ t.mock.method(globalThis,'fetch',async()=>({ok:true,json:async()=>({originalAvailable:false,ingestion:{provider:'gemini',model:'fixture-model',text:'Faithful source 😀',uncertainty:['Equation on physical page 1 is unreadable.']}})}));
+ const root=createRoot(document.querySelector('#mount'));
+ t.after(async()=>{await act(async()=>root.unmount());dom.window.close();keys.forEach((key,i)=>{if(prior[i])Object.defineProperty(globalThis,key,prior[i]);else delete globalThis[key];});});
+ await act(async()=>root.render(React.createElement(SourceEvidence,{vaultId:'v',fileId:'f',pageCount:1,page:1,onPage:()=>{}})));
+ assert.match(document.body.textContent,/Provider transcription/);assert.match(document.body.textContent,/not native extraction or independent OCR verification/);
+ assert.match(document.body.textContent,/Faithful source 😀/);assert.match(document.body.textContent,/Equation on physical page 1 is unreadable/);
+ assert.match(document.body.textContent,/accuracy still requires evidence inspection or user review/);
+});
+
+test('ingestion reader preserves heading, table spans and reversible page furniture',async()=>{
+ const {renderToStaticMarkup}=await import('react-dom/server');
+ const {SourceDocumentView}=await import('../src/client/sources/SourceDocumentView.tsx');
+ const range={startOffset:0,endOffset:12,startLine:1,endLine:1,startPage:1,endPage:1};
+ const ingestion={kind:'heading',table:null,location:null,uncertainty:null,furniture:false,continues:null};
+ const nodes=[{id:'h',kind:'heading',level:1,text:'Section title',range,ingestion},{id:'t',kind:'table',text:'A B',range,ingestion:{...ingestion,kind:'table',table:{rows:2,columns:2,cells:[{row:0,column:0,rowSpan:2,columnSpan:1,text:'A'},{row:0,column:1,rowSpan:1,columnSpan:1,text:'B'},{row:1,column:1,rowSpan:1,columnSpan:1,text:'C'}]},uncertainty:'One damaged cell'}},{id:'f',kind:'paragraph',text:'Journal running title',range,ingestion:{...ingestion,kind:'furniture',furniture:true}}];
+ const markup=renderToStaticMarkup(React.createElement(SourceDocumentView,{article:React.createRef(),fileId:'f',name:'Fixture',text:'Section title\nA B\nJournal running title',entries:nodes.map(node=>({node,path:[]})),selected:null,annotations:'clean',structureLabels:false,canonicalNode:id=>id,onSelect:()=>{}}));
+ assert.match(markup,/<h2><span[^>]*>Section title<\/span><\/h2>/);assert.match(markup,/rowSpan="2"|rowspan="2"/i);assert.match(markup,/One damaged cell/);assert.match(markup,/<summary>Running page text<\/summary>/);assert.match(markup,/Journal running title/);assert.match(markup,/Faithful table transcription/);
+});
+
+test('creation monitor requires explicit unknown-cost recovery and ignores an old source action result',async t=>{
+ const {setupDOM}=await import('./helpers/dom.mjs');const {SourceIngestionProgress}=await import('../src/client/knowledge/SourceIngestionProgress.tsx');
+ const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
+ const run={id:'r',fileId:'first',mode:'ingestion',state:'unknown',stage:'extraction',provider:'openai',model:'fixture-model',pageCount:42,completedPages:16,completedWindows:2,totalWindows:6,activePages:[17,18],pendingReview:2,startedAt:new Date().toISOString(),updatedAt:new Date().toISOString(),error:null,unknownOutcome:true,canResume:true};
+ let finishResume;const calls=[];t.mock.method(globalThis,'fetch',async(route,options)=>{calls.push({route,options});if(options.method==='POST')return new Promise(resolve=>{finishResume=resolve;});return Response.json(route.includes('second')?{...run,fileId:'second',state:'completed',completedPages:42,unknownOutcome:false,canResume:false}:run);});
+ const presence=()=>{};
+ await act(async()=>root.render(React.createElement(SourceIngestionProgress,{vaultId:'v',fileId:'first',onPresence:presence})));
+ assert.match(document.body.textContent,/16 of 42 physical pages validated/);assert.match(document.body.textContent,/2 proposals need review/);
+ const resume=[...document.querySelectorAll('button')].find(button=>button.textContent==='Resume unfinished work');assert.equal(resume.disabled,true);assert.equal(calls.filter(call=>call.options.method==='POST').length,0);
+ const check=document.querySelector('input[type=checkbox]');await act(async()=>check.click());assert.equal(resume.disabled,false);
+ await act(async()=>resume.click());assert.equal(calls.filter(call=>call.options.method==='POST').length,1);assert.deepEqual(JSON.parse(calls.at(-1).options.body),{allowUnknown:true});
+ await act(async()=>root.render(React.createElement(SourceIngestionProgress,{vaultId:'v',fileId:'second',onPresence:presence})));
+ assert.match(document.body.textContent,/42 of 42 physical pages validated/);
+ await act(async()=>finishResume(Response.json({...run,state:'running',unknownOutcome:false})));
+ assert.match(document.body.textContent,/42 of 42 physical pages validated/);assert.doesNotMatch(document.body.textContent,/unknown outcome/);
+});
+
+test('queued provider attachment mounts detailed monitor before any readable source document exists',async t=>{
+ const {setupDOM}=await import('./helpers/dom.mjs');const {SourceAttachments}=await import('../src/client/knowledge/SourceAttachments.tsx');
+ const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
+ const file={id:'queued.pdf',vault_id:'v',entity_id:'e',ingestion_origin:'gemini',status:'queued',enrichment_status:'pending',admitted:1,format:'pdf',name:'Queued PDF',original_filename:'queued.pdf',text:'',size:100,pages:42,progress:0,contains_math:0};
+ const run={id:'r',fileId:file.id,mode:'ingestion',state:'pending',stage:'upload',provider:'gemini',model:'fixture-model',pageCount:42,completedPages:0,completedWindows:0,totalWindows:6,activePages:[],pendingReview:0,startedAt:new Date().toISOString(),updatedAt:new Date().toISOString(),error:null,unknownOutcome:false,canResume:false};
+ t.mock.method(globalThis,'fetch',async()=>Response.json(run));
+ await act(async()=>root.render(React.createElement(SourceAttachments,{vaultId:'v',entityId:'e',initial:[file]})));
+ assert.ok(document.querySelector('[aria-label="PDF processing progress"]'));assert.match(document.body.textContent,/Uploading PDF/);assert.match(document.body.textContent,/0 of 42 physical pages validated/);assert.match(document.body.textContent,/Stop and keep progress/);
+ assert.equal(document.querySelector('article.source-reader-document'),null);
+});
+
+test('ready provider attachment exposes optional retry without invalidating readable canonical source',async t=>{
+ const {setupDOM}=await import('./helpers/dom.mjs');const {SourceAttachments}=await import('../src/client/knowledge/SourceAttachments.tsx');
+ const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
+ const file={id:'ready.pdf',vault_id:'v',entity_id:'e',ingestion_origin:'openai',status:'ready',enrichment_status:'completed',admitted:1,format:'pdf',name:'Ready PDF',original_filename:'ready.pdf',text:'Canonical transcription remains readable.',size:100,pages:2,progress:100,contains_math:0};
+ let run={id:'r',fileId:file.id,mode:'ingestion',state:'completed',stage:'indexing',provider:'openai',model:'fixture-model',pageCount:2,completedPages:2,completedWindows:1,totalWindows:1,activePages:[],pendingReview:0,startedAt:new Date().toISOString(),updatedAt:new Date().toISOString(),error:null,warnings:['Optional equation recovery failed.'],unknownOutcome:false,canResume:false,canRetryOptional:true};
+ const calls=[];t.mock.method(globalThis,'fetch',async(route,options)=>{calls.push({route,options});if(options.method==='POST'){assert.equal(route,'/api/source-files/ready.pdf/ingestion/retry');run={...run,state:'pending',stage:'repair',warnings:[],canRetryOptional:false};}return Response.json(run);});
+ let changed=0;await act(async()=>root.render(React.createElement(SourceAttachments,{vaultId:'v',entityId:'e',initial:[file],compact:true,onChange:()=>changed++})));
+ const retry=[...document.querySelectorAll('button')].find(button=>button.textContent==='Retry failed optional work');assert.ok(retry,'Completed provider files mount the monitor even in compact attachments');
+ assert.equal(calls.filter(call=>call.options.method==='POST').length,0,'Inspecting completed work does not generate or retry anything');
+ assert.ok(document.querySelector('a[href*="download-processed"]'));
+ await act(async()=>retry.click());assert.equal(calls.filter(call=>call.options.method==='POST').length,1);assert.deepEqual(JSON.parse(calls.find(call=>call.options.method==='POST').options.body),{});
+ assert.ok(calls.filter(call=>call.options.method==='GET').length>=2,'Optional retry restarts status polling after completed state');
+ assert.match(document.body.textContent,/Checking unresolved passages/);assert.match(document.body.textContent,/Stop and keep progress/);assert.ok(document.querySelector('a[href*="download-processed"]'));
+ assert.equal(file.status,'ready');assert.equal(file.text,'Canonical transcription remains readable.');assert.equal(changed,0,'Optional retry does not replace source attachment or canonical text');
+});
+
+test('completed clean provider monitor is a compact summary',async t=>{
+ const {setupDOM}=await import('./helpers/dom.mjs');const {SourceIngestionProgress}=await import('../src/client/knowledge/SourceIngestionProgress.tsx');
+ const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
+ t.mock.method(globalThis,'fetch',async()=>Response.json({id:'r',fileId:'f',mode:'ingestion',state:'completed',stage:'indexing',provider:'gemini',model:'fixture-model',pageCount:2,completedPages:2,completedWindows:1,totalWindows:1,activePages:[],pendingReview:0,startedAt:new Date().toISOString(),updatedAt:new Date().toISOString(),error:null,unknownOutcome:false,canResume:false,canRetryOptional:false}));
+ await act(async()=>root.render(React.createElement(SourceIngestionProgress,{vaultId:'v',fileId:'f',onPresence:()=>{}})));
+ assert.match(document.body.textContent,/PDF transcription published.*2 of 2 physical pages validated.*Gemini/);assert.equal(document.querySelector('progress'),null);assert.equal(document.querySelector('button'),null);
+});
+
+test('unreadable provider page recovery is explicit, page-bound and creates only a manually reviewed derivative',async t=>{
+ const {setupDOM}=await import('./helpers/dom.mjs');const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
+ const calls=[];let finishRecovery;const baseline='Existing faithful transcription on this source.';
+ t.mock.method(globalThis,'fetch',async(route,options)=>{calls.push({route,options});if(options.method==='POST')return new Promise(resolve=>{finishRecovery=resolve;});const page=Number(new URL(route,'http://localhost').searchParams.get('page'));return Response.json({originalAvailable:true,ingestion:{provider:'openai',model:'fixture-frozen-model',page,pageState:page===1?'unreadable':page===2?'content':'image-only',role:page===3?'context':'owned',canRecoverPage:true,text:page===1?'':baseline,uncertainty:['Localized unreadable content']}});});
+ let selectedPage=1;const render=()=>root.render(React.createElement(SourceEvidence,{vaultId:'v',fileId:'provider.pdf',pageCount:3,page:selectedPage,onPage:page=>{selectedPage=page;render();}}));
+ await act(async()=>render());
+ const recover=[...document.querySelectorAll('button')].find(button=>button.textContent==='Recover unreadable page');assert.ok(recover);assert.equal(calls.filter(call=>call.options.method==='POST').length,0,'Inspecting an unreadable page does not generate');assert.match(document.body.textContent,/additional provider request.*Provider charges may apply/s);assert.match(document.body.textContent,/separate revision requiring manual review/);
+ await act(async()=>{recover.click();recover.click();});assert.equal(calls.filter(call=>call.options.method==='POST').length,1);const action=calls.find(call=>call.options.method==='POST');assert.equal(action.route,'/api/source-files/provider.pdf/ingestion/recover-page');assert.deepEqual(JSON.parse(action.options.body),{page:1});assert.equal(recover.disabled,true);
+ await act(async()=>finishRecovery(Response.json({state:'pending',stage:'repair'})));
+ assert.match(document.body.textContent,/original transcription remains unchanged/);assert.match(document.body.textContent,/manual acceptance in revision review/);assert.equal(document.querySelector('.source-evidence-comparison pre').textContent,'','The PDF baseline is not replaced with a fabricated all-added diff');
+ await act(async()=>{const select=document.querySelector('select');select.value='2';select.dispatchEvent(new Event('change',{bubbles:true}));});assert.equal(document.querySelector('.source-evidence-comparison pre').textContent,baseline);assert.equal([...document.querySelectorAll('button')].some(button=>button.textContent==='Recover unreadable page'),false,'Readable pages cannot request missing-page recovery');
+ await act(async()=>{const select=document.querySelector('select');select.value='3';select.dispatchEvent(new Event('change',{bubbles:true}));});assert.equal([...document.querySelectorAll('button')].some(button=>button.textContent==='Recover unreadable page'),false,'Context-only pages cannot own recovery output');assert.equal(calls.filter(call=>call.options.method==='POST').length,1);
+});

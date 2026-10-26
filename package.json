@@ -31,12 +31,15 @@
     "test:chat-research-browser": "node --import tsx scripts/check-chat-research-browser.mjs"
   },
   "dependencies": {
+    "@napi-rs/canvas": "1.0.13",
     "@retorquere/bibtex-parser": "12.1.13",
     "citeproc": "2.4.63",
     "js-tiktoken": "^1.0.21",
     "katex": "^0.19.0",
     "kokoro-js": "^1.2.1",
     "parse5": "^8.0.1",
+    "pdf-lib": "1.17.1",
+    "pdfjs-dist": "6.4.299",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "ws": "^8.22.0"

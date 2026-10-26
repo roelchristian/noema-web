@@ -4,10 +4,10 @@ import type {SourceFile} from '../../shared/domain.js';
 import type {SourceDocument,SourceDocumentNode} from '../../shared/source-document.js';
 import {Store} from '../store.js';
 import {HttpError,now} from '../validation.js';
-import {processedSourceDocument} from './source-document.js';
+import {resolveSourceDocument} from './source-ingestion-document.js';
 
 // Bump when semantic parsing changes, independently of the exported JSON schema.
-export const sourceDocumentBuilderVersion=5;
+export const sourceDocumentBuilderVersion=6;
 export class SourceDocuments {
  constructor(private store:Store) {}
  get(file:SourceFile):SourceDocument {return this.materialize(file).document;}
@@ -15,10 +15,11 @@ export class SourceDocuments {
   file=mathSource(this.store,file);
   if(!this.store.get('SELECT 1 FROM vaults WHERE id=? AND locked=0',file.vault_id))throw new HttpError(423,'Unlock this vault to process its sources.');
   if(file.status!=='ready'||file.admitted!==1||!file.text.trim())throw new HttpError(409,'Wait for source extraction to complete.');
+  const ingestion=this.store.get<{id:string;content_hash:string;assembly_version:number}>('SELECT id,content_hash,assembly_version FROM source_ingestion_documents WHERE file_id=?',file.id);
   const math=mathMetadata(this.store,file.id,file.text);
   const inputHash=createHash('sha256').update(JSON.stringify([
    file.id,file.text,file.structural_nodes,file.page_start_lines,file.pages,file.name,
-   file.original_filename,file.generated_name,file.format,file.language,file.source_url,file.enrichment_status,math,
+   file.original_filename,file.generated_name,file.format,file.language,file.source_url,file.enrichment_status,math,ingestion,
   ])).digest('hex');
   const cached=this.store.get<{document_json:string;input_hash:string;builder_version:number}>('SELECT document_json,input_hash,builder_version FROM source_documents WHERE file_id=?',file.id);
   if(cached?.input_hash===inputHash&&cached.builder_version===sourceDocumentBuilderVersion) {
@@ -27,7 +28,7 @@ export class SourceDocuments {
     if(document.schemaVersion===1&&document.source.fileId===file.id&&Array.isArray(document.semantic.children))return {document,updated:false};
    }catch{/* Rebuild a damaged derived cache from authoritative source text. */}
   }
-  const document=processedSourceDocument(file);
+  const document=resolveSourceDocument(this.store,file);
   if(math)document.processing={...document.processing,text:'LaTeX cleaned extraction',math};
   this.store.run(`INSERT INTO source_documents (file_id,builder_version,input_hash,document_json,updated_at) VALUES (?,?,?,?,?)
    ON CONFLICT(file_id) DO UPDATE SET builder_version=excluded.builder_version,input_hash=excluded.input_hash,document_json=excluded.document_json,updated_at=excluded.updated_at`,file.id,sourceDocumentBuilderVersion,inputHash,JSON.stringify(document),now());

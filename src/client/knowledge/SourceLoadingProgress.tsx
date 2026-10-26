@@ -1,10 +1,16 @@
+import {SourceIngestionProgress} from './SourceIngestionProgress';
 import {t as uiText} from '../i18n';
 import {useEffect,useRef,useState} from 'react';
 import type {SourceFile} from '../../shared/domain';
 import {sourceDuration} from '../../shared/source-progress';
 import {ProgressNotice} from '../notifications';
 
+const ignorePresence=()=>{};
 export function SourceLoadingProgress({file}:{file:SourceFile}) {
+ const providerIngestion=!!file.ingestion_origin&&file.ingestion_origin!=='local';
+ return <>{providerIngestion&&<SourceIngestionProgress vaultId={file.vault_id} fileId={file.id} onPresence={ignorePresence}/>}{!providerIngestion&&<LegacySourceLoadingProgress file={file}/>}</>;
+}
+function LegacySourceLoadingProgress({file}:{file:SourceFile}) {
  const active=file.status==='queued'||file.status==='processing'||file.status==='ready'&&['pending','running'].includes(file.enrichment_status);
  const detail=file.processing_detail;
  const phase=detail?'math':file.status==='ready'?'enrichment':file.status;

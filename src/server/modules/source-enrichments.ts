@@ -41,7 +41,7 @@ export class SourceEnrichments {
   try {
    if(!this.intelligence.status().configured)return;
    const file=this.store.get<SourceFile>(`SELECT f.* FROM source_files f JOIN vaults v ON v.id=f.vault_id JOIN entities e ON e.id=f.entity_id
-    WHERE f.status='ready' AND NOT EXISTS(SELECT 1 FROM source_automation_pauses pause WHERE pause.file_id=f.id) AND f.enrichment_status='pending' AND f.enrichment_next_attempt_at<=? AND v.locked=0 AND e.type='source' AND e.archived_at IS NULL ORDER BY f.created_at LIMIT 1`,now());
+    WHERE f.status='ready' AND NOT EXISTS(SELECT 1 FROM source_ingestion_runs ingestion WHERE ingestion.file_id=f.id) AND NOT EXISTS(SELECT 1 FROM source_automation_pauses pause WHERE pause.file_id=f.id) AND f.enrichment_status='pending' AND f.enrichment_next_attempt_at<=? AND v.locked=0 AND e.type='source' AND e.archived_at IS NULL ORDER BY f.created_at LIMIT 1`,now());
    if(!file){await this.authorBackfill.tick();return;}
    const entity=this.store.get<{name:string;updated_at:string}>('SELECT name,updated_at FROM entities WHERE id=?',file.entity_id!);
    this.store.run("UPDATE source_files SET enrichment_status='running',enrichment_attempts=enrichment_attempts+1,enrichment_error=NULL WHERE id=?",file.id);

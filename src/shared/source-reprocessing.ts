@@ -3,6 +3,12 @@ export const sourceRevisionLimit=5;
 export const sourceEditorialRevisionLimit=sourceRevisionLimit-1;
 import type {ReasoningEffort} from './intelligence.js';
 import type {SourceDocument,SourceDocumentRange} from './source-document.js';
+import type {SourceIngestionDocument} from './source-ingestion.js';
+/** Recovery text belongs only to an explicitly accepted derivative, never original evidence. */
+export interface SourceIngestionPageRecoveryDescriptor {
+ version:1;page:number;patchId:string;extractionId:string;responseHash:string;
+ insertion:{startOffset:number;endOffset:number;original:string};document:SourceIngestionDocument;
+}
 export type SourceAcceptanceMode='review_all'|'safe_formatting'|'balanced'|'minimal_review';
 /** V2 depth is independent of the historical V1 acceptance modes. */
 export type SourceProcessingDepth='light'|'balanced'|'deep';
@@ -91,6 +97,8 @@ export interface SourceReprocessingReport {
  diagnostics:string[];validationDiagnostics?:string[];error:string|null;
 }
 export interface SourceReprocessingRevision {
+ /** Initial ingestion repairs reuse decisions without starting an editorial generation job. */
+ origin?:{kind:'ingestion';documentId:string;runId:string;repairIdentity?:string;pageRecovery?:SourceIngestionPageRecoveryDescriptor};
  /** Immutable source-local ordinal, assigned when queued; absent only in legacy archives. */
  versionNumber?:number;
  id:string;fileId:string;createdAt:string;updatedAt:string;status:ReprocessingStatus;instructions:string;

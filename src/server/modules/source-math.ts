@@ -24,6 +24,7 @@ function literalContent(text:string) {
 export class SourceMath {
  constructor(private store:Store) {}
  async prepare(file:SourceFile,generate:(input:string)=>Promise<string>,signal:AbortSignal,onProgress?:(progress:SourceProcessingProgress)=>void):Promise<SourceFile> {
+  if(this.store.get('SELECT 1 FROM source_ingestion_documents WHERE file_id=?',file.id))return file;
   const cached=mathSource(this.store,file);
   // Only an explicit import choice starts math preparation; retain existing cached text.
   if(cached!==file||file.contains_math!==1)return cached;

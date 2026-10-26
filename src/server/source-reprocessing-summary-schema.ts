@@ -3,7 +3,7 @@ import type {DatabaseSync} from 'node:sqlite';
 /** Persist only selector fields; full snapshots and excerpt histories stay in the detail payload. */
 export function setupSourceReprocessingSummarySchema(db:DatabaseSync) {
  const projection=(payload:string)=>`CASE WHEN json_valid(${payload}) THEN json_set(
-  json_remove(${payload},'$.original','$.reprocessed','$.nodeLinks','$.furniture','$.patches','$.report.excerpts','$.report.diagnostics','$.report.validationDiagnostics'),
+  json_remove(${payload},'$.original','$.reprocessed','$.nodeLinks','$.furniture','$.patches','$.report.excerpts','$.report.diagnostics','$.report.validationDiagnostics','$.origin.pageRecovery'),
   '$.report.diagnostics',json('[]'),
   '$.patchCount',coalesce(json_array_length(${payload},'$.patches'),0),
   '$.pendingCount',(SELECT count(*) FROM json_each(${payload},'$.patches') WHERE json_extract(value,'$.decision')='pending')
@@ -17,7 +17,7 @@ export function setupSourceReprocessingSummarySchema(db:DatabaseSync) {
   }
   // Refresh projections on upgrade without rewriting canonical revision payloads.
   db.exec('DROP TRIGGER IF EXISTS source_reprocessing_summary_insert; DROP TRIGGER IF EXISTS source_reprocessing_summary_update');
-  db.exec(`UPDATE source_reprocessing SET summary_json=${projection('payload')} WHERE json_type(summary_json,'$.furniture') IS NOT NULL`);
+  db.exec(`UPDATE source_reprocessing SET summary_json=${projection('payload')} WHERE json_type(summary_json,'$.furniture') IS NOT NULL OR json_type(summary_json,'$.origin.pageRecovery') IS NOT NULL`);
   db.exec(`CREATE TRIGGER IF NOT EXISTS source_reprocessing_summary_insert AFTER INSERT ON source_reprocessing BEGIN
    UPDATE source_reprocessing SET summary_json=${projection('(SELECT payload FROM source_reprocessing WHERE id=NEW.id)')} WHERE id=NEW.id;
    END;

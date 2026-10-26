@@ -1,3 +1,4 @@
+import type {SourceIngestionBlock,SourceIngestionPage,SourceIngestionProvenance} from './source-ingestion.js';
 import type {SourceStructureKind,SourceReference} from './domain.js';
 
 /** Offsets are zero-based UTF-16, end-exclusive; lines and physical pages are one-based. */
@@ -16,10 +17,13 @@ export interface SourceDocumentNode {
  text?:string;
  /** Local rules cannot always establish an exact statement/proof ending. */
  extent?:'explicit'|'inferred';
+ /** Additive rich extraction data; geometry remains model-estimated and approximate. */
+ ingestion?:{kind:SourceIngestionBlock['kind'];table:SourceIngestionBlock['table'];location:SourceIngestionBlock['location'];uncertainty:string|null;furniture:boolean;continues:string|null};
  children?:SourceDocumentNode[];
 }
 export interface SourceDocument {
  schemaVersion:1;
+ ingestion?:{readingMapping?:{recoveredNodes?:{readingId:string;originalId:null;page:number}[];nodes:{originalId:string;readingId:string|null}[];relations:{kind:string;from:string|null;to:string|null;uncertain:boolean}[]};documentId:string;contentHash:string;assemblyVersion:number;relations:{kind:string;from:string;to:string;uncertain:boolean}[];blocks:(SourceIngestionBlock&{immutableId:string})[];pages:SourceIngestionPage[];provenance:SourceIngestionProvenance};
  source:{fileId:string;name:string;title:string;format:string;language:string|null;url:string|null};
  coordinates:{offsets:'zero-based UTF-16, end-exclusive';lines:'one-based extracted text';pages:'one-based physical page order, not printed labels'};
  physical:{pageCount:number|null;pages:{number:number;range:SourceDocumentRange}[]};

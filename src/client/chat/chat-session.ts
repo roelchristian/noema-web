@@ -20,3 +20,22 @@ export function writeChatSession(vaultId:string,value:ChatSession) {
 export function clearChatSession(vaultId:string) {
  try{window.sessionStorage.removeItem(key(vaultId));}catch{/* Storage is optional. */}
 }
+
+export interface ChatDraft {draft:string;mentions:ChatMention[];deep:boolean}
+const draftsKey=(vaultId:string)=>'noema-chat-drafts:'+vaultId;
+export function readChatDrafts(vaultId:string):Record<string,ChatDraft> {
+ try {
+  const raw=JSON.parse(window.sessionStorage.getItem(draftsKey(vaultId))??'{}');
+  if(!raw||typeof raw!=='object'||Array.isArray(raw))return {};
+  return Object.fromEntries(Object.entries(raw).slice(-100).filter(([id,value])=>id.length<=250&&!!value&&typeof value==='object').map(([id,value])=>{
+   const item=value as ChatDraft;
+   return [id,{draft:typeof item.draft==='string'?item.draft.slice(0,2000):'',mentions:Array.isArray(item.mentions)?item.mentions.filter(mention=>mention&&typeof mention.id==='string'&&mention.id.length<=100&&typeof mention.name==='string'&&mention.name.length<=200).slice(0,8):[],deep:item.deep===true}];
+  }));
+ }catch{return {};}
+}
+export function writeChatDrafts(vaultId:string,drafts:Record<string,ChatDraft>) {
+ try{window.sessionStorage.setItem(draftsKey(vaultId),JSON.stringify(drafts));}catch{/* Storage is optional. */}
+}
+export function clearChatDrafts(vaultId:string) {
+ try{window.sessionStorage.removeItem(draftsKey(vaultId));}catch{/* Storage is optional. */}
+}

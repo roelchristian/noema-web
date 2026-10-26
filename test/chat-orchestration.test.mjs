@@ -230,3 +230,39 @@ test('failed or cancelled regeneration keeps the old answer and its evidence int
   }finally{f.close();}
  });
 });
+
+
+test('failed answer retry preserves question, scope, mentions and depth without duplicating the user turn',async()=>{
+ let calls=0;const f=fixture(async()=>{if(++calls===1)throw new Error('Synthetic failure');return claims('Retried answer.');});
+ try {
+  await assert.rejects(f.submit({deep:true}));
+  const thread=f.chat.thread('default',f.chat.storage.list('default')[0].id),failed=thread.messages.at(-1);
+  assert.equal(failed.status,'failed');assert.equal(thread.messages[0].searchDepth,'deep');
+  const retry={threadId:thread.id,retryMessageId:failed.id,deep:true};
+  await assert.rejects(f.submit({...retry,deep:false}),error=>error.status===409);
+  await assert.rejects(f.submit({...retry,question:'Changed question'}),error=>error.status===409);
+  await assert.rejects(f.submit({...retry,mentions:[{id:'other',name:'Other'}]}),error=>error.status===409);
+  await assert.rejects(f.submit({...retry,scope:{kind:'source',id:'source-1'}}),error=>error.status===409);
+  const result=await f.submit(retry),saved=f.chat.thread('default',thread.id);
+  assert.equal(saved.messages.length,2);assert.equal(saved.messages.filter(message=>message.role==='user').length,1);
+  assert.equal(saved.messages.at(-1).id,result.message.id);assert.equal(saved.messages.at(-1).text,'Retried answer.');
+  assert.equal(f.queries.at(-1).options.deep,true);assert.deepEqual(JSON.parse(f.inputs.at(-1).input).previousQuestions,[]);
+  await assert.rejects(f.submit(retry),error=>error.status===409);
+ }finally{f.close();}
+});
+
+test('lost thread event recovers request identity across running, failed and completed states',async()=>{
+ let reject,ready;const started=new Promise(resolve=>ready=resolve);let first=true;
+ const f=fixture(async()=>{if(first){first=false;ready();return new Promise((_resolve,fail)=>reject=fail);}return claims('Recovered once.');});
+ try{
+  const requestId=randomUUID(),running=f.submit({requestId});await started;
+  const pending=f.chat.requestStatus('default',requestId);assert.equal(pending.status,'running');assert.ok(pending.threadId);
+  assert.deepEqual(f.chat.requestStatus(f.other,requestId),{status:'missing'});
+  reject(new Error('Synthetic transport interruption'));await assert.rejects(running);
+  const failed=f.chat.requestStatus('default',requestId);assert.equal(failed.status,'failed');assert.equal(failed.threadId,pending.threadId);
+  const marker=f.chat.thread('default',failed.threadId).messages.at(-1),retryId=randomUUID();
+  await f.submit({requestId:retryId,threadId:failed.threadId,retryMessageId:marker.id});
+  assert.equal(f.chat.requestStatus('default',retryId).status,'completed');
+  assert.equal(f.chat.thread('default',failed.threadId).messages.length,2);assert.equal(f.chat.storage.list('default').length,1);
+ }finally{f.close();}
+});

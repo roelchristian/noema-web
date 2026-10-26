@@ -121,7 +121,10 @@
     "test/chat-navigation.test.mjs",
     "test/source-revision-diff.test.mjs",
     "test/writing-actions-ui.test.mjs",
-    "test/persona-comparison.test.mjs"
+    "test/persona-comparison.test.mjs",
+    "test/chat-research.test.mjs",
+    "test/chat-evidence-panel.test.mjs",
+    "test/chat-reliability.test.mjs"
   ],
   "server": [
     "test/activity-page-titles.test.mjs",

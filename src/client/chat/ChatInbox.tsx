@@ -29,7 +29,7 @@ export function ChatInbox({active=true,animatedTitle,threads,selectedId,disabled
  return <div className="chat-inbox" aria-busy={loading}>
   <div className="chat-inbox-heading"><div><h2>Conversations <span>{threads.length}</span></h2></div>{onHide&&<button type="button" className="chat-icon" aria-label="Hide conversation inbox" title="Hide inbox" onClick={onHide}><Icon name="panel-hide"/></button>}</div>
   <button type="button" className="button chat-new" disabled={disabled} onClick={()=>{setQuery('');onNew();}}><Icon name="compose"/>New chat</button>
-  <label className="chat-history-search"><Icon name="search"/><input type="search" aria-label="Search conversations" placeholder="Search conversations…" value={query} onChange={event=>setQuery(event.target.value)}/></label>
+  <label className="chat-history-search"><Icon name="search"/><input type="search" aria-label="Search conversation titles" placeholder="Search titles…" value={query} onChange={event=>setQuery(event.target.value)}/></label>
   {error&&<div className="chat-history-error" role="alert"><p>{error}</p><button type="button" className="button" disabled={loading} onClick={onRetry}>Retry history</button></div>}
   <nav className="chat-thread-list" aria-label="Conversation history">
    {loading&&!threads.length?<p className="chat-inbox-empty" role="status">Loading conversations…</p>:!matching.length&&!error?<div className="chat-inbox-empty"><Icon name={query?'search':'annotation'}/><strong>{query?'No matches':'A place for your questions'}</strong><p>{query?'Try another title.':'Start a chat. Your saved conversations will appear here.'}</p></div>:null}

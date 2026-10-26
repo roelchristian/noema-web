@@ -209,3 +209,16 @@ test('a completed folder request cannot replay material that moved outside its c
   const history=chat.storage.get('default',first.threadId);assert.equal(history.messages.at(-1).evidence[0].status,'current','Historical stored evidence is not rewritten');
  }finally{chat?.close();f.close();}
 });
+
+test('request recovery lookup is read only, vault scoped, header protected and rejects malformed IDs',async t=>{
+ const f=await httpFixture(t),requestId=randomUUID();
+ assert.deepEqual(await (await f.request('requests/'+requestId)).json(),{status:'missing'});
+ const response=await f.request('messages','POST',{question:'grace',scope:{kind:'page',id:f.myNote.id},requestId});await response.text();
+ const recovered=await (await f.request('requests/'+requestId)).json();assert.equal(recovered.status,'completed');assert.ok(recovered.threadId);
+ const before=f.store.all('SELECT * FROM chat_requests');
+ assert.deepEqual(await (await f.request('requests/'+requestId,'GET',undefined,{'X-Vault-ID':f.other})).json(),{status:'missing'});
+ assert.equal((await f.request('requests/'+requestId,'GET',undefined,{'X-Noema-Request':''})).status,403);
+ assert.equal((await f.request('requests/bad%20id')).status,400);
+ assert.deepEqual(f.store.all('SELECT * FROM chat_requests'),before);
+ f.store.run("UPDATE vaults SET locked=1 WHERE id='default'");assert.equal((await f.request('requests/'+requestId)).status,423);
+});

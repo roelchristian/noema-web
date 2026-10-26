@@ -87,6 +87,7 @@ Run:
 npm run build
 npm run test:all
 PLAYWRIGHT_MODULE=/path/to/playwright-core/index.mjs npm run test:chat-browser
+PLAYWRIGHT_MODULE=/path/to/playwright-core/index.mjs npm run test:chat-research-browser
 ```
 
 The browser harness uses temporary synthetic storage and mocked provider transport. It exercises Chromium light/dark and desktop/touch views without reading credentials or calling a paid service.

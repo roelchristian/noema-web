@@ -247,3 +247,30 @@ test('accepted page shows the selected snapshot immediately while its background
  assert.equal(localStorage.getItem('noema:source-reading:default:file'),'preferred');
  await act(async()=>releaseReading());assert.match(article.textContent,/Selected reading paragraph/);
 });
+
+test('selected accepted page recovery labels recovered reading without rewriting original unreadable evidence',async t=>{
+ const {setupDOM}=await import('./helpers/dom.mjs'),env=setupDOM(t),{dom}=env;
+ for(const [key,value] of Object.entries({localStorage:dom.window.localStorage,ResizeObserver:class{observe(){}disconnect(){}}})){
+  const previous=Object.getOwnPropertyDescriptor(globalThis,key);Object.defineProperty(globalThis,key,{configurable:true,writable:true,value});env.defer(()=>{if(previous)Object.defineProperty(globalThis,key,previous);else delete globalThis[key];});
+ }
+ Object.defineProperty(document,'fonts',{value:{ready:Promise.resolve()}});dom.window.Range.prototype.getClientRects=()=>[];
+ const text='<!-- Page 1 -->\nOriginal first page.\n<!-- Page 2 -->\n',file={id:'file',vault_id:'default',entity_id:'source',name:'article.pdf',format:'pdf',status:'ready',admitted:1,text,textHash:'canonical',pages:2,page_start_lines:'[1,3]',structural_nodes:'[]',enrichment_status:'completed',generated_name:null,language:null,source_url:null};
+ const pages=[{number:1,role:'owned',state:'content',printedLabel:null,unresolved:[]},{number:2,role:'owned',state:'unreadable',printedLabel:null,unresolved:[{description:'Original unreadable scan',blockId:null}]}],original={text,document:processedSourceDocument(file)};original.document.ingestion={pages};
+ const recoveredText=text+'Recovered second page.',recoveredDocument=processedSourceDocument({...file,text:recoveredText});recoveredDocument.ingestion={pages,readingMapping:{nodes:[],relations:[],recoveredNodes:[{readingId:'recovered',originalId:null,page:2}]}};
+ const base=JSON.parse(readFileSync(new URL('./fixtures/dante-editorial-revision.json',import.meta.url),'utf8')),revision={...base,id:'recovered',fileId:'file',versionNumber:1,status:'completed',stale:false,patches:[],original,reprocessed:{text:recoveredText,document:recoveredDocument},report:{...base.report,chunksCompleted:base.report.chunksTotal}};
+ t.mock.method(globalThis,'fetch',async url=>{
+  if(url==='/api/entities/source')return Response.json({attachments:[file]});
+  if(url==='/api/source-files/file?fingerprint=1&context=1')return Response.json({...file,document:original.document});
+  if(url==='/api/source-files/file/reprocessing')return Response.json([revision]);
+  if(url==='/api/source-files/file/reprocessing/recovered')return Response.json(revision);
+  if(url.startsWith('/api/source-files/file/reading-locations'))return Response.json({resume:null,bookmarks:[]});
+  if(url.startsWith('/api/source-files/file/highlights')||url.startsWith('/api/source-files/file/reading-notes'))return Response.json([]);
+  throw Error(`Unexpected request: ${url}`);
+ });
+ const root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));const noop=()=>{};
+ await act(async()=>root.render(React.createElement(SourceReader,{vaultId:'default',source:{id:'source',name:'Article',subtypes:[],updated_at:'fixed'},entities:[],onOpenEntity:noop,onCreatePageFromSource:noop,onError:noop,onAddPassage:noop,onAnnotate:noop,onReadingNoteCreated:noop,onOpenReadingNote:noop,onRemoveReadingNote:noop})));
+ assert.match(document.querySelector('[aria-label="PDF transcription issues"]').textContent,/unreadable region.*Original unreadable scan/);
+ const picker=document.querySelector('[aria-label="Reading version"]');await act(async()=>{picker.value=revision.id;picker.dispatchEvent(new Event('change',{bubbles:true}));});
+ assert.match(document.querySelector('[aria-label="PDF transcription issues"]').textContent,/Recovered reading; original transcription unavailable/);assert.match(document.querySelector('.source-reader-document').textContent,/Recovered second page/);
+ assert.equal(file.text,text);assert.equal(original.document.ingestion.pages[1].state,'unreadable');assert.equal(localStorage.getItem('noema:source-reading:default:file'),null,'Recovery is viewed only by explicit selection and never silently preferred');
+});

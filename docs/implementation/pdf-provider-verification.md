@@ -19,7 +19,7 @@ Google: [Interactions overview](https://ai.google.dev/gemini-api/docs/interactio
 
 Discrepancy: some Google guide/reference REST examples still show `/v1beta/interactions`. The API-versions page explicitly documents GA Interactions in `v1` and supplies a stable REST example; implementation follows that authoritative version statement.
 
-Unverified detail: the brief's OpenAI long-input threshold/surcharge was not recoverable from the accessible official pricing text. Do not assert invented surcharge multipliers. Initial OpenAI document requests conservatively stay within a 272,000-token application bound pending separate tariff verification. This bound is an application restriction, not a claim about the model's published capacity.
+Follow-up verification on 26 October 2026 resolved the earlier tariff uncertainty: both exact OpenAI model pages state that prompts above 272K input tokens use 2x input/cache rates and 1.5x output rates for the full request. These verified fields are now in registry version `2026-10-26.2`. The existing 272,000-token application bound remains as an initial window-sizing guard; it is not the model's published capacity. The brief's long-input surcharge statement is confirmed, not a remaining discrepancy.
 
 Stateless synchronous requests cannot promise provider retrieval/cancellation after connection loss. Capability metadata advertises those as unavailable; dispatched transport interruption is an unknown paid outcome and must require explicit recovery. Upload transport failure before generation has no generation charge claim. Mocks establish envelope/durability behavior, not provider quality or actual billing.
 

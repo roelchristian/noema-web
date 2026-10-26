@@ -173,9 +173,11 @@ export class SourceFiles {
   async prepareProviderPDF(vault:string,id:string,pdf:PdfPlatform,signal?:AbortSignal) {
     const file=this.require(vault,id);if(file.format!=='pdf')throw new HttpError(400,'PDF input required');
     const asset=readFileSync(this.assetFilename(vault,id)),originalPath=path.join(this.evidenceDirectory(vault,id),'original');
+    if(file.pdf_flattened===1&&!existsSync(originalPath))throw new HttpError(409,'Original PDF evidence is unavailable for this flattened source. Re-upload the original PDF to use provider ingestion.');
     const original=existsSync(originalPath)?readFileSync(originalPath):asset;
     this.preserveOriginal(vault,id,original);
-    const originalHash=this.hash(original),previous=this.evidence(vault,id);
+    // Legacy fallback diagnostics describe a missing manifest, not this fresh preserved PDF.
+    const originalHash=this.hash(original),previous:Record<string,unknown>=existsSync(path.join(this.evidenceDirectory(vault,id),'manifest.json'))?this.evidence(vault,id):{};
     if(previous.originalHash!==undefined&&previous.originalHash!==originalHash)throw new HttpError(409,'Original PDF provenance changed.');
     const admitted=previous.admittedHash===this.hash(asset)&&file.admitted===1?{bytes:asset,pages:await pdf.count(asset,signal),flattened:file.pdf_flattened===1,method:typeof previous.admissionMethod==='string'?previous.admissionMethod:'screened-original'}:await pdf.admit(original,signal);
     scanSourcePDF(admitted.bytes);

@@ -38,7 +38,7 @@ export class SourceIngestion {
   const config=JSON.stringify(options),fingerprint=hash(JSON.stringify([config,documentRegistryVersion,SOURCE_INGESTION_PROMPT_VERSION])),key=hash(fileId+':'+fingerprint);
   const existing=this.store.get<Run>('SELECT * FROM source_ingestion_runs WHERE vault_id=? AND idempotency_key=?',vault,key);if(existing)return this.view(vault,fileId);
   const previous=this.store.get<Run>('SELECT * FROM source_ingestion_runs WHERE file_id=?',fileId);
-  if(file.status==='ready'||this.store.get('SELECT 1 FROM source_ingestion_documents WHERE file_id=?',fileId))throw new HttpError(409,'A published extraction is immutable; create a reading revision instead.');
+  if(file.status==='ready'||file.text.length>0||this.store.get('SELECT 1 FROM source_ingestion_documents WHERE file_id=?',fileId))throw new HttpError(409,'A published extraction is immutable; create a reading revision instead.');
   if(previous){
    const paid=this.store.get("SELECT 1 FROM source_ingestion_attempts a JOIN source_ingestion_windows w ON w.id=a.window_id WHERE w.run_id=? AND a.state NOT IN ('prepared','not-submitted')",previous.id);
    if(file.entity_id||paid||previous.state==='running')throw new HttpError(409,'This staged attachment already has frozen processing options.');

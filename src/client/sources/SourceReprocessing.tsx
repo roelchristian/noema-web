@@ -251,6 +251,7 @@ export function SourceReprocessing({sourceId,vaultId,fileId,visible,onShow,onOri
       group.forEach(item=>clearEditorialDraft(patchDraftKey(item)));
       if(latestRevisionId.current===value.id)setRevision(value);
       setSelected(ids=>ids.filter(id=>!group.some(item=>item.id===id)));setReload(n=>n+1);
+      if(value.origin?.kind==='ingestion')window.dispatchEvent(new CustomEvent('noema:source-ingestion-updated',{detail:{vaultId,fileId}}));
     }catch(cause){if(mounted.current)setError(cause instanceof Error?cause.message:String(cause));}finally{finishAction();}
   }
   async function control(action:'cancel'|'resume'){
@@ -272,6 +273,7 @@ export function SourceReprocessing({sourceId,vaultId,fileId,visible,onShow,onOri
       targets.forEach(patch=>clearEditorialDraft(patchDraftKey(patch)));
       if(latestRevisionId.current===value.id)setRevision(value);
       setSelected(current=>current.filter(id=>!targets.some(patch=>patch.id===id)));setReload(n=>n+1);
+      if(value.origin?.kind==='ingestion')window.dispatchEvent(new CustomEvent('noema:source-ingestion-updated',{detail:{vaultId,fileId}}));
     }catch(cause){if(mounted.current)setError(cause instanceof Error?cause.message:String(cause));}finally{finishAction();}
   }
   async function decideSelected(decision:'accepted'|'rejected'){

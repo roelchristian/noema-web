@@ -60,3 +60,5 @@ for(const provider of ['openai','gemini'])test(`${provider}: targeted task instr
   assert.match(instructions,task==='relations'?/existing block IDs/:/exact-span repair/);
  }
 });
+
+test('verified OpenAI long-input tariffs are versioned without changing the application window guard',()=>{for(const id of ['gpt-6.1-sol','gpt-6-astra']){const price=documentPrice(id,'2026-10-26');assert.equal(price.longInputThreshold,272000);assert.equal(price.longInputMultiplier,2);assert.equal(price.longOutputMultiplier,1.5);}});

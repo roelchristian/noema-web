@@ -1,5 +1,5 @@
 import {createHash,randomUUID} from 'node:crypto';
-import type {ChatClaim,ChatEvidence,ChatMention,ChatMessage,ChatResult,ChatScope} from '../../shared/chat.js';
+import type {ChatClaim,ChatEvidence,ChatMention,ChatMessage,ChatResult,ChatScope,ChatRequestStatus} from '../../shared/chat.js';
 import type {Store} from '../store.js';
 import {HttpError} from '../validation.js';
 import type {Intelligence} from './intelligence.js';
@@ -86,6 +86,14 @@ export class Chat {
  thread(vault:string,id:string) {
   const thread=this.storage.get(vault,id);
   thread.messages=thread.messages.map(message=>({...message,...(message.evidence?{evidence:this.retrieval.validate(vault,message.evidence)}:{})}));return thread;
+ }
+ requestStatus(vault:string,requestId:string):ChatRequestStatus {
+  this.vaults.requireOpen(vault);
+  if(!/^[a-zA-Z0-9_-]{1,100}$/.test(requestId))throw new HttpError(400,'Invalid Chat request ID.');
+  const saved=this.store.get<{status:ChatRequestStatus['status'];thread_id:string|null}>('SELECT status,thread_id FROM chat_requests WHERE vault_id=? AND request_id=?',vault,requestId);
+  if(!saved)return {status:'missing'};
+  if(!saved.thread_id||!this.store.get('SELECT id FROM chat_threads WHERE vault_id=? AND id=?',vault,saved.thread_id))return {status:'unavailable'};
+  return {status:saved.status,threadId:saved.thread_id};
  }
  cancel(vault:string,requestId:unknown) {
   this.vaults.requireOpen(vault);if(typeof requestId!=='string')throw new HttpError(400,'Invalid Chat request.');

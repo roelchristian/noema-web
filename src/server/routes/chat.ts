@@ -6,6 +6,7 @@ interface Context {vault:string;path:string[];method:string;body:Record<string,u
 export async function chatRoutes(chat:Chat,{vault,path,method,body,res,send}:Context) {
  const [resource,id,action]=path;
  if(action)throw new HttpError(404,'Chat endpoint not found.');
+ if(resource==='requests'&&id&&method==='GET')return send(200,chat.requestStatus(vault,id));
  if(resource==='threads') {
   if(!id&&method==='GET')return send(200,chat.storage.list(vault));
   if(!id&&method==='POST')return send(201,chat.storage.create(vault,chat.scope(vault,body.scope),typeof body.title==='string'?body.title:undefined));

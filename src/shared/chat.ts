@@ -10,3 +10,5 @@ export interface ChatThread {id:string;vaultId:string;title:string;scope:ChatSco
 export interface ChatSubmit {question:string;scope:ChatScope;regenerateMessageId?:string;retryMessageId?:string;mentions?:ChatMention[];contextMentions?:ChatMention[];threadId?:string;temporary?:boolean;deep?:boolean;previousQuestions?:string[];requestId:string}
 export interface ChatResult {message:ChatMessage;threadId?:string;title?:string;titleUpdated?:boolean;diagnostics:{passes:number;evidenceCount:number;depth:'standard'|'deep'};activityId?:string;usage?:{inputTokens:number|null;outputTokens:number|null;estimatedCost:number|null;pricingVersion:string|null}}
 export type ChatEvent={type:'thread';threadId:string}|{type:'evidence';evidence:ChatEvidence[];threadId?:string}|{type:'claim';claim:ChatClaim}|{type:'answer';result:ChatResult}|{type:'error';message:string};
+
+export interface ChatRequestStatus {status:'missing'|'running'|'completed'|'failed'|'interrupted'|'unavailable';threadId?:string}

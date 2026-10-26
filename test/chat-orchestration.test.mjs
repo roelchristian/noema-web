@@ -250,3 +250,19 @@ test('failed answer retry preserves question, scope, mentions and depth without 
   await assert.rejects(f.submit(retry),error=>error.status===409);
  }finally{f.close();}
 });
+
+test('lost thread event recovers request identity across running, failed and completed states',async()=>{
+ let reject,ready;const started=new Promise(resolve=>ready=resolve);let first=true;
+ const f=fixture(async()=>{if(first){first=false;ready();return new Promise((_resolve,fail)=>reject=fail);}return claims('Recovered once.');});
+ try{
+  const requestId=randomUUID(),running=f.submit({requestId});await started;
+  const pending=f.chat.requestStatus('default',requestId);assert.equal(pending.status,'running');assert.ok(pending.threadId);
+  assert.deepEqual(f.chat.requestStatus(f.other,requestId),{status:'missing'});
+  reject(new Error('Synthetic transport interruption'));await assert.rejects(running);
+  const failed=f.chat.requestStatus('default',requestId);assert.equal(failed.status,'failed');assert.equal(failed.threadId,pending.threadId);
+  const marker=f.chat.thread('default',failed.threadId).messages.at(-1),retryId=randomUUID();
+  await f.submit({requestId:retryId,threadId:failed.threadId,retryMessageId:marker.id});
+  assert.equal(f.chat.requestStatus('default',retryId).status,'completed');
+  assert.equal(f.chat.thread('default',failed.threadId).messages.length,2);assert.equal(f.chat.storage.list('default').length,1);
+ }finally{f.close();}
+});

@@ -106,12 +106,13 @@ export class Chat {
   const explicitMentions=(body.mentions??[]) as ChatMention[],scope=this.retrieval.validateScope(vault,body.scope),question=body.question.trim();
   const thread=body.threadId?this.storage.get(vault,body.threadId as string):undefined;
   if(thread&&JSON.stringify(thread.scope)!==JSON.stringify(scope))throw new HttpError(409,'Start a new conversation to change the selected scope.');
-  const regenerate=body.regenerateMessageId;
+  const regenerate=body.regenerateMessageId,retry=body.retryMessageId;
+  if(retry!==undefined&&(typeof retry!=='string'||retry.length>100||!thread||body.temporary===true||regenerate!==undefined))throw new HttpError(400,'Choose a failed answer to retry.');
   if(regenerate!==undefined&&(typeof regenerate!=='string'||regenerate.length>100||!thread||body.temporary===true))throw new HttpError(400,'Choose a saved answer to regenerate.');
 
   const firstQuestion=thread?.messages.find(message=>message.role==='user')?.text??question;
   const autoTitle=!thread?.messages.some(message=>message.role==='assistant'&&(!message.status||message.status==='completed'))&&(!thread||['New chat','New conversation',firstQuestion.slice(0,160)].includes(thread.title));
-  const requestHash=createHash('sha256').update(JSON.stringify({question,scope,mentions:explicitMentions,contextMentions:body.contextMentions??[],threadId:body.threadId??null,deep:body.deep===true,...(regenerate?{regenerate}:{})})).digest('hex');
+  const requestHash=createHash('sha256').update(JSON.stringify({question,scope,mentions:explicitMentions,contextMentions:body.contextMentions??[],threadId:body.threadId??null,deep:body.deep===true,...(regenerate?{regenerate}:{}),...(retry?{retry}:{})})).digest('hex');
   if(body.temporary!==true) {
    const saved=this.store.get<{request_hash:string;status:string;thread_id:string|null;result_json:string|null}>('SELECT * FROM chat_requests WHERE vault_id=? AND request_id=?',vault,body.requestId);
    if(saved) {
@@ -131,6 +132,10 @@ export class Chat {
    const last=thread!.messages.at(-1),user=thread!.messages.at(-2);
    if(last?.id!==regenerate||last.role!=='assistant'||last.status==='failed'||last.status==='interrupted'||user?.role!=='user'||user.text!==question)throw new HttpError(409,'Only the latest completed answer can be regenerated from its original question.');
   }
+  if(retry!==undefined){
+   const last=thread!.messages.at(-1),user=thread!.messages.at(-2);
+   if(last?.id!==retry||last.role!=='assistant'||!['failed','interrupted'].includes(last.status??'')||user?.role!=='user'||user.text!==question||JSON.stringify(user.mentions??[])!==JSON.stringify(explicitMentions)||(user.searchDepth==='deep')!==(body.deep===true))throw new HttpError(409,'Only the latest unfinished answer can be retried with its original question and mentions.');
+  }
   // Only user-authored resolved IDs provide conversational subject context. Text
   // supplied as a display name is never authority for identity or disambiguation.
   const canonical=(mention:ChatMention)=>{
@@ -145,7 +150,7 @@ export class Chat {
   for(const item of inherited)if(!currentNames.has(normalize(item.name))) {const key=normalize(item.name);previous.delete(key);previous.set(key,item);}
   const mentions=current.length<8?[...previous.values()].slice(-(8-current.length)):[];
   for(const item of current)if(!mentions.some(mention=>mention.id===item.id))mentions.push(item);
-  if(!regenerate&&thread&&thread.messages.length>198)throw new HttpError(409,'This conversation is full. Start a new conversation.');
+  if(!regenerate&&!retry&&thread&&thread.messages.length>198)throw new HttpError(409,'This conversation is full. Start a new conversation.');
   const key=JSON.stringify([vault,body.requestId]);if(this.running.has(key))throw new HttpError(409,'This Chat request is already running.');
   if([...this.running.values()].some(item=>thread&&item.threadId===thread.id))throw new HttpError(409,'This conversation already has a request running.');
   if(this.running.size>=8)throw new HttpError(429,'Chat is busy. Wait for an active request to finish.');
@@ -161,11 +166,11 @@ export class Chat {
     this.store.transaction(()=>{
      this.store.run("INSERT INTO chat_requests (vault_id,request_id,request_hash,status,thread_id) VALUES (?,?,?,'running',?)",vault,body.requestId as string,requestHash,threadId!);
     });
-    if(!regenerate){this.storage.append(vault,threadId,[{id:randomUUID(),role:'user',text:question,createdAt:new Date().toISOString(),mentions:current,status:'completed'}]);userSaved=true;}
+    if(!regenerate&&!retry){this.storage.append(vault,threadId,[{id:randomUUID(),role:'user',text:question,createdAt:new Date().toISOString(),mentions:current,searchDepth:body.deep===true?'deep':'standard',status:'completed'}]);userSaved=true;}
     this.running.set(key,{controller,threadId});
     options.onThread?.(threadId);
    }
-   const history=thread?.messages.filter(message=>message.role==='user').slice(0,regenerate?-1:undefined).slice(-3).map(message=>message.text)??(Array.isArray(body.previousQuestions)?body.previousQuestions.filter((value):value is string=>typeof value==='string'&&value.length<=2000).slice(-3):[]);
+   const history=thread?.messages.filter(message=>message.role==='user').slice(0,regenerate||retry?-1:undefined).slice(-3).map(message=>message.text)??(Array.isArray(body.previousQuestions)?body.previousQuestions.filter((value):value is string=>typeof value==='string'&&value.length<=2000).slice(-3):[]);
    const query=[...history.slice(-2),question].join('\n').slice(-4000);
    const retrieved=await this.retrieval.retrieve(vault,scope,query,{deep:body.deep===true,mentions,signal:controller.signal});guard();
    // Registry snapshots are bounded and copied before provider access. Never accept coordinates from the model.
@@ -204,7 +209,7 @@ export class Chat {
    const usage=activityId?this.store.get<NonNullable<ChatResult['usage']>>('SELECT input_tokens AS inputTokens,output_tokens AS outputTokens,estimated_cost AS estimatedCost,pricing_version AS pricingVersion FROM ai_activity WHERE id=?',activityId):undefined;
    if(body.temporary!==true&&threadId) {
     if(autoTitle)titleUpdated=this.store.run('UPDATE chat_threads SET title=? WHERE vault_id=? AND id=? AND title=?',generatedTitle,vault,threadId,thread?.title??'New chat').changes!==0;
-    if(regenerate)this.storage.replaceAnswer(vault,threadId,regenerate as string,message);else this.storage.append(vault,threadId,[message]);
+    if(regenerate||retry)this.storage.replaceAnswer(vault,threadId,(regenerate??retry) as string,message);else this.storage.append(vault,threadId,[message]);
     this.store.run("UPDATE chat_requests SET status='completed',result_json=? WHERE vault_id=? AND request_id=?",JSON.stringify({messageId:message.id,diagnostics:{passes:retrieved.passes,evidenceCount:registry.length,depth:retrieved.depth},activityId,usage}),vault,body.requestId as string);
    }
    guard();

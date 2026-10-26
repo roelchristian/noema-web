@@ -230,3 +230,23 @@ test('failed or cancelled regeneration keeps the old answer and its evidence int
   }finally{f.close();}
  });
 });
+
+
+test('failed answer retry preserves question, scope, mentions and depth without duplicating the user turn',async()=>{
+ let calls=0;const f=fixture(async()=>{if(++calls===1)throw new Error('Synthetic failure');return claims('Retried answer.');});
+ try {
+  await assert.rejects(f.submit({deep:true}));
+  const thread=f.chat.thread('default',f.chat.storage.list('default')[0].id),failed=thread.messages.at(-1);
+  assert.equal(failed.status,'failed');assert.equal(thread.messages[0].searchDepth,'deep');
+  const retry={threadId:thread.id,retryMessageId:failed.id,deep:true};
+  await assert.rejects(f.submit({...retry,deep:false}),error=>error.status===409);
+  await assert.rejects(f.submit({...retry,question:'Changed question'}),error=>error.status===409);
+  await assert.rejects(f.submit({...retry,mentions:[{id:'other',name:'Other'}]}),error=>error.status===409);
+  await assert.rejects(f.submit({...retry,scope:{kind:'source',id:'source-1'}}),error=>error.status===409);
+  const result=await f.submit(retry),saved=f.chat.thread('default',thread.id);
+  assert.equal(saved.messages.length,2);assert.equal(saved.messages.filter(message=>message.role==='user').length,1);
+  assert.equal(saved.messages.at(-1).id,result.message.id);assert.equal(saved.messages.at(-1).text,'Retried answer.');
+  assert.equal(f.queries.at(-1).options.deep,true);assert.deepEqual(JSON.parse(f.inputs.at(-1).input).previousQuestions,[]);
+  await assert.rejects(f.submit(retry),error=>error.status===409);
+ }finally{f.close();}
+});

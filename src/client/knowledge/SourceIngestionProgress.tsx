@@ -18,14 +18,19 @@ export function SourceIngestionProgress({vaultId,fileId,onPresence}:{vaultId:str
  useEffect(()=>{if(!run||!['pending','running'].includes(run.state))return;const timer=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(timer);},[run?.state]);
  if(!run)return <p className="section-hint" role={error?'alert':'status'}>{error||uiText('Loading PDF processing monitor…')}</p>;
  async function act(action:'stop'|'resume'|'retry'){if(busy)return;const actionIdentity=identity.current;setBusy(true);setError('');try{const next=await request<SourceProcessingRunView>(`source-files/${encodeURIComponent(fileId)}/ingestion/${action}`,'POST',action==='resume'?{allowUnknown}:{},vaultId);if(identity.current!==actionIdentity)return;setRun(next);setAllowUnknown(false);setPollVersion(version=>version+1);}catch(cause){if(identity.current===actionIdentity)setError(cause instanceof Error?cause.message:String(cause));}finally{if(identity.current===actionIdentity)setBusy(false);}}
- const elapsed=Math.max(0,Math.floor((now-Date.parse(run.startedAt))/1000));
- if(run.state==='completed'&&!run.canRetryOptional&&!run.unknownOutcome&&!run.warnings?.length&&!run.error&&!error&&!run.pendingReview)return <p className="section-hint" aria-label={uiText('PDF processing progress')}>{uiText('PDF transcription published')} · {run.completedPages} {uiText('of')} {run.pageCount} {uiText('physical pages validated')} · {run.provider==='openai'?'OpenAI':'Gemini'}</p>;
+ const active=['pending','running'].includes(run.state);
+ const end=active?now:Date.parse(run.updatedAt);
+ const elapsed=Math.max(0,Math.floor((end-Date.parse(run.startedAt))/1000))||0;
+ const provider=run.provider==='openai'?'OpenAI':run.provider==='gemini'?'Gemini':uiText('Local extraction');
+ const coverage=<p>{run.completedPages} {uiText('of')} {run.pageCount} {uiText('physical pages validated')} · {run.completedWindows} {uiText('of')} {run.totalWindows} {uiText('windows complete')} · {run.pendingReview} {uiText('proposals need review')}</p>;
+ const timing=<p>{Math.floor(elapsed/60)}m {elapsed%60}s {uiText(active?'elapsed wall time':'recorded wall time')} · {uiText('Includes queueing, pauses and retries.')}</p>;
+ const benchmarkNote=<p>{uiText('Compare token usage, estimated cost and request duration in Settings → AI activity log, or Export CSV. Validation and review counts are not accuracy scores.')}</p>;
+ const completedSummary=<><p role="status"><strong>{uiText('PDF transcription published')}</strong> · {provider}{run.model?` · ${run.model}`:''}</p>{coverage}{timing}{benchmarkNote}</>;
+ if(run.state==='completed'&&!run.canRetryOptional&&!run.unknownOutcome&&!run.warnings?.length&&!run.error&&!error&&!run.pendingReview)return <section className="section-hint" aria-label={uiText('PDF processing progress')}>{completedSummary}</section>;
  return <section className="section-hint" aria-label={uiText('PDF processing progress')} aria-busy={busy}>
-  <p role="status"><strong>{uiText(stages[run.stage])}</strong> · {run.provider==='openai'?'OpenAI':run.provider==='gemini'?'Gemini':uiText('Local extraction')}{run.model?` · ${run.model}`:''}</p>
+  {run.state==='completed'?completedSummary:<p role="status"><strong>{uiText(stages[run.stage])}</strong> · {provider}{run.model?` · ${run.model}`:''}</p>}
   {!!run.activePages.length&&<p>{uiText('Physical pages:')} {run.activePages.join(', ')}</p>}
-  <progress max={Math.max(1,run.pageCount)} value={run.completedPages} aria-label={uiText('Validated physical pages')}/>
-  <p>{run.completedPages} {uiText('of')} {run.pageCount} {uiText('physical pages validated')} · {run.completedWindows} {uiText('of')} {run.totalWindows} {uiText('windows complete')}{run.pendingReview>0?` · ${run.pendingReview} ${uiText('proposals need review')}`:''}</p>
-  <p>{Math.floor(elapsed/60)}m {elapsed%60}s {uiText('elapsed')} · {uiText('Last update:')} <time dateTime={run.updatedAt}>{new Date(run.updatedAt).toLocaleTimeString()}</time></p>
+  {run.state!=='completed'&&<><progress max={Math.max(1,run.pageCount)} value={run.completedPages} aria-label={uiText('Validated physical pages')}/>{coverage}{timing}<p>{uiText('Last update:')} <time dateTime={run.updatedAt}>{new Date(run.updatedAt).toLocaleTimeString()}</time></p></>}
   {!!run.warnings?.length&&<ul>{run.warnings.map((warning,index)=><li key={index}>{warning}</li>)}</ul>}
   {run.error&&<p role="alert">{run.error}</p>}{error&&<p role="alert">{error}</p>}
   {run.unknownOutcome&&<><p role="alert">{uiText('A submitted provider request has an unknown outcome. Resuming may repeat paid work. Completed window results are retained.')}</p><label><input type="checkbox" checked={allowUnknown} onChange={event=>setAllowUnknown(event.target.checked)} disabled={busy}/>{uiText('I understand the possible duplicate cost and want to retry this unknown request.')}</label></>}

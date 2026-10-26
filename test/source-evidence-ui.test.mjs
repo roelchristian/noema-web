@@ -85,6 +85,7 @@ test('ready provider attachment exposes optional retry without invalidating read
  let changed=0;await act(async()=>root.render(React.createElement(SourceAttachments,{vaultId:'v',entityId:'e',initial:[file],compact:true,onChange:()=>changed++})));
  const retry=[...document.querySelectorAll('button')].find(button=>button.textContent==='Retry failed optional work');assert.ok(retry,'Completed provider files mount the monitor even in compact attachments');
  assert.equal(calls.filter(call=>call.options.method==='POST').length,0,'Inspecting completed work does not generate or retry anything');
+ assert.match(document.body.textContent,/PDF transcription published.*OpenAI · fixture-model/);assert.doesNotMatch(document.body.textContent,/Building search index/);
  assert.ok(document.querySelector('a[href*="download-processed"]'));
  await act(async()=>retry.click());assert.equal(calls.filter(call=>call.options.method==='POST').length,1);assert.deepEqual(JSON.parse(calls.find(call=>call.options.method==='POST').options.body),{});
  assert.ok(calls.filter(call=>call.options.method==='GET').length>=2,'Optional retry restarts status polling after completed state');
@@ -92,12 +93,19 @@ test('ready provider attachment exposes optional retry without invalidating read
  assert.equal(file.status,'ready');assert.equal(file.text,'Canonical transcription remains readable.');assert.equal(changed,0,'Optional retry does not replace source attachment or canonical text');
 });
 
-test('completed clean provider monitor is a compact summary',async t=>{
+test('completed provider benchmark summary retains model and stable recorded wall time',async t=>{
  const {setupDOM}=await import('./helpers/dom.mjs');const {SourceIngestionProgress}=await import('../src/client/knowledge/SourceIngestionProgress.tsx');
  const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
- t.mock.method(globalThis,'fetch',async()=>Response.json({id:'r',fileId:'f',mode:'ingestion',state:'completed',stage:'indexing',provider:'gemini',model:'fixture-model',pageCount:2,completedPages:2,completedWindows:1,totalWindows:1,activePages:[],pendingReview:0,startedAt:new Date().toISOString(),updatedAt:new Date().toISOString(),error:null,unknownOutcome:false,canResume:false,canRetryOptional:false}));
+ t.mock.method(globalThis,'fetch',async()=>Response.json({id:'r',fileId:'f',mode:'ingestion',state:'completed',stage:'indexing',provider:'gemini',model:'fixture-model',pageCount:2,completedPages:2,completedWindows:1,totalWindows:1,activePages:[],pendingReview:0,startedAt:'2026-10-25T00:00:00.000Z',updatedAt:'2026-10-25T00:02:05.000Z',error:null,unknownOutcome:false,canResume:false,canRetryOptional:false}));
+ t.mock.method(Date,'now',()=>Date.parse('2026-10-26T00:00:00.000Z'));
  await act(async()=>root.render(React.createElement(SourceIngestionProgress,{vaultId:'v',fileId:'f',onPresence:()=>{}})));
- assert.match(document.body.textContent,/PDF transcription published.*2 of 2 physical pages validated.*Gemini/);assert.equal(document.querySelector('progress'),null);assert.equal(document.querySelector('button'),null);
+ assert.match(document.body.textContent,/PDF transcription published.*Gemini · fixture-model.*2 of 2 physical pages validated.*1 of 1 windows complete.*0 proposals need review/);
+ assert.match(document.body.textContent,/2m 5s recorded wall time.*Includes queueing, pauses and retries/);
+ assert.match(document.body.textContent,/AI activity log, or Export CSV/);
+ assert.doesNotMatch(document.body.textContent,/Building search index/);
+ assert.equal(document.querySelector('progress'),null);assert.equal(document.querySelector('button'),null);
+ await act(async()=>root.render(React.createElement(SourceIngestionProgress,{vaultId:'v',fileId:'f',onPresence:()=>{}})));
+ assert.match(document.body.textContent,/2m 5s recorded wall time/,'Reopening completed work must not count time since completion');
 });
 
 test('unreadable provider page recovery is explicit, page-bound and creates only a manually reviewed derivative',async t=>{

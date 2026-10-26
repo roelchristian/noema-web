@@ -14,6 +14,7 @@ import {createRuntime} from '../dist/server/runtime.js';
 import {createTransportHandler} from '../dist/server/transport.js';
 import {readNetworkConfig} from '../dist/server/network.js';
 import {SourceDocuments} from '../dist/server/modules/source-documents.js';
+import {sourceIngestionEnabled} from '../dist/server/modules/source-ingestion-settings.js';
 const sha=value=>createHash('sha256').update(value).digest('hex');
 function ir(){return {schemaVersion:1,metadata:{title:null,language:'en',synopsis:null,contributors:[],bibliographic:[]},pages:[{number:1,printedLabel:'ix',role:'owned',state:'content',unresolved:[]},{number:2,printedLabel:null,role:'owned',state:'blank',unresolved:[]}],blocks:[{id:'provider-id',page:1,order:0,kind:'paragraph',text:'Faithful synthetic source.',headingLevel:null,continues:null,table:null,uncertainty:null,location:null}],relations:[],repairs:[]};}
 for(const provider of ['openai','gemini'])test(`${provider} actual Linux HTTP import uses portable PDF operations, real adapter envelope, provider evidence and durable restore`,{skip:process.platform!=='linux'?'Portable Linux integration gate':false},async()=>{
@@ -74,4 +75,39 @@ for(const provider of ['openai','gemini'])test(`${provider} actual Linux HTTP im
 
 
  }finally{if(server)await new Promise(resolve=>server.close(resolve));runtime?.close();db.close();rmSync(root,{recursive:true,force:true});if(originalFlag===undefined)delete process.env.NOEMA_PDF_PROVIDER_INGESTION;else process.env.NOEMA_PDF_PROVIDER_INGESTION=originalFlag;}
+});
+
+test('PDF provider setting persists, supersedes the startup flag and gates admission through the live HTTP contract',async t=>{
+ const root=mkdtempSync(path.join(tmpdir(),'noema-ingestion-settings-')),database=path.join(root,'db.sqlite');
+ let db=openDatabase(database),store=new Store(db),runtime,server;
+ assert.equal(sourceIngestionEnabled(store,{}),false,'provider processing is off without saved configuration or the legacy flag');
+ const previous=process.env.NOEMA_PDF_PROVIDER_INGESTION;process.env.NOEMA_PDF_PROVIDER_INGESTION='1';
+ const secrets={read:()=>null,write(){throw new Error('No credentials should be changed');},remove(){throw new Error('No credentials should be changed');}};
+ const intelligence=new Intelligence(secrets,async()=>{throw new Error('Settings must not contact a provider');});
+ try {
+  runtime=createRuntime(store,intelligence,readNetworkConfig());
+  server=http.createServer(createTransportHandler(runtime,path.resolve('dist/client'),new Set()));server.listen(0,'127.0.0.1');await once(server,'listening');
+  const base='http://127.0.0.1:'+server.address().port,headers={'x-noema-request':'1','content-type':'application/json'},settings=base+'/api/source-ingestion/settings';
+  assert.deepEqual(await(await fetch(settings,{headers})).json(),{enabled:true});
+  assert.equal((await fetch(settings)).status,403);
+  assert.equal((await fetch(settings,{method:'PUT',headers:{'x-noema-request':'1'},body:'false'})).status,415);
+  for(const body of [{enabled:'true'},{enabled:true,unexpected:1},{}])assert.equal((await fetch(settings,{method:'PUT',headers,body:JSON.stringify(body)})).status,400);
+  const save=enabled=>fetch(settings,{method:'PUT',headers,body:JSON.stringify({enabled})});
+  assert.deepEqual(await(await save(false)).json(),{enabled:false});
+  assert.equal((await(await fetch(base+'/api/source-ingestion/capabilities')).json()).enabled,false);
+  const options={route:'openai',model:'gpt-6.1-sol',depth:'balanced',reviewPolicy:'verified',containsMath:false,guidance:'',transmissionConsent:true,budget:{maxRequests:8,maxOutputTokens:24000,maxCostUsd:null}};
+  await assert.rejects(runtime.sourceFiles.admit('default','synthetic.pdf',Buffer.from('unused'),undefined,()=>{},undefined,false,options),/not enabled/);
+  const upload=await fetch(base+'/api/source-files?'+new URLSearchParams({name:'synthetic.pdf',ingestion:JSON.stringify(options)}),{method:'POST',headers:{...headers,'content-type':'application/pdf'},body:Buffer.from('unused')});
+  assert.equal(upload.status,409);assert.match(await upload.text(),/not enabled/);
+  assert.deepEqual(await(await save(true)).json(),{enabled:true});
+  assert.equal((await(await fetch(base+'/api/source-ingestion/capabilities')).json()).enabled,true);
+  await save(false);
+  await new Promise(resolve=>server.close(resolve));server=undefined;runtime.close();runtime=undefined;db.close();
+  db=openDatabase(database);store=new Store(db);
+  assert.equal(sourceIngestionEnabled(store),false,'saved off survives restart even with the startup flag on');
+  assert.equal(store.get('SELECT count(*) n FROM source_ingestion_runs').n,0);
+ } finally {
+  if(server)await new Promise(resolve=>server.close(resolve));runtime?.close();db.close();rmSync(root,{recursive:true,force:true});
+  if(previous===undefined)delete process.env.NOEMA_PDF_PROVIDER_INGESTION;else process.env.NOEMA_PDF_PROVIDER_INGESTION=previous;
+ }
 });

@@ -1,3 +1,4 @@
+import {sourceIngestionEnabled} from './source-ingestion-settings.js';
 import type {PdfPlatform} from './pdf-platform.js';
 import type {SourceIngestionOptions} from '../../shared/source-ingestion.js';
 import type {SourceIngestion} from './source-ingestion.js';
@@ -160,7 +161,7 @@ export class SourceFiles {
     }
     requireOpen();
     if(ingestion&&ingestion.route!=='local'){
-      if(process.env.NOEMA_PDF_PROVIDER_INGESTION!=='1')throw new HttpError(409,'PDF provider ingestion is not enabled on this server.');
+      if(!sourceIngestionEnabled(this.store))throw new HttpError(409,'PDF provider ingestion is not enabled on this server.');
       if(!name.toLowerCase().endsWith('.pdf'))throw new HttpError(400,'Provider ingestion applies only to PDF uploads.');
       if(!this.ingestion)throw new HttpError(503,'PDF provider ingestion is unavailable.');
     }

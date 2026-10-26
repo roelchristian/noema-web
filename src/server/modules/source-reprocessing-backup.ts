@@ -1,3 +1,6 @@
+import {maxSourceTextBytes} from '../../shared/source-input.js';
+import {validateSourceIngestionDocument} from './source-ingestion-validation.js';
+import {SOURCE_INGESTION_MAX_CHARACTERS} from '../../shared/source-ingestion.js';
 import {createHash} from 'node:crypto';
 import {createSynthesisReviewInput,resolveReviewedSynthesis,synthesisReviewPromptVersion} from './source-reprocessing-synthesis-review.js';
 import {createSynthesisInput,parseDocumentSynthesis,synthesisPromptVersion} from './source-reprocessing-context.js';
@@ -32,7 +35,7 @@ export function validateReprocessingConfiguration(value:unknown):SourceReprocess
 
 /** Archive checkpoints are validated against canonical revision coordinates, then ID-remapped. */
 export function restoreReprocessingCheckpoints(revision:SourceReprocessingRevision,oldRevisionId:string,oldBaseHash:string,chunkValues:unknown[],passValues:unknown[]):{chunks:SourceReprocessingChunk[];passes:SourceReprocessingPass[]} {
- if(revision.pipelineVersion!==2){if(chunkValues.length||passValues.length)throw invalid();return {chunks:[],passes:[]};}
+ if(revision.pipelineVersion!==2||revision.origin?.kind==='ingestion'){if(chunkValues.length||passValues.length)throw invalid();return {chunks:[],passes:[]};}
  const configuration=validateReprocessingConfiguration(revision.configuration);
  const chunks:SourceReprocessingChunk[]=[],passes:SourceReprocessingPass[]=[];
  let end=0,evidenceBytes=0;
@@ -142,7 +145,10 @@ export function restoreReprocessingSynthesis(value:unknown,revision:SourceReproc
 /** Imported derivatives are rebuilt from validated evidence; archive data never starts paid jobs. */
 export function restoreSourceRevision(payload:unknown,oldId:string,oldFileId:string,newId:string,newFileId:string):SourceReprocessingRevision {
  const r=object(payload);if(r.pipelineVersion!==undefined&&r.pipelineVersion!==1&&r.pipelineVersion!==2)throw invalid();if(r.pipelineVersion===2)validateReprocessingConfiguration(r.configuration);else if(r.configuration!==undefined)throw invalid();
- const original=object(r.original),text=string(original.text,512000),document=object(original.document);
+ let ingestionOrigin:SourceReprocessingRevision['origin'];
+ if(r.origin!==undefined){const origin=object(r.origin);if(origin.kind!=='ingestion'||r.pipelineVersion!==2||r.status!=='completed'||object(r.report).promptVersion!=='source-ingestion-corrections-1')throw invalid();ingestionOrigin={kind:'ingestion',documentId:string(origin.documentId,200),runId:string(origin.runId,200)};}
+ const textLimit=ingestionOrigin?SOURCE_INGESTION_MAX_CHARACTERS:512000;
+ const original=object(r.original),text=string(original.text,textLimit),document=object(original.document);if(ingestionOrigin&&Buffer.byteLength(text)>maxSourceTextBytes)throw invalid();
  if(r.id!==oldId||r.fileId!==oldFileId||document.schemaVersion!==1||r.baseHash!==hash(original))throw invalid();
  timestamp(r.createdAt);timestamp(r.updatedAt);string(r.instructions,4000);
  if(r.versionNumber!==undefined)integer(r.versionNumber,1,Number.MAX_SAFE_INTEGER);
@@ -186,9 +192,9 @@ export function restoreSourceRevision(payload:unknown,oldId:string,oldFileId:str
    const node=object(value),id=string(node.id,200),bounds=range(node.range);
    if(!id||ids.has(id)||parent&&(bounds.start<parent.start||bounds.end>parent.end))throw invalid();ids.add(id);nodeBounds.set(id,bounds);
    oneOf(node.kind,[...sourceStructureKinds,'paragraph','code','equation','list','table','blockquote','footnote']);
-   if(node.title!==undefined)string(node.title,512000);
+   if(node.title!==undefined)string(node.title,textLimit);
    if(node.text!==undefined){
-    const stored=string(node.text,512000),raw=text.slice(bounds.start,bounds.end),normalized=raw.replace(/\r\n?/g,'\n');
+    const stored=string(node.text,textLimit),raw=text.slice(bounds.start,bounds.end),normalized=raw.replace(/\r\n?/g,'\n');
     const expected=node.kind==='code'?normalized.trimEnd():node.kind==='paragraph'?normalized.trim().replace(/\s*\n\s*/g,' '):normalized.trim();
     if(stored!==raw&&stored!==expected)throw invalid();
    }
@@ -198,6 +204,17 @@ export function restoreSourceRevision(payload:unknown,oldId:string,oldFileId:str
   }
  };
  nodes(semantic.children,0);
+ if(document.ingestion!==undefined){
+  const rich=object(document.ingestion);string(rich.documentId,200);if(!/^[a-f0-9]{64}$/.test(string(rich.contentHash,64)))throw invalid();integer(rich.assemblyVersion,1,100);
+  const richBlocks=array(rich.blocks,100000),localToTemporary=new Map<string,string>();
+  const blocks=richBlocks.map(value=>{const block=object(value),immutableId=string(block.immutableId,200),id=string(block.id,256),bounds=nodeBounds.get(immutableId);if(localToTemporary.has(immutableId)||!bounds||text.slice(bounds.start,bounds.end)!==block.text)throw invalid();localToTemporary.set(immutableId,id);const {immutableId:_,...record}=block;return record;});
+  const relations=array(rich.relations,200000).map(value=>{const relation=object(value),from=localToTemporary.get(string(relation.from,200)),to=localToTemporary.get(string(relation.to,200));if(!from||!to)throw invalid();return {...relation,from,to};});
+  try {validateSourceIngestionDocument({schemaVersion:1,metadata:{title:null,language:null,synopsis:null,contributors:[],bibliographic:[]},pages:rich.pages,blocks,relations,repairs:[]},{pageCount:pageCount??pages.length,ownedPages:pages.map((_,index)=>index+1)});}catch{throw invalid();}
+  const provenance=object(rich.provenance);oneOf(provenance.provider,['openai','gemini']);string(provenance.requestedModel,200);if(provenance.returnedModel!==null)string(provenance.returnedModel,200);if(provenance.schemaVersion!==1)throw invalid();string(provenance.promptVersion,200);
+  for(const field of ['originalHash','admittedHash','transmittedHash','responseHash'])if(!/^[a-f0-9]{64}$/.test(string(provenance[field],64)))throw invalid();
+  if(provenance.coverage!=='checked'||!['not-checked','checked'].includes(provenance.independentEvidence as string)||typeof provenance.userReviewed!=='boolean')throw invalid();
+  if(rich.readingMapping!==undefined)throw invalid(); // Original snapshots cannot assert derived or native proof mappings.
+ }
  const processing=object(document.processing);
  oneOf(processing.text,['stored extraction','LaTeX cleaned extraction']);
  if(processing.structure!=='stored markers plus local rules'||processing.aiScope!=='bounded excerpts for long sources'||processing.inferredExtents!==true)throw invalid();
@@ -287,7 +304,7 @@ export function restoreSourceRevision(payload:unknown,oldId:string,oldFileId:str
  if(report.validationDiagnostics!==undefined)for(const diagnostic of array(report.validationDiagnostics,5000))string(diagnostic,10000);
  // Keep the validated original's key order for the evidence hash. The derived variant and
  // supplied node links are intentionally discarded and deterministically reconstructed.
- const revision=structuredClone({versionNumber:r.versionNumber,id:r.id,fileId:r.fileId,createdAt:r.createdAt,updatedAt:r.updatedAt,status:r.status,pipelineVersion:r.pipelineVersion,configuration:r.pipelineVersion===2?validateReprocessingConfiguration(r.configuration):undefined,furniture:r.furniture,acceptanceMode:r.acceptanceMode??'review_all',acceptanceThreshold:r.acceptanceThreshold,instructions:r.instructions,baseHash:r.baseHash,stale:r.stale,original,reprocessed:original,patches,report}) as unknown as SourceReprocessingRevision;
+ const revision=structuredClone({...(ingestionOrigin?{origin:ingestionOrigin}:{}),versionNumber:r.versionNumber,id:r.id,fileId:r.fileId,createdAt:r.createdAt,updatedAt:r.updatedAt,status:r.status,pipelineVersion:r.pipelineVersion,configuration:r.pipelineVersion===2?validateReprocessingConfiguration(r.configuration):undefined,furniture:r.furniture,acceptanceMode:r.acceptanceMode??'review_all',acceptanceThreshold:r.acceptanceThreshold,instructions:r.instructions,baseHash:r.baseHash,stale:r.stale,original,reprocessed:original,patches,report}) as unknown as SourceReprocessingRevision;
  revision.id=newId;revision.fileId=newFileId;revision.original.document.source.fileId=newFileId;
  revision.baseHash=hash(revision.original);revision.stale=false;
  for(const patch of revision.patches)if(patch.baseHash!==undefined)patch.baseHash=revision.baseHash;

@@ -1,3 +1,4 @@
+import {setupSourceIngestionSchema} from './source-ingestion-schema.js';
 import {setupPageAssessmentSchema} from './page-assessment-schema.js';
 import {setupChatSchema} from './chat-schema.js';
 import {setupSourceReprocessingCheckpointSchema} from './source-reprocessing-checkpoint-schema.js';
@@ -497,6 +498,7 @@ if (!db.prepare("SELECT value FROM metadata WHERE key='seeded'").get()) {
   db.prepare("INSERT INTO metadata (key,value) VALUES ('domain_taxonomy_version',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(TAXONOMY_VERSION);
  });
  setupPageSegmentSchema(db);
+ setupSourceIngestionSchema(db);
  setupSourceAuthorSchema(db);
  setupSourcePassageSchema(db);
  setupSourcePassageEmbeddingSchema(db);

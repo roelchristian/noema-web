@@ -15,10 +15,10 @@ export function setupSourceIngestionSchema(db:DatabaseSync) {
  CREATE UNIQUE INDEX IF NOT EXISTS source_ingestion_source_lease ON source_ingestion_runs(file_id) WHERE state IN ('pending','running','paused','unknown');
  CREATE TABLE IF NOT EXISTS source_ingestion_windows (
  id TEXT PRIMARY KEY,run_id TEXT NOT NULL REFERENCES source_ingestion_runs(id) ON DELETE CASCADE,ordinal INTEGER NOT NULL,plan_json TEXT NOT NULL,
- state TEXT NOT NULL DEFAULT 'pending',repair_state TEXT NOT NULL DEFAULT 'pending',pending_review INTEGER NOT NULL DEFAULT 0,result_json TEXT,transmitted_hash TEXT,error TEXT,UNIQUE(run_id,ordinal));
+ kind TEXT NOT NULL DEFAULT 'extraction',state TEXT NOT NULL DEFAULT 'pending',repair_state TEXT NOT NULL DEFAULT 'pending',pending_review INTEGER NOT NULL DEFAULT 0,result_json TEXT,transmitted_hash TEXT,error TEXT,UNIQUE(run_id,ordinal));
  CREATE TABLE IF NOT EXISTS source_ingestion_attempts (
  id TEXT PRIMARY KEY,window_id TEXT NOT NULL REFERENCES source_ingestion_windows(id) ON DELETE CASCADE,state TEXT NOT NULL,kind TEXT NOT NULL DEFAULT 'extraction',
- request_id TEXT,usage_json TEXT,response_hash TEXT,returned_model TEXT,error TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
+ request_id TEXT,usage_json TEXT,response_hash TEXT,transmitted_hash TEXT,returned_model TEXT,error TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS source_ingestion_documents (
  id TEXT PRIMARY KEY,file_id TEXT NOT NULL UNIQUE REFERENCES source_files(id) ON DELETE CASCADE,vault_id TEXT NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,
  schema_version INTEGER NOT NULL,assembly_version INTEGER NOT NULL,content_hash TEXT NOT NULL,document_json TEXT NOT NULL,
@@ -26,9 +26,11 @@ export function setupSourceIngestionSchema(db:DatabaseSync) {
  const runs=db.prepare('PRAGMA table_info(source_ingestion_runs)').all() as {name:string}[];
  if(!runs.some(c=>c.name==='context_json'))db.exec('ALTER TABLE source_ingestion_runs ADD COLUMN context_json TEXT');
  const windows=db.prepare('PRAGMA table_info(source_ingestion_windows)').all() as {name:string}[];
+ if(!windows.some(c=>c.name==='kind'))db.exec("ALTER TABLE source_ingestion_windows ADD COLUMN kind TEXT NOT NULL DEFAULT 'extraction'");
  if(!windows.some(c=>c.name==='pending_review'))db.exec('ALTER TABLE source_ingestion_windows ADD COLUMN pending_review INTEGER NOT NULL DEFAULT 0');
  if(!windows.some(c=>c.name==='repair_state'))db.exec("ALTER TABLE source_ingestion_windows ADD COLUMN repair_state TEXT NOT NULL DEFAULT 'pending'");
  const attempts=db.prepare('PRAGMA table_info(source_ingestion_attempts)').all() as {name:string}[];
+ if(!attempts.some(c=>c.name==='transmitted_hash'))db.exec('ALTER TABLE source_ingestion_attempts ADD COLUMN transmitted_hash TEXT');
  if(!attempts.some(c=>c.name==='kind'))db.exec("ALTER TABLE source_ingestion_attempts ADD COLUMN kind TEXT NOT NULL DEFAULT 'extraction'");
  if(!attempts.some(c=>c.name==='returned_model'))db.exec('ALTER TABLE source_ingestion_attempts ADD COLUMN returned_model TEXT');
 }

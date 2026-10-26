@@ -49,3 +49,14 @@ test('portable batched native evidence retains page order, blank pages and expli
  await assert.rejects(()=>platform.inspectTexts(bytes,[1,1]),error=>error.status===400);await assert.rejects(()=>platform.inspectTexts(bytes,Array.from({length:33},(_,index)=>index+1)),error=>error.status===400);await assert.rejects(()=>platform.inspectTexts(bytes,[4]),error=>error.status===502);
  const empty=await PDFDocument.create();empty.addPage([200,300]);assert.deepEqual((await platform.inspectContext(await empty.save({useObjectStreams:false}))).sections,[]);
 });
+for(const provider of ['openai','gemini'])test(`${provider}: targeted task instructions avoid a compulsory second transcription`,async()=>{
+ const Class=provider==='openai'?OpenAIDocumentProvider:GeminiDocumentProvider,model=provider==='openai'?'gpt-6.1-sol':'gemini-3.8-flash';
+ for(const task of ['repair','relations']){
+  let observed;
+  const adapter=new Class(()=> 'synthetic',transport(provider,provider==='openai'?openai():gemini(),(kind,url,options)=>{if(kind==='generation')observed=JSON.parse(options.body);}));
+  await adapter.extract({...base,model,task});
+  const instructions=observed.instructions??observed.system_instruction;
+  assert.match(instructions,/untrusted/);assert.match(instructions,/only/i);assert.doesNotMatch(instructions,/Transcribe the entire/);
+  assert.match(instructions,task==='relations'?/existing block IDs/:/exact-span repair/);
+ }
+});

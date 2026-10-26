@@ -45,7 +45,9 @@ export interface SourceIngestionDocument {
 }
 export interface SourceIngestionProvenance {
  provider:'openai'|'gemini';requestedModel:string;returnedModel:string|null;schemaVersion:1;promptVersion:string;
- originalHash:string;admittedHash:string;transmittedHash:string;responseHash:string;
+ originalHash:string;admittedHash:string;
+ /** Document-level hashes identify ordered transmission/response manifests; exact raw hashes live on each durable window/attempt. */
+ transmittedHash:string;responseHash:string;
  coverage:'checked';independentEvidence:'not-checked'|'checked';userReviewed:boolean;
 }
 export interface SourceIngestionWindowPlan {index:number;ownedPages:number[];contextPages:number[];estimatedOutputTokens:number}

@@ -107,3 +107,8 @@ test('metadata reconciliation preserves manual values, registers AI evidence for
  assert.throws(()=>review.review('default',file.id,first.revision.id,{updatedAt:reversed.updatedAt,decisions:[{patchId:patch.id,decision:'accepted'}]}),error=>error.status===409);
 
 });
+test('Unicode corrections respect the same UTF-8 byte budget enforced at ingestion publication',()=>{
+ const f=fixture('The ﬁrst paragraph.\n\n'+'漢'.repeat(5_600_000));
+ assert.ok(Buffer.byteLength(f.file.text)>16*1024*1024);
+ assert.throws(()=>f.revision(),/baseline/);
+});

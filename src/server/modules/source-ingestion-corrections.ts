@@ -10,6 +10,7 @@ import {sourceEditorialRevisionLimit} from '../../shared/source-reprocessing.js'
 import type {Store} from '../store.js';
 import {HttpError,now} from '../validation.js';
 import type {SourceIngestionAssembly} from './source-ingestion-assembly.js';
+import {sourceIngestionPageRecoveryInsertion,sourceIngestionPageRecoveryContent} from './source-ingestion-page-recovery.js';
 import {SourceDocuments} from './source-documents.js';
 import {materializeSourceRevision,sourceRevisionBaseHash} from './source-reprocessing.js';
 import {evaluateV2Acceptance,editorialRiskValidator} from './source-reprocessing-risk.js';
@@ -68,6 +69,38 @@ export function createSourceIngestionRepairDerivative(store:Store,file:SourceFil
  return store.db.isTransaction?work():store.transaction(work);
 }
 
+/** Eligibility and capacity are checked before transmitting another page request. */
+export function preflightSourceIngestionPageRecovery(store:Store,file:SourceFile,page:number):void {
+ preflightSourceIngestionRepairCapacity(store,file);
+ try{sourceIngestionPageRecoveryInsertion({text:file.text,document:new SourceDocuments(store).get(file)},page);}catch(error){if(error instanceof HttpError)throw error;throw new HttpError(409,error instanceof Error?error.message:'This physical page is not eligible for missing-page recovery.');}
+}
+
+/** A missing page is introduced only through an exact whitespace patch after the
+ * local marker. Its provider content remains a manual, explicitly selected reading. */
+export function createSourceIngestionPageRecoveryDerivative(store:Store,file:SourceFile,recoveryIR:SourceIngestionDocument,options:SourceIngestionReconciliationOptions&{candidateIdentity:string;responseHash:string;page:number}):{revision:SourceReprocessingRevision;created:boolean} {
+ const work=()=>{
+  if(!/^[a-f0-9]{64}$/.test(options.candidateIdentity)||!/^[a-f0-9]{64}$/.test(options.responseHash))throw new HttpError(400,'Invalid missing-page recovery identity.');
+  const current=store.get<SourceFile>('SELECT * FROM source_files WHERE id=? AND vault_id=?',file.id,file.vault_id);
+  const authoritative=store.get<{id:string}>('SELECT id FROM source_ingestion_documents WHERE file_id=? AND vault_id=?',file.id,file.vault_id);
+  if(!current||current.text!==file.text||authoritative?.id!==options.documentId)throw new HttpError(409,'Missing-page recovery no longer matches the immutable published source.');
+  const existing=store.get<{payload:string}>("SELECT payload FROM source_reprocessing WHERE file_id=? AND vault_id=? AND json_extract(payload,'$.origin.documentId')=? AND json_extract(payload,'$.origin.repairIdentity')=?",file.id,file.vault_id,options.documentId,options.candidateIdentity);
+  if(existing)return {revision:JSON.parse(existing.payload) as SourceReprocessingRevision,created:false};
+  preflightSourceIngestionPageRecovery(store,current,options.page);
+  const original={text:current.text,document:new SourceDocuments(store).get(current)};
+  const insertion=sourceIngestionPageRecoveryInsertion(original,options.page),content=sourceIngestionPageRecoveryContent(recoveryIR,options.page,original.document.physical.pageCount!);
+  if(current.text.length-insertion.original.length+content.replacement.length>SOURCE_INGESTION_MAX_CHARACTERS||Buffer.byteLength(current.text)-Buffer.byteLength(insertion.original)+Buffer.byteLength(content.replacement)>maxSourceTextBytes)throw new HttpError(413,'Recovered reading would exceed the source document budget.');
+  const line=(offset:number)=>original.text.slice(0,offset).split('\n').length;
+  const patch:SourceEditorialPatch={id:randomUUID(),baseHash:sourceRevisionBaseHash(original),nodeIds:[],range:{startOffset:insertion.startOffset,endOffset:insertion.endOffset,startLine:line(insertion.startOffset),endLine:line(Math.max(insertion.startOffset,insertion.endOffset-1)),startPage:options.page,endPage:options.page},original:insertion.original,replacement:content.replacement,category:'ocr',reason:`Additional provider transcription of previously unreadable physical page ${options.page}; compare every recovered passage with its PDF evidence.`,riskReasons:['Missing-page recovery has no earlier source-text baseline. Manual PDF comparison is required; no native or independent OCR verification is asserted.'],confidence:0,decision:'pending'};
+  const revision=createIngestionRevision(current.id,original,[patch],{...options,reviewPolicy:'review-all'});
+  revision.origin={...revision.origin!,repairIdentity:options.candidateIdentity,pageRecovery:{version:1,page:options.page,patchId:patch.id,extractionId:randomUUID(),responseHash:options.responseHash,insertion,document:content.document}};
+  revision.instructions='Missing-page recovery; every recovered passage requires manual PDF review. Original text, page markers, and citations remain immutable.';
+  revision.report.diagnostics.push(`Physical page ${options.page} recovery is pending manual review. New reading anchors have no exact original-text counterpart.`);
+  store.run('INSERT INTO source_reprocessing(id,file_id,vault_id,status,created_at,updated_at,payload) VALUES(?,?,?,?,?,?,?)',revision.id,current.id,current.vault_id,'completed',revision.createdAt,revision.updatedAt,JSON.stringify(revision));
+  return {revision:JSON.parse(store.get<{payload:string}>('SELECT payload FROM source_reprocessing WHERE id=?',revision.id)!.payload) as SourceReprocessingRevision,created:true};
+ };
+ return store.db.isTransaction?work():store.transaction(work);
+}
+
 /** Only sparse candidates enter editorial review. The baseline itself is never an all-added diff. */
 export function createSourceIngestionCorrectionRevision(file:SourceFile,document:SourceDocument,assembly:SourceIngestionAssembly,options:SourceIngestionReconciliationOptions):SourceReprocessingRevision|null {
  if(!assembly.repairs.length)return null;
@@ -88,7 +121,12 @@ export function createSourceIngestionCorrectionRevision(file:SourceFile,document
  }).sort((a,b)=>a.range.startOffset-b.range.startOffset);
  if(patches.length>6400||patches.some((patch,index)=>index>0&&patch.range.startOffset<patches[index-1]!.range.endOffset))throw new HttpError(400,'Ingestion correction candidates overlap or exceed the review budget.');
  groupApparatusPatches(patches);acceptVerifiedFootnoteFormatting(patches,file.text,document,policy);
- const revision:SourceReprocessingRevision={origin:{kind:'ingestion',documentId:options.documentId,runId:options.runId},pipelineVersion:2,configuration:{depth:options.depth,reviewPolicy:policy,evidence:{originalPages:true,ocr:false,allowExternalTransmission:true}},id:randomUUID(),fileId:file.id,createdAt:timestamp,updatedAt:timestamp,status:'completed',instructions:'Sparse corrections from PDF ingestion; the faithful extraction remains canonical.',baseHash,stale:false,patches,original,reprocessed:structuredClone(original),report:{promptVersion:'source-ingestion-corrections-1',model:options.model,reasoningEffort:'none',startedAt:timestamp,finishedAt:timestamp,durationMs:0,chunksTotal:0,chunksCompleted:0,completedChunkIndexes:[],charactersTotal:file.text.length,charactersReviewed:file.text.length,inputTokens:null,outputTokens:null,reasoningTokens:null,cachedInputTokens:null,diagnostics:['Sparse ingestion corrections; no additional generation request was made. Provider transcription is not independent native or OCR verification.'],error:null}};
+ return createIngestionRevision(file.id,original,patches,options);
+}
+
+function createIngestionRevision(fileId:string,original:SourceReprocessingRevision['original'],patches:SourceEditorialPatch[],options:SourceIngestionReconciliationOptions):SourceReprocessingRevision {
+ const timestamp=now(),baseHash=sourceRevisionBaseHash(original),policy=options.reviewPolicy==='verified'?'verified':'review_all';
+ const revision:SourceReprocessingRevision={origin:{kind:'ingestion',documentId:options.documentId,runId:options.runId},pipelineVersion:2,configuration:{depth:options.depth,reviewPolicy:policy,evidence:{originalPages:true,ocr:false,allowExternalTransmission:true}},id:randomUUID(),fileId,createdAt:timestamp,updatedAt:timestamp,status:'completed',instructions:'Sparse corrections from PDF ingestion; the faithful extraction remains canonical.',baseHash,stale:false,patches,original,reprocessed:structuredClone(original),report:{promptVersion:'source-ingestion-corrections-1',model:options.model,reasoningEffort:'none',startedAt:timestamp,finishedAt:timestamp,durationMs:0,chunksTotal:0,chunksCompleted:0,completedChunkIndexes:[],charactersTotal:original.text.length,charactersReviewed:original.text.length,inputTokens:null,outputTokens:null,reasoningTokens:null,cachedInputTokens:null,diagnostics:['Sparse ingestion corrections; no additional generation request was made. Provider transcription is not independent native or OCR verification.'],error:null}};
  materializeSourceRevision(revision);return revision;
 }
 

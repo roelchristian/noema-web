@@ -1,3 +1,5 @@
+import {sourceIngestionPageRecoveryContent,validateSourceIngestionPageRecoveryDescriptor} from './source-ingestion-page-recovery.js';
+import type {SourceDocument} from '../../shared/source-document.js';
 import {maxSourceTextBytes} from '../../shared/source-input.js';
 import {validateSourceIngestionDocument} from './source-ingestion-validation.js';
 import {SOURCE_INGESTION_MAX_CHARACTERS} from '../../shared/source-ingestion.js';
@@ -245,6 +247,14 @@ export function restoreSourceRevision(payload:unknown,oldId:string,oldFileId:str
   return bounds;
  }).sort((a,b)=>a.start-b.start);
  if(ordered.some((bounds,index)=>index>0&&bounds.start<ordered[index-1]!.end))throw invalid();
+ if(ingestionOrigin&&object(r.origin).pageRecovery!==undefined){
+  let recovery;try{recovery=validateSourceIngestionPageRecoveryDescriptor(object(r.origin).pageRecovery,{text,document:document as unknown as SourceDocument});}catch{throw invalid();}
+  const patch=patches.length===1?object(patches[0]):undefined;
+  const content=sourceIngestionPageRecoveryContent(recovery.document,recovery.page,pageCount??pages.length),insertion=recovery.insertion;
+  if(!ingestionOrigin.repairIdentity||!patch||patch.id!==recovery.patchId||patch.category!=='ocr'||patch.confidence!==0||patch.autoAcceptance!==undefined||object(patch.range).startOffset!==insertion.startOffset||object(patch.range).endOffset!==insertion.endOffset||patch.original!==insertion.original||patch.replacement!==content.replacement||object(r.configuration).reviewPolicy!=='review_all')throw invalid();
+  if(patch.decision==='accepted'&&(!Array.isArray(patch.decisionHistory)||!patch.decisionHistory.some(value=>{const entry=object(value);return entry.actor==='user'&&entry.to==='accepted';})))throw invalid();
+  ingestionOrigin.pageRecovery=recovery;
+ }
  const report=object(r.report);string(report.promptVersion,200);string(report.model,200);
  oneOf(report.reasoningEffort,['none','minimal','low','medium','high','xhigh','max']);
  if(r.acceptanceMode!==undefined)oneOf(r.acceptanceMode,['review_all','safe_formatting','balanced','minimal_review']);

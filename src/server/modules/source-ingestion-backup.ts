@@ -1,15 +1,21 @@
 import {randomUUID,createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {SourceFiles} from './source-files.js';
+import {SourceDocuments} from './source-documents.js';
+import {sourceIngestionPageRecoveryInsertion,sourceIngestionPageRecoveryContent} from './source-ingestion-page-recovery.js';
 import type {Store} from '../store.js';
 import {HttpError} from '../validation.js';
-import {assembleSourceIngestionDocument} from './source-ingestion-assembly.js';
+import {assembleSourceIngestionDocument,mergeSourceIngestionWindows} from './source-ingestion-assembly.js';
 import {parseSourceIngestionOptions} from './source-ingestion-options.js';
 import {validateSourceIngestionDocument} from './source-ingestion-validation.js';
+import {sourceIngestionBoundaryRelationRequests,reconcileSourceIngestionRelations} from './source-ingestion-relations.js';
+import type {SourceIngestionDocument} from '../../shared/source-ingestion.js';
 import type {SourceIngestionWindowPlan} from '../../shared/source-ingestion.js';
 type Row=Record<string,unknown>;
 const invalid=()=>new HttpError(400,'Invalid PDF ingestion backup.');
-function text(row:Row,key:string,max=32_000_000):string {const value=row[key];if(typeof value!=='string'||value.length>max)throw invalid();return value;}
+// The archive importer bounds the complete expanded payload to 256 MiB. Rich
+// assembly repeats canonical text, so a smaller field cap rejects valid sources.
+function text(row:Row,key:string,max=256*1024*1024):string {const value=row[key];if(typeof value!=='string'||value.length>max)throw invalid();return value;}
 function parsed(row:Row,key:string):unknown {try{return JSON.parse(text(row,key));}catch{throw invalid();}}
 function object(value:unknown):Row {if(!value||typeof value!=='object'||Array.isArray(value))throw invalid();return value as Row;}
 function hash(row:Row,key:string):string {const value=text(row,key,64);if(!/^[a-f0-9]{64}$/.test(value))throw invalid();return value;}
@@ -66,25 +72,39 @@ export function restoreIngestionBackup(store:Store,vault:string,files:Map<string
   store.run('INSERT INTO source_ingestion_runs(id,file_id,vault_id,idempotency_key,config_json,context_json,fingerprint,state,stage,page_count,original_hash,admitted_hash,published_document_id,error,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',id,file,vault,createHash('sha256').update(`${vault}:${id}`).digest('hex'),config,context,fingerprint,state,published?'publication':'preparation',count as number,row.original_hash==null?null:hash(row,'original_hash'),row.admitted_hash==null?null:hash(row,'admitted_hash'),published??null,published?null:'Restored ingestion is paused. Resume explicitly; submitted requests may have an unknown paid outcome.',date(row,'created_at'),date(row,'updated_at'));
   store.run('UPDATE source_files SET ingestion_origin=?,active_ingestion_run=? WHERE id=? AND vault_id=?',options.route,published?null:id,file,vault);
  }
- const candidateWindows=new Set<string>(),ownedByRun=new Map<string,Set<number>>();
+ const candidateWindows=new Map<string,string>(),windowKinds=new Map<string,string>(),relationResults:{id:string;run:string;value:unknown;plan:SourceIngestionWindowPlan}[]=[],ownedByRun=new Map<string,Set<number>>();
  for(const row of rows.source_ingestion_windows??[]){
   const run=runs.get(text(row,'run_id',128));if(!run||!Number.isSafeInteger(row.ordinal)||(row.ordinal as number)<0)throw invalid();
-  const id=randomUUID();unique(windows,row,id);const windowPlan=plan(parsed(row,'plan_json'),runDetails.get(run)!.pageCount);if(windowPlan.index!==row.ordinal)throw invalid();
-  const owned=ownedByRun.get(run)??new Set<number>();if(row.state!=='superseded')for(const page of windowPlan.ownedPages){if(owned.has(page))throw invalid();owned.add(page);}ownedByRun.set(run,owned);
-  let result:string|null=null;if(row.result_json!=null){try{result=JSON.stringify(validateSourceIngestionDocument(parsed(row,'result_json'),{ownedPages:windowPlan.ownedPages,pageCount:runDetails.get(run)!.pageCount}));}catch{throw invalid();}}
-  if((row.state==='completed'||row.repair_state==='candidate')&&result===null)throw invalid();
-  const state=['completed','pending','failed','superseded'].includes(String(row.state))?String(row.state):'unknown';
-  if(row.repair_state==='candidate'){if(row.state!=='completed'||!runDetails.get(run)!.published)throw invalid();candidateWindows.add(id);}
+  const id=randomUUID();unique(windows,row,id);const kind=row.kind===undefined?'extraction':text(row,'kind',20);if(!['extraction','relations','page-recovery'].includes(kind))throw invalid();windowKinds.set(id,kind);const windowPlan=plan(parsed(row,'plan_json'),runDetails.get(run)!.pageCount);if(windowPlan.index!==row.ordinal)throw invalid();
+  const owned=ownedByRun.get(run)??new Set<number>();if(kind==='extraction'&&row.state!=='superseded')for(const page of windowPlan.ownedPages){if(owned.has(page))throw invalid();owned.add(page);}ownedByRun.set(run,owned);
+  let result:string|null=null;if(row.result_json!=null){try{const value=parsed(row,'result_json');if(kind==='relations'){relationResults.push({id,run,value,plan:windowPlan});result=JSON.stringify(value);}else result=JSON.stringify(validateSourceIngestionDocument(value,{ownedPages:windowPlan.ownedPages,pageCount:runDetails.get(run)!.pageCount}));}catch{throw invalid();}}
+  if(kind==='page-recovery'&&(windowPlan.ownedPages.length!==1||!runDetails.get(run)!.published)||kind==='relations'&&(windowPlan.ownedPages.length!==2||windowPlan.ownedPages[1]!==windowPlan.ownedPages[0]!+1))throw invalid();
+  if(kind==='page-recovery'){try{const source=new SourceFiles(store).require(vault,runDetails.get(run)!.file);sourceIngestionPageRecoveryInsertion({text:source.text,document:new SourceDocuments(store).get(source)},windowPlan.ownedPages[0]!);if(result!==null)sourceIngestionPageRecoveryContent(JSON.parse(result) as SourceIngestionDocument,windowPlan.ownedPages[0]!,runDetails.get(run)!.pageCount);}catch{throw invalid();}}
+  if((row.state==='completed'||row.state==='candidate'||row.repair_state==='candidate')&&result===null)throw invalid();
+  if(row.state==='candidate'){if(kind!=='page-recovery')throw invalid();candidateWindows.set(id,'page-recovery');}
+  const state=['completed','pending','failed','superseded','candidate'].includes(String(row.state))?String(row.state):'unknown';
+  if(row.repair_state==='candidate'){if(row.state!=='completed'||!runDetails.get(run)!.published)throw invalid();candidateWindows.set(id,'repair');}
   const repairState=row.repair_state===undefined?'pending':['pending','completed','skipped','failed','candidate'].includes(String(row.repair_state))?String(row.repair_state):'unknown';
-  store.run('INSERT INTO source_ingestion_windows(id,run_id,ordinal,plan_json,state,repair_state,result_json,pending_review,transmitted_hash,error) VALUES(?,?,?,?,?,?,?,?,?,?)',id,run,row.ordinal as number,JSON.stringify(windowPlan),state,repairState,result,result===null?0:(JSON.parse(result) as {repairs:unknown[]}).repairs.length,row.transmitted_hash==null?null:hash(row,'transmitted_hash'),null);
+  store.run('INSERT INTO source_ingestion_windows(id,run_id,ordinal,kind,plan_json,state,repair_state,result_json,pending_review,transmitted_hash,error) VALUES(?,?,?,?,?,?,?,?,?,?,?)',id,run,row.ordinal as number,kind,JSON.stringify(windowPlan),state,repairState,result,result===null||kind==='relations'?0:(JSON.parse(result) as {repairs:unknown[]}).repairs.length,row.transmitted_hash==null?null:hash(row,'transmitted_hash'),null);
  }
  for(const row of rows.source_ingestion_attempts??[]){
   const window=windows.get(text(row,'window_id',128));if(!window)throw invalid();
   const state=['completed','failed','invalid','not-submitted'].includes(String(row.state))?String(row.state):row.state==='prepared'?'not-submitted':'unknown';
-  const kind=row.kind===undefined?'extraction':text(row,'kind',20);if(!['extraction','repair'].includes(kind))throw invalid();
+  const kind=row.kind===undefined?'extraction':text(row,'kind',20);if(!['extraction','repair','relations','page-recovery'].includes(kind)||(windowKinds.get(window)==='extraction'?!['extraction','repair'].includes(kind):windowKinds.get(window)!==kind))throw invalid();
   const returned=row.returned_model==null?null:text(row,'returned_model',256);
   if(row.usage_json!=null){const usage=object(parsed(row,'usage_json'));if(Object.entries(usage).some(([key,value])=>!['inputTokens','outputTokens','thinkingTokens','cachedInputTokens','cacheWriteTokens'].includes(key)||!Number.isSafeInteger(value)||(value as number)<0))throw invalid();}
-  store.run('INSERT INTO source_ingestion_attempts(id,window_id,state,kind,request_id,usage_json,response_hash,returned_model,error,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)',randomUUID(),window,state,kind,null,row.usage_json==null?null:text(row,'usage_json',100_000),row.response_hash==null?null:hash(row,'response_hash'),returned,row.error==null?null:text(row,'error',20_000),date(row,'created_at'),date(row,'updated_at'));
+  store.run('INSERT INTO source_ingestion_attempts(id,window_id,state,kind,transmitted_hash,request_id,usage_json,response_hash,returned_model,error,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',randomUUID(),window,state,kind,row.transmitted_hash==null?null:hash(row,'transmitted_hash'),null,row.usage_json==null?null:text(row,'usage_json',100_000),row.response_hash==null?null:hash(row,'response_hash'),returned,row.error==null?null:text(row,'error',20_000),date(row,'created_at'),date(row,'updated_at'));
  }
- for(const id of candidateWindows)if(!store.get("SELECT 1 FROM source_ingestion_attempts WHERE window_id=? AND state='completed' AND kind='repair'",id))throw invalid();
+ const mergedByRun=new Map<string,SourceIngestionDocument>();
+ for(const relation of relationResults.sort((a,b)=>a.plan.index-b.plan.index)){
+  try{
+   let document=mergedByRun.get(relation.run);
+   if(!document){const extraction=store.all<{result_json:string}> ("SELECT result_json FROM source_ingestion_windows WHERE run_id=? AND kind='extraction' AND state!='superseded' ORDER BY ordinal",relation.run);if(extraction.some(window=>!window.result_json))throw invalid();document=mergeSourceIngestionWindows(extraction.map((window,index)=>({index,document:JSON.parse(window.result_json) as SourceIngestionDocument})),runDetails.get(relation.run)!.pageCount);}
+   const request=sourceIngestionBoundaryRelationRequests(document,[relation.plan.ownedPages[1]!])[0];
+   if(!request||JSON.stringify(request.pages)!==JSON.stringify(relation.plan.ownedPages))throw invalid();
+   mergedByRun.set(relation.run,reconcileSourceIngestionRelations(relation.value,document,request).document);
+  }catch{throw invalid();}
+ }
+ for(const [id,kind] of candidateWindows)if(!store.get("SELECT 1 FROM source_ingestion_attempts WHERE window_id=? AND state='completed' AND kind=?",id,kind))throw invalid();
+ for(const id of runs.values())if(store.get("SELECT 1 FROM source_ingestion_windows WHERE run_id=? AND (state='unknown' OR repair_state='unknown' OR kind!='extraction' AND state IN ('pending','failed'))",id))store.run("UPDATE source_ingestion_runs SET state='paused',error='Restored optional work is paused. Resolve unknown paid outcomes explicitly before resuming.' WHERE id=?",id);
 }

@@ -118,6 +118,11 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
             if(parts.length===5&&method==='POST') {
               if(!/^application\/json(?:;|$)/i.test(req.headers['content-type']||''))throw new HttpError(415,'PDF processing actions require JSON.');
               const body=await readBody(req);vaults.requireOpen(vault);
+              if(parts[4]==='recover-page') {
+                if(process.env.NOEMA_PDF_PROVIDER_INGESTION!=='1')throw new HttpError(409,'PDF provider ingestion is not enabled on this server.');
+                if(!Number.isSafeInteger(body.page)||(body.page as number)<1)throw new HttpError(400,'Choose a physical page to recover.');
+                return send(202,runtime.sourceIngestion.recoverPage(vault,id,body.page as number));
+              }
               if(parts[4]==='stop')return send(200,runtime.sourceIngestion.stop(vault,id));
               if(parts[4]==='retry')return send(202,runtime.sourceIngestion.retry(vault,id));
               if(parts[4]==='resume') {
@@ -182,7 +187,10 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
               const physical=document.pages.find(item=>item.number===page&&item.role==='owned');
               if(!physical)throw new HttpError(409,'The authoritative transcription does not account for this physical page.');
               const blocks=document.blocks.filter(block=>block.page===page).sort((a,b)=>a.order-b.order);
-              ingestion={provider:provenance.provider,model:provenance.returnedModel??provenance.requestedModel,page,text:blocks.map(block=>block.text).join('\n\n'),uncertainty:[...physical.unresolved.map(region=>region.description),...blocks.flatMap(block=>block.uncertainty?[block.uncertainty]:[]),...(physical.state==='unreadable'?['This physical page contains an unreadable region.']:physical.state==='image-only'?['This physical page has image-only content without a faithful textual representation.']:[])],coverage:provenance.coverage,independentEvidence:provenance.independentEvidence};
+              const frozen=store.get<{config_json:string}>('SELECT config_json FROM source_ingestion_runs WHERE published_document_id=(SELECT id FROM source_ingestion_documents WHERE file_id=?) AND vault_id=?',id,vault);
+              const consent=frozen?JSON.parse(frozen.config_json) as import('../shared/source-ingestion.js').SourceIngestionOptions:null;
+              const canRecoverPage=process.env.NOEMA_PDF_PROVIDER_INGESTION==='1'&&originalAvailable===true&&file.admitted===1&&consent?.transmissionConsent===true&&consent.route===provenance.provider&&['unreadable','image-only'].includes(physical.state)&&!blocks.some(block=>block.text.trim());
+              ingestion={provider:provenance.provider,model:provenance.returnedModel??provenance.requestedModel,page,pageState:physical.state,role:physical.role,canRecoverPage,text:blocks.map(block=>block.text).join('\n\n'),uncertainty:[...physical.unresolved.map(region=>region.description),...blocks.flatMap(block=>block.uncertainty?[block.uncertainty]:[]),...(physical.state==='unreadable'?['This physical page contains an unreadable region.']:physical.state==='image-only'?['This physical page has image-only content without a faithful textual representation.']:[])],coverage:provenance.coverage,independentEvidence:provenance.independentEvidence};
             }
             return send(200,{originalAvailable,originalHash,originalBytes,admittedBytes,flattening,findings,ingestion,
               rawExtraction:raw?{ocrPages:raw.ocrPages,unresolvedOutlines:raw.unresolvedOutlines,pageEvidence:raw.pageEvidence?.filter(item=>item.page===page)}:undefined});

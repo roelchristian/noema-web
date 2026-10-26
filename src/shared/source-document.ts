@@ -23,7 +23,7 @@ export interface SourceDocumentNode {
 }
 export interface SourceDocument {
  schemaVersion:1;
- ingestion?:{readingMapping?:{nodes:{originalId:string;readingId:string|null}[];relations:{kind:string;from:string|null;to:string|null;uncertain:boolean}[]};documentId:string;contentHash:string;assemblyVersion:number;relations:{kind:string;from:string;to:string;uncertain:boolean}[];blocks:(SourceIngestionBlock&{immutableId:string})[];pages:SourceIngestionPage[];provenance:SourceIngestionProvenance};
+ ingestion?:{readingMapping?:{recoveredNodes?:{readingId:string;originalId:null;page:number}[];nodes:{originalId:string;readingId:string|null}[];relations:{kind:string;from:string|null;to:string|null;uncertain:boolean}[]};documentId:string;contentHash:string;assemblyVersion:number;relations:{kind:string;from:string;to:string;uncertain:boolean}[];blocks:(SourceIngestionBlock&{immutableId:string})[];pages:SourceIngestionPage[];provenance:SourceIngestionProvenance};
  source:{fileId:string;name:string;title:string;format:string;language:string|null;url:string|null};
  coordinates:{offsets:'zero-based UTF-16, end-exclusive';lines:'one-based extracted text';pages:'one-based physical page order, not printed labels'};
  physical:{pageCount:number|null;pages:{number:number;range:SourceDocumentRange}[]};

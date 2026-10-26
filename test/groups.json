@@ -46,7 +46,8 @@
     "test/source-ingestion-contracts.test.mjs",
     "test/source-ingestion-security.test.mjs",
     "test/source-ingestion-options.test.mjs",
-    "test/source-ingestion-targeted-repair.test.mjs"
+    "test/source-ingestion-targeted-repair.test.mjs",
+    "test/source-ingestion-relations.test.mjs"
   ],
   "dom": [
     "test/trash-ui.test.mjs",
@@ -275,6 +276,7 @@
     "test/source-ingestion-corrections.test.mjs",
     "test/source-ingestion-restore.test.mjs",
     "test/source-ingestion-scheduler.test.mjs",
-    "test/source-ingestion-runtime.test.mjs"
+    "test/source-ingestion-runtime.test.mjs",
+    "test/source-ingestion-activity.test.mjs"
   ]
 }

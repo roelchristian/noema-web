@@ -21,8 +21,14 @@ export function sourceReadingRevision(store:Store,vault:string,file:SourceFile,r
   materializeSourceRevision(revision);
  }
  const text=revision?.reprocessed.text??file.text,hash=sourceTextHash(text),originalHash=sourceTextHash(file.text);
- const forward=createSourceAnnotationMapper(file.text,text,revision?.patches);
- const reverse=createSourceAnnotationMapper(file.text,text,revision?.patches,true);
+ const mapForward=createSourceAnnotationMapper(file.text,text,revision?.patches);
+ const mapReverse=createSourceAnnotationMapper(file.text,text,revision?.patches,true);
+ const recovery=revision?.origin?.pageRecovery,recoveryPatch=recovery?revision?.patches.find(patch=>patch.id===recovery.patchId&&patch.decision==='accepted'):undefined;
+ const intersects=(range:{startOffset:number;endOffset:number},start:number,end:number)=>range.startOffset<end&&range.endOffset>start;
+ // Recovered prose has no original-text anchor, even if the same words happen
+ // to appear on another page. Never let generic quote fallback invent one.
+ const forward=(range:{startOffset:number;endOffset:number})=>recoveryPatch&&intersects(range,recoveryPatch.range.startOffset,recoveryPatch.range.endOffset)?null:mapForward(range);
+ const reverse=(range:{startOffset:number;endOffset:number})=>recoveryPatch&&intersects(range,recoveryPatch.range.startOffset,recoveryPatch.range.startOffset+(recoveryPatch.userReplacement??recoveryPatch.replacement).length)?null:mapReverse(range);
  const document=revision?.reprocessed.document??resolveSourceDocument(store,file);
  function project<T extends {sourceHash:string;startOffset:number;endOffset:number}>(value:T):T|null {
   if(value.sourceHash===hash)return {...value};

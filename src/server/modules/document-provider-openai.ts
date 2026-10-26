@@ -1,4 +1,4 @@
-import {candidateResult,checkDocumentRequest,documentRequestDeadline,documentSystemPrompt,DocumentProviderError,providerHTTP,readDocumentResponse,tokenCount,type DocumentProvider,type DocumentRequest,type DocumentResult} from './document-provider.js';
+import {candidateResult,checkDocumentRequest,documentRequestDeadline,documentRequestSystemPrompt,DocumentProviderError,providerHTTP,readDocumentResponse,tokenCount,type DocumentProvider,type DocumentRequest,type DocumentResult} from './document-provider.js';
 export class OpenAIDocumentProvider implements DocumentProvider {
  readonly provider='openai' as const;
  readonly capabilities={pdf:true as const,structuredOutput:true as const,remoteRetentionHours:1,retrieve:false,cancel:false,explicitCaching:false as const};
@@ -11,7 +11,7 @@ export class OpenAIDocumentProvider implements DocumentProvider {
    const uploaded=await readDocumentResponse(await providerHTTP(this.transport,'https://api.openai.com/v1/files',{method:'POST',headers:authorization,body:form,signal:request.signal}));
    if(typeof uploaded.id!=='string'||!/^file-[a-zA-Z0-9_-]+$/.test(uploaded.id))throw new DocumentProviderError('upload_invalid',502,'OpenAI returned an invalid file identity.');fileId=uploaded.id;
    request.signal?.throwIfAborted();request.onSubmitted?.();
-   const response=await providerHTTP(this.transport,'https://api.openai.com/v1/responses',{method:'POST',headers:{...authorization,'Content-Type':'application/json'},signal:request.signal,body:JSON.stringify({model:request.model,store:false,stream:false,instructions:documentSystemPrompt,input:[{role:'user',content:[{type:'input_file',file_id:fileId},{type:'input_text',text:request.prompt}]}],max_output_tokens:request.maxOutputTokens,reasoning:{effort:request.reasoning??'medium'},text:{format:{type:'json_schema',name:'source_ingestion',strict:true,schema:request.schema}}})},true);
+   const response=await providerHTTP(this.transport,'https://api.openai.com/v1/responses',{method:'POST',headers:{...authorization,'Content-Type':'application/json'},signal:request.signal,body:JSON.stringify({model:request.model,store:false,stream:false,instructions:documentRequestSystemPrompt(request),input:[{role:'user',content:[{type:'input_file',file_id:fileId},{type:'input_text',text:request.prompt}]}],max_output_tokens:request.maxOutputTokens,reasoning:{effort:request.reasoning??'medium'},text:{format:{type:'json_schema',name:'source_ingestion',strict:true,schema:request.schema}}})},true);
    const body=await readDocumentResponse(response,undefined,true);if(typeof body.id==='string')request.onSubmitted?.(body.id);
    const content=Array.isArray(body.output)?body.output.flatMap((item:any)=>item?.type==='message'&&Array.isArray(item.content)?item.content:[]):[];
    const refused=content.some((item:any)=>item?.type==='refusal');

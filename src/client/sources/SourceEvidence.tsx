@@ -1,19 +1,21 @@
 import {Select} from '../components/Select';
 import {getLocale} from '../i18n';
 import {t as uiText} from '../i18n';
-import {useEffect,useState} from 'react';
+import {useEffect,useRef,useState} from 'react';
 import {request} from '../api';
 import {DisclosureSummary} from '../components/DisclosureSummary';
 
 interface EvidenceRegion {bounds:number[];reason:string;status:string;recoveredText?:string;confidence?:number;candidates?:{text:string;confidence?:number}[]}
 interface EvidencePage {page:number;method:string;text:string;findings?:string[];coordinateSystem?:string;coverage?:{detectedRegions:number;unmatchedRegions:number;retriedRegions:number;recoveredRegions:number;unresolvedRegions:number};regions?:EvidenceRegion[]}
 interface Evidence {
- ingestion?:{provider:'openai'|'gemini';model:string;page?:number;text:string;uncertainty?:string[];coverage?:string;independentEvidence?:string};
+ ingestion?:{provider:'openai'|'gemini';model:string;page?:number;pageState?:'content'|'blank'|'image-only'|'unreadable';role?:'owned'|'context';canRecoverPage?:boolean;text:string;uncertainty?:string[];coverage?:string;independentEvidence?:string};
  originalAvailable?:boolean;originalHash?:string;originalBytes?:number;admittedBytes?:number;findings?:string[];
  flattening?:{reason?:string;discardedFeatures?:string[];compression?:string;durationMs?:number;cacheHit?:boolean};
  rawExtraction?:{ocrPages?:number;pageEvidence?:EvidencePage[];unresolvedOutlines?:string[]};
 }
 export function SourceEvidence({vaultId,fileId,pageCount,page,onPage}:{vaultId:string;fileId:string;pageCount:number;page:number|null;onPage:(page:number|null)=>void}){
+ const identity=useRef(''),recoveryPending=useRef('');identity.current=`${vaultId}:${fileId}:${page}`;
+ const [recovering,setRecovering]=useState(false),[recoveryMessage,setRecoveryMessage]=useState('');
  const [evidence,setEvidence]=useState<Evidence|null>(null),[error,setError]=useState(''),[imageFailed,setImageFailed]=useState(false),[selectedRegion,setSelectedRegion]=useState<number|null>(null);
  useEffect(()=>{setEvidence(null);setError('');},[vaultId,fileId]);
  useEffect(()=>{
@@ -23,9 +25,17 @@ export function SourceEvidence({vaultId,fileId,pageCount,page,onPage}:{vaultId:s
   void request<Evidence>(`source-files/${encodeURIComponent(fileId)}/evidence?page=${page}`,'GET',undefined,vaultId,controller.signal).then(value=>{if(!controller.signal.aborted)setEvidence(value);}).catch(cause=>{if(!controller.signal.aborted)setError(cause instanceof Error?cause.message:String(cause));});
   return()=>controller.abort();
  },[vaultId,fileId,page]);
- useEffect(()=>{setImageFailed(false);setSelectedRegion(null);},[vaultId,fileId,page]);
+ useEffect(()=>{setImageFailed(false);setSelectedRegion(null);setRecovering(false);setRecoveryMessage('');},[vaultId,fileId,page]);
  const raw=evidence?.rawExtraction?.pageEvidence?.find(item=>item.page===page);
  const transcription=evidence?.ingestion;
+ const canRecover=!!transcription?.canRecoverPage&&transcription.role==='owned'&&(transcription.pageState==='unreadable'||transcription.pageState==='image-only');
+ async function recoverPage(){
+  if(!canRecover||page===null||recoveryPending.current===identity.current)return;
+  const requestIdentity=identity.current;recoveryPending.current=requestIdentity;setRecovering(true);setRecoveryMessage('');setError('');
+  try{await request(`source-files/${encodeURIComponent(fileId)}/ingestion/recover-page`,'POST',{page},vaultId);window.dispatchEvent(new CustomEvent('noema:source-ingestion-updated',{detail:{vaultId,fileId}}));if(identity.current===requestIdentity)setRecoveryMessage(uiText('Page recovery queued. The original transcription remains unchanged. Recovered text will require manual acceptance in revision review.'));}
+  catch(cause){if(identity.current===requestIdentity)setError(cause instanceof Error?cause.message:String(cause));}
+  finally{if(recoveryPending.current===requestIdentity)recoveryPending.current='';if(identity.current===requestIdentity)setRecovering(false);}
+ }
  const region=selectedRegion===null?undefined:raw?.regions?.[selectedRegion];
  const box=region?.bounds;
  const validBox=raw?.coordinateSystem==='normalized-bottom-left'&&box?.length===4&&box.every(Number.isFinite)&&box[0]>=0&&box[1]>=0&&box[2]>0&&box[3]>0&&box[0]+box[2]<=1.001&&box[1]+box[3]<=1.001;
@@ -36,6 +46,8 @@ export function SourceEvidence({vaultId,fileId,pageCount,page,onPage}:{vaultId:s
    <p>{uiText(transcription?'The page image comes from the safe viewing copy. Provider transcription is the initial baseline; it is not native extraction or independent OCR verification.':'The page image comes from the safe viewing copy. Raw extraction is shown before text formatting or AI edits.')}</p>
    <label>{uiText("Physical page") + " "}<Select aria-label={uiText("Evidence page")} value={page} onChange={event=>onPage(Number(event.target.value))}>{Array.from({length:pageCount},(_,i)=><option key={i+1} value={i+1}>{i+1}{" " + uiText("of") + " "}{pageCount}</option>)}</Select></label>
    {error&&<p role="alert">{error}</p>}
+   {canRecover&&<div className="section-hint"><p>{uiText('Recover only this unreadable physical page using the original job’s provider and model:')} {transcription!.provider==='openai'?'OpenAI':'Gemini'} · {transcription!.model}. {uiText('This makes an additional provider request under the frozen transmission choice and budget. Provider charges may apply. Recovered text becomes a separate revision requiring manual review; the original transcription and existing citations remain unchanged.')}</p><button type="button" className="button small" disabled={recovering||!!recoveryMessage} onClick={()=>void recoverPage()}>{recovering?uiText('Queuing page recovery…'):uiText('Recover unreadable page')}</button></div>}
+   {recoveryMessage&&<p role="status">{recoveryMessage}</p>}
    {evidence&&<><p>{evidence.originalAvailable?uiText("Original file preserved separately."):uiText(transcription?'Original PDF evidence is unavailable in this vault or restored backup. The preserved transcription remains readable.':'Original file unavailable for this legacy import; re-upload to recover it.')} {evidence.rawExtraction?.ocrPages!==undefined&&`${evidence.rawExtraction.ocrPages} pages used OCR.`}</p>
     {evidence.flattening&&<p>{uiText(transcription?'A separate viewing copy was reconstructed for safety. Provider transcription uses the admitted PDF, with the original preserved separately when available.':'A separate viewing copy was flattened for safety. Text and structure are extracted from the preserved original when available.')}</p>}
     {!!findings.length&&<ul className="reprocessing-warning">{findings.map((finding,i)=><li key={i}>{finding}</li>)}</ul>}

@@ -189,6 +189,7 @@ export function SourceReprocessing({sourceId,vaultId,fileId,visible,onShow,onOri
   function finishAction(){actionRunning.current=false;if(mounted.current)setBusy(false);}
   useEffect(()=>setSelected([]),[revisionId]);
   const route=`source-files/${encodeURIComponent(fileId)}/reprocessing`;
+  useEffect(()=>{const refresh=(event:Event)=>{const detail=(event as CustomEvent<{vaultId:string;fileId:string}>).detail;if(detail?.vaultId===vaultId&&detail.fileId===fileId)setReload(value=>value+1);};window.addEventListener('noema:source-ingestion-completed',refresh);return()=>window.removeEventListener('noema:source-ingestion-completed',refresh);},[vaultId,fileId]);
   const [evidenceOptions,setEvidenceOptions]=useState<SourceReprocessingConfiguration['evidence']>({originalPages:false,ocr:false,allowExternalTransmission:false}),[evidenceCapabilities,setEvidenceCapabilities]=useState<EvidenceCapabilities|null>(null),[evidenceError,setEvidenceError]=useState('');
   useEffect(()=>{
     if(!prompt)return;const controller=new AbortController();setEvidenceOptions({originalPages:false,ocr:false,allowExternalTransmission:false});setEvidenceCapabilities(null);setEvidenceError('');

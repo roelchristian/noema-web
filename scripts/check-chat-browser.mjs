@@ -38,6 +38,8 @@ try {
  const sourceText='A synthetic imported source says grace is indispensable. Its author distinguishes the priority of divine initiative. This conflicts with a synthetic note in the test corpus.';
  files=new SourceFiles(store);const file=files.add('default','synthetic-grace.txt',Buffer.from(sourceText));
  const source=knowledge.create('default',{name:'Synthetic grace source',type:'source',attachmentIds:[file.id]});
+ // Keep unrelated enrichment/backfill out of this Chat-only transport fixture.
+ store.run('INSERT INTO source_automation_pauses(file_id,vault_id,reason,created_at) VALUES(?,?,?,?)',file.id,'default','Synthetic Chat fixture: source automation is not under test.',new Date().toISOString());
  store.run("UPDATE source_files SET text=?,status='ready',admitted=1 WHERE id=?",sourceText,file.id);store.run('UPDATE entities SET inactive=0 WHERE id=?',source.id);new SourcePassages(store,text=>text.length).synchronize('default');
  const secrets={value:null,read(){return this.value;},write(value){this.value=value;},remove(){this.value=null;}};
  let transportMode='answer',cancellations=0;

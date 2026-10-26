@@ -24,7 +24,7 @@ While Chat is open, a wider inbox with explicitly labelled conversation-title se
 
 Completed answers have compact Copy and Regenerate icons. Regeneration applies to the latest completed answer, repeats its original question with fresh retrieval and a new request ID, then atomically replaces that answer and its evidence. It never duplicates the question or uses previous assistant prose as evidence. Failed or cancelled regeneration preserves the old answer and the current composer draft.
 
-The composer stays editable while an answer is pending; sending remains unavailable until it finishes. **Try again** retains the original question, resolved mentions, scope and depth without adding another user turn. Interrupted saved turns can be retried after reload. The previous completed answer stays visible during regeneration and survives failure or cancellation.
+The composer stays editable while an answer is pending; sending remains unavailable until it finishes. **Try again** retains the original question, resolved mentions, scope and depth without adding another user turn. Interrupted saved turns can be retried after reload. If a transport loses the initial thread event, recovery checks the original request identity first; missing requests reuse that identity to prevent a racing original dispatch from creating another turn. Running or unavailable outcomes block fresh dispatch. The previous completed answer stays visible during regeneration and survives failure or cancellation.
 
 Assistant answers use a 15px reading surface with readable attribution labels. The reference count opens a grouped evidence index, while an inline citation opens the exact verified passage. The panel preserves recorded-source versus AI-note provenance and stale/deleted warnings; desktop readers can resize it by pointer or keyboard. The header keeps the conversation title visible on narrow screens and exposes the selected persona as a labelled control.
 
@@ -65,6 +65,7 @@ All Chat routes require `X-Noema-Request: 1`, the selected vault's `X-Vault-Id`,
 | GET / POST | `/api/chat/threads` | List history / create a conversation with a validated scope |
 | GET / PUT / DELETE | `/api/chat/threads/:id` | Read history with current evidence status / rename / delete conversation storage |
 | POST | `/api/chat/messages` | Submit `ChatSubmit`; SSE saved thread identity, evidence metadata, validated claim events during generation, then a completed answer |
+| GET | `/api/chat/requests/:id` | Recover a vault-scoped saved request outcome before retrying a lost first event |
 | POST | `/api/chat/cancel` | Abort a request using `{requestId}` |
 | POST | `/api/chat/evidence` | Revalidate up to 24 saved evidence snapshots before inspection or navigation |
 

@@ -108,7 +108,7 @@ try {
   await context.route('**/*',route=>new URL(route.request().url()).hostname==='127.0.0.1'?route.continue():route.abort());
   const page=await context.newPage();page.setDefaultTimeout(12000);page.on('pageerror',error=>errors.push(error.message));
   await page.goto(`${base}/?vault=default&page=${specimen.id}`);await page.locator('#page-title').waitFor();
-  await openChat(page,width);assert.equal(await page.locator('[data-chat-scope]').count(),0);
+  await openChat(page,width);assert.equal(await page.locator('[data-chat-scope]').innerText(),'Entire vault');
   await page.locator('.chat-options > summary').click();await page.getByText('Temporary chat',{exact:true}).click();
   assert.equal(await page.locator('.chat-check input').isChecked(),true,'Temporary chat is enabled after label activation');
   const composer=page.getByRole('textbox',{name:'Ask something about your knowledge',exact:true});
@@ -145,7 +145,7 @@ try {
   await page.locator('.chat-citation').first().click();await page.getByRole('button',{name:'Open in original',exact:true}).click();await page.locator('#page-title').waitFor();
   assert.equal(new URL(page.url()).searchParams.get('page'),specimen.id,'Evidence opens original note');
   await openChat(page,width);await headerGeometry(page,width);if(width===390)await activate(page.getByRole('button',{name:'Show conversations',exact:true}),width);await activate(history.locator(`[data-thread-id="${threadId}"]`),width);await page.locator('.chat-message.is-assistant').waitFor();
-  await page.locator('.chat-options > summary').click();await page.getByRole('button',{name:'Delete conversation',exact:true}).click();await page.locator('.chat-message').first().waitFor({state:'hidden'});
+  await page.locator('.chat-options > summary').click();await page.getByRole('button',{name:'Delete conversation',exact:true}).click();await page.getByRole('button',{name:'Confirm delete',exact:true}).click();await page.locator('.chat-message').first().waitFor({state:'hidden'});
   // Pending requests are stoppable and never expose partial provider prose.
   transportMode='pending';const before=requests.length;
   await composer.fill('What does grace mean here?');await page.getByRole('button',{name:'Send message',exact:true}).click();
@@ -175,7 +175,7 @@ try {
   transportMode='pending';const beforeSwitch=requests.length;await composer.fill('What is recorded about Augustine?');await composer.press('Enter');for(let attempt=0;requests.length===beforeSwitch&&attempt<200;attempt++)await new Promise(resolve=>setTimeout(resolve,10));assert.ok(requests.length>beforeSwitch);
   if(width===390)await page.getByRole('button',{name:'Open navigation',exact:true}).click();
   await page.locator('#vault-select').selectOption(secondVault.id);await page.waitForURL(url=>url.searchParams.get('vault')===secondVault.id);transportMode='answer';
-  await page.getByRole('region',{name:'Chat workspace'}).waitFor({state:'hidden'});if(width===390&&await page.getByRole('button',{name:'Close navigation',exact:true}).isVisible())await page.getByRole('button',{name:'Close navigation',exact:true}).click();await openChat(page,width);assert.equal(await page.locator('[data-chat-scope]').count(),0);assert.equal(await page.locator('.chat-message').count(),0,'Previous vault conversation is absent');
+  await page.getByRole('region',{name:'Chat workspace'}).waitFor({state:'hidden'});if(width===390&&await page.getByRole('button',{name:'Close navigation',exact:true}).isVisible())await page.getByRole('button',{name:'Close navigation',exact:true}).click();await openChat(page,width);assert.equal(await page.locator('[data-chat-scope]').innerText(),'Entire vault');assert.equal(await page.locator('.chat-message').count(),0,'Previous vault conversation is absent');
   checks.push({width,mode,scope:'vault and contextual page bounded',resolvedMention:augustine.id,evidence:'keyboard focus, exact note navigation, saved snapshot',temporary:'close clears history',history:'rename and delete',cancellation:'no partial answer',horizontalOverflow:false,contextual:'Page, source and entity; property, relationship and incoming-owner exact focus',providerFailure:'no partial answer; retry recovers',vaultSwitch:'aborts pending answer and clears old conversation',requestsBeforeCancel:before});
   await context.close();
  }

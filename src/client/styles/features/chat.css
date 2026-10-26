@@ -260,33 +260,34 @@ main > .chat-workspace:not([hidden]) { flex: 1; height: auto; min-height: 0; }
  .meno-avatar *, .meno-avatar:hover * { animation: none !important; transition: none !important; }
 }
 
-/* Meno floats over the conversation without setting the toolbar or inbox height. */
-.chat-heading.chat-toolbar { position: relative; display: grid; grid-template-columns: 80px minmax(0,1fr) 80px; gap: 8px; width: 100%; padding-block: 4px; }
+/* Conversation identity leads; the interactive mascot stays in normal flow. */
+.chat-heading.chat-toolbar { position: relative; display: grid; grid-template-columns: max-content minmax(0,1fr) max-content; gap: 12px; width: 100%; padding-block: 4px; }
 .chat-toolbar .chat-toolbar-controls { justify-self: start; }
 .chat-toolbar .chat-heading-actions { justify-self: end; }
-.chat-toolbar .chat-heading-title { display: flex; align-items: center; min-width: 0; max-width: calc(50% - 64px); }
-.chat-contact { position: absolute; z-index: 2; top: 0; left: var(--chat-contact-center, 50%); transform: translateX(-50%); display: grid; grid-template-columns: auto; align-items: center; justify-items: center; width: max-content; }
-.chat-contact > .meno-avatar { grid-column: 1 / -1; width: 60px; height: 60px; margin: 0; }
-.chat-contact-identity { position: relative; display: flex; align-items: center; gap: 5px; }
-.chat-contact-identity > .meno-picker { position: absolute; left: calc(100% + 2px); }
-.chat-contact-identity .chat-persona-button { opacity: 0; transition: opacity 140ms ease; }
-.chat-contact-identity:hover .chat-persona-button, .chat-contact-identity:focus-within .chat-persona-button { opacity: 1; }
-@media (hover: none) { .chat-contact-identity .chat-persona-button { opacity: 1; } }
-.chat-contact-name { font-size: 12px; font-weight: 600; line-height: 1.4; color: var(--text); }
-.chat-toolbar .chat-heading-title h1 { width: 100%; margin: 0; font-size: var(--ui-text-md); font-weight: 400; letter-spacing: 0; color: var(--chat-muted); }
+.chat-toolbar .chat-heading-title { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; max-width: none; }
+.chat-toolbar .chat-heading-title h1, .chat-toolbar .chat-heading-title .chat-rename { order: 0; width: 100%; margin: 0; font-size: 16px; font-weight: 550; color: var(--text); }
 .chat-toolbar .chat-title-button { justify-content: flex-start; min-height: 36px; padding: 2px 4px; text-align: left; }
-.chat-messages { padding-top: 36px; }
-.chat-toolbar .chat-heading-title .chat-rename { width: 100%; }
-.chat-toolbar .chat-rename input { min-width: 0; font-size: 12px; }
+.chat-contact { order: 1; display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
+.chat-contact > .meno-avatar { flex: none; width: 34px; height: 34px; margin: 0; }
+.chat-contact-identity { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.chat-contact-name { font-size: 12px; font-weight: 500; color: var(--chat-muted); }
+.chat-contact-identity > .meno-picker { position: relative; min-width: 0; }
+.chat-contact-identity .chat-persona-button { width: auto; max-width: 100%; gap: 6px; min-height: 32px; padding: 4px 7px; border-radius: 7px; font-size: 12px; opacity: 1; }
+.chat-contact-identity .chat-persona-button > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-messages { padding-top: 16px; }
+.chat-toolbar .chat-rename input { min-width: 0; font-size: 14px; }
 @media (max-width: 750px) {
  .topbar:has(> #chat-toolbar:not([hidden])) { align-items: flex-start; }
  .chat-heading.chat-toolbar { grid-template-columns: max-content minmax(0,1fr) max-content; gap: 4px; }
  .chat-toolbar .chat-toolbar-controls { grid-column: 1; grid-row: 1; }
  .chat-toolbar .chat-heading-actions { grid-column: 3; grid-row: 1; }
- .chat-contact > .meno-avatar { width: 52px; height: 52px; }
- .chat-contact { grid-template-columns: auto; left: 50%; }
- .chat-toolbar .chat-heading-title { grid-column: 1 / -1; grid-row: 2; max-width: none; padding-top: 24px; }
+ .chat-toolbar .chat-heading-title { grid-column: 1 / -1; grid-row: 2; max-width: none; padding-top: 0; }
+ .chat-toolbar .chat-heading-title h1 { visibility: visible; }
+ .chat-contact { align-self: flex-end; margin-top: -2px; }
+ .chat-contact > .meno-avatar { width: 44px; height: 44px; }
+ .chat-contact-identity .chat-persona-button { min-height: 44px; }
  .chat-toolbar .chat-title-button, .chat-toolbar .chat-rename input { min-height: 44px; }
+ .chat-messages { padding-top: 8px; }
 }
 
 /* Character details retain their own pastel palette in both themes. */
@@ -337,7 +338,7 @@ main > .chat-workspace:not([hidden]) { flex: 1; height: auto; min-height: 0; }
 .meno-picker-panel footer button .icon { width: 14px; height: 14px; }
 .meno-picker-panel footer button .icon:last-child { margin-left: auto; }
 @media (max-width: 750px) {
- .meno-picker-panel { position: fixed; top: calc(100% + 10px); left: 50%; max-height: calc(100dvh - 155px); }
+ .meno-picker-panel { position: fixed; top: calc(var(--workspace-toolbar-height) + 8px); left: auto; right: 12px; transform: none; max-height: calc(100dvh - var(--workspace-toolbar-height) - 24px); }
  .meno-persona-option { min-height: 56px; }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -481,3 +482,5 @@ main > .chat-workspace:not([hidden]) { flex: 1; height: auto; min-height: 0; }
 .chat-privacy summary { width: fit-content; cursor: pointer; min-height: 28px; padding: 5px 0; }
 .chat-privacy .chat-provider-note { text-align: left; margin-top: 0; }
 @media (pointer: coarse) { .chat-mention-trigger, .chat-privacy summary { min-height: 44px; } }
+
+@media (pointer: coarse) { .chat-contact > .meno-avatar { width: 44px; height: 44px; } }

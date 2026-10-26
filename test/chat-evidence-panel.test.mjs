@@ -61,3 +61,49 @@ test('desktop evidence resize supports keyboard and mobile panel traps focus and
  await act(async()=>last.dispatchEvent(new window.KeyboardEvent('keydown',{key:'Tab',bubbles:true,cancelable:true})));assert.equal(document.activeElement,close);
  await act(async()=>root.render(null));assert.equal(document.body.style.overflow,'scroll');
 });
+
+async function evidenceWorkspace(t) {
+ const {ChatWorkspace}=await import('../src/client/chat/ChatWorkspace.tsx');
+ const {chatAPI}=await import('../src/client/chat/api.ts');
+ const {api}=await import('../src/client/api.ts');
+ const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
+ const alternative={...source,title:'Different source',objectId:'other-source',excerpt:'A different recorded quotation.',fingerprint:'other-fingerprint'};
+ const answer=(id,item)=>({id,role:'assistant',text:'An evidence-backed answer.',createdAt:'',status:'completed',claims:[{text:'A supported claim.',attribution:'supported',citationIds:[item.id]}],evidence:[item]});
+ const thread={id:'evidence-thread',vaultId:'default',title:'Evidence research',scope:{kind:'vault'},createdAt:'',updatedAt:new Date().toISOString(),messages:[answer('first-answer',source),answer('second-answer',alternative)]};
+ t.mock.method(api,'intelligence',async()=>({personaId:'oxford_don'}));
+ t.mock.method(chatAPI,'list',async()=>[thread]);t.mock.method(chatAPI,'get',async()=>thread);t.mock.method(chatAPI,'cancel',async()=>({cancelled:true}));
+ await act(async()=>root.render(createElement(ChatWorkspace,{vaultId:'default',vaultName:'Test',initialScope:{kind:'vault'},entities:[],pages:[],visible:true,onClose(){},onOpenEvidence(){throw new Error('A cancelled navigation must never open evidence.');}})));
+ await act(async()=>document.querySelector('[data-thread-id="evidence-thread"]').click());
+ return {chatAPI,alternative};
+}
+
+test('switching answer citations clears the previous excerpt while the new revision is being verified',async t=>{
+ const {chatAPI,alternative}=await evidenceWorkspace(t);
+ let resolveVerification;
+ t.mock.method(chatAPI,'verify',async(_vault,evidence)=>evidence[0].fingerprint===source.fingerprint?evidence:new Promise(resolve=>{resolveVerification=resolve;}));
+ const citations=document.querySelectorAll('.chat-citation');
+ await act(async()=>citations[0].click());assert.equal(document.querySelector('blockquote').textContent,source.excerpt);
+ await act(async()=>citations[1].click());
+ assert.equal(document.querySelector('.chat-evidence-detail'),null,'the previous answer excerpt must not appear as the new answer selection');
+ assert.equal(document.querySelector('.chat-citation[aria-pressed="true"]'),null);
+ await act(async()=>resolveVerification([alternative]));
+ assert.equal(document.querySelector('blockquote').textContent,alternative.excerpt);
+ assert.equal(citations[1].getAttribute('aria-pressed'),'true');
+ assert.equal(citations[0].getAttribute('aria-pressed'),'false');
+});
+
+test('sending a new question aborts pending evidence navigation and ignores a late verification result',async t=>{
+ const {chatAPI}=await evidenceWorkspace(t);
+ let verifyCount=0,resolveVerification,verificationSignal;
+ t.mock.method(chatAPI,'verify',async(_vault,evidence,signal)=>{if(++verifyCount===1)return evidence;verificationSignal=signal;return new Promise(resolve=>{resolveVerification=resolve;});});
+ t.mock.method(globalThis,'fetch',async(_url,options)=>new Response(new ReadableStream({start(controller){options.signal.addEventListener('abort',()=>controller.error(new DOMException('Stopped','AbortError')),{once:true});}}),{headers:{'Content-Type':'text/event-stream'}}));
+ await act(async()=>document.querySelector('.chat-citation').click());
+ await act(async()=>document.querySelector('.chat-evidence-detail .button').click());
+ assert.equal(verificationSignal.aborted,false);
+ await act(async()=>{const input=document.getElementById('chat-question');input[Object.keys(input).find(key=>key.startsWith('__reactProps'))].onChange({target:{value:'A new question changes the current operation.'}});});
+ await act(async()=>document.querySelector('.chat-composer').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
+ assert.equal(verificationSignal.aborted,true,'a newly submitted turn cancels verification tied to the prior reading operation');
+ await act(async()=>resolveVerification([source]));
+ assert.equal(document.querySelector('.chat-evidence'),null,'late verification must not reopen the closed evidence panel');
+ assert.equal(document.querySelector('.chat-composer-area [role=alert]'),null);
+});

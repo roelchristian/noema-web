@@ -9,9 +9,9 @@ Validated in the saved Linux cloud environment on 26 October 2026 using Node 24.
 - Phase A: `21ab7f8` — drafts, confirmation, immutable failed-turn retry and temporary teardown.
 - Phase B: `77bbf2a` — reader typography, grouped evidence index and accessible resizing.
 - Phase C: `46ab32c` — separate scope/mention controls, research prompts, title search and real diagnostics.
-- Published PR122 head `92b1f5968e8f679a7ae2635af2fad432ec0852ae`, independently verified through the connected GitHub read tools and subsequently confirmed by the parent, was applied in `464223a`. Both published files were applied, preserving persona assertions and header pointer/touch/focus/Rename assertions. Git fetch subsequently lacked credentials (`could not read Username`), so this records an exact published patch integration rather than that remote commit's Git ancestry.
+- Published PR122 head `92b1f5968e8f679a7ae2635af2fad432ec0852ae`, independently verified through the connected GitHub read tools and subsequently confirmed by the parent, was applied in `464223a`. Both published files were applied, preserving persona assertions and header pointer/touch/focus/Rename assertions. The initial patch-only integration was subsequently reconciled with the actual fetched PR head in ancestry merge `88c4b78`, retaining a tree identical to the tested code. Main merge `cfc03fa0dba0cc5d1122405a022248a0d8ee9594` (PR122) is now also integrated without content changes.
 - Follow-up commits retain readable responsive titles and persona controls, cancel stale evidence checks, prevent Stop from submitting the next draft, recover uncertain request identities before retry, preserve temporary request context and back up retry depth.
-- No push, PR creation, remote merge or deployment was performed. No PDF-ingestion changes were included.
+- The implementation was initially local-only. Subsequent explicit publication/merge authorization created draft PR #123; final publication and CI evidence is recorded in its description. No deployment was performed. No PDF-ingestion changes were included.
 
 ## Final checks
 

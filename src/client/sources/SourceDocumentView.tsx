@@ -55,17 +55,22 @@ export function sourceRelationFootnotes(entries:SourceViewEntry[],relations:{kin
   const from=nodes.get(relation.from!),to=nodes.get(relation.to!);if(!from?.text||!to?.text||to.kind!=='footnote')continue;
   const label=to.text.match(/^\s*(\d{1,4}|[*†‡])(?:[.)])?(?=\s)/u)?.[1];if(!label)continue;
   if(definite.some(other=>other.from===relation.from&&other.to!==relation.to))continue;
+  const sourceText=from.text,superscript=/^\d+$/.test(label)?Array.from(label,digit=>'⁰¹²³⁴⁵⁶⁷⁸⁹'[Number(digit)]).join(''):null;
+  const raised=superscript?[...sourceText.matchAll(/[⁰¹²³⁴⁵⁶⁷⁸⁹]+/gu)].filter(match=>match[0]===superscript&&/[;:,.!?)[\]]/u.test(sourceText[match.index!-1]??'')):[];
+  // A definite relation plus one exact raised label can identify a callout in
+  // the middle of a sentence. Keep its original Unicode span and text intact.
+  const raisedAt=raised.length===1?raised[0]!.index:undefined;
   const matches:number[]=[];let cursor=0;
   while(cursor<from.text.length){const at=from.text.indexOf(label,cursor);if(at<0)break;cursor=at+label.length;
    const before=from.text[at-1]??'',after=from.text[at+label.length]??'';
    if(!/[\p{L}\p{N}]/u.test(before)&&!/[\p{L}\p{N}]/u.test(after))matches.push(at);
   }
-  if(matches.length!==1)continue;const at=matches[0]!;
+  if(raisedAt===undefined&&matches.length!==1)continue;const at=raisedAt??matches[0]!,marker=raisedAt===undefined?label:superscript!;
   // A plain prose number is not a footnote location merely because it matches.
-  if(!/[;:,.!?)[\]]/u.test(from.text[at-1]??'')||!/^\s*(?:\]|$)/u.test(from.text.slice(at+label.length)))continue;
+  if(raisedAt===undefined&&(!/[;:,.!?)[\]]/u.test(from.text[at-1]??'')||!/^(?:\s|\]|$)/u.test(from.text.slice(at+label.length))))continue;
   const start=from.range.startOffset+at,target=footnoteAnchor(fileId,to.id);
   if(links.has(start)&&links.get(start)!.target!==target){links.delete(start);continue;}
-  links.set(start,{end:start+label.length,target,label});notes.set(to.id,label);
+  links.set(start,{end:start+marker.length,target,label});notes.set(to.id,label);
  }
  return {links,notes};
 }

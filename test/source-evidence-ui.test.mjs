@@ -211,3 +211,46 @@ test('direct footnote clicks scroll and focus the unique note aside, and backlin
  await act(async()=>callout.click());const noteAside=document.getElementById(target);assert.equal(noteAside.tagName,'ASIDE');assert.equal(noteAside.getAttribute('role'),'doc-footnote');assert.equal(scrolled.at(-1).element,noteAside);assert.equal(scrolled.at(-1).options.block,'center');assert.equal(document.activeElement,noteAside);
  await act(async()=>noteAside.querySelector('.source-reader-footnote-back').click());assert.equal(scrolled.at(-1).element,callout);assert.equal(document.activeElement,callout);
 });
+
+test('Unicode superscript IR callouts link mid-sentence without changing canonical spans or duplicating notes',async()=>{
+ const {renderToStaticMarkup}=await import('react-dom/server');const {SourceDocumentView,sourceRelationFootnotes}=await import('../src/client/sources/SourceDocumentView.tsx');
+ let text='';const nodes=[],relations=[];
+ const add=(id,kind,value)=>{const start=text.length;text+=value+'\n\n';nodes.push({id,kind,text:value,range:{startOffset:start,endOffset:start+value.length,startLine:1,endLine:1,startPage:1,endPage:1}});};
+ add('p1','paragraph','Netto [3, pp. 148–149].¹ and we follow the proof.');add('n1','footnote','1 Earlier work by Cayley.');
+ add('p2','paragraph','Groups of order p² have this property.² Write this as follows.');add('n2','footnote','2 Related to the pigeonhole principle.');
+ for(const label of [1,2])relations.push({kind:'footnote-callout',from:'p'+label,to:'n'+label,uncertain:false});
+ const entries=nodes.map(node=>({node,path:[node]})),before=JSON.stringify({text,nodes});
+ for(const endnotes of [false,true]){
+  const doc=new JSDOM(renderToStaticMarkup(React.createElement(SourceDocumentView,{article:React.createRef(),fileId:'f',name:'Fixture',text,entries,ingestionRelations:relations,endnotes,selected:null,annotations:'clean',structureLabels:false,canonicalNode:id=>id,onSelect:()=>{}}))).window.document;
+  assert.equal(doc.querySelectorAll('a[data-footnote-reference]').length,2);assert.equal(doc.querySelectorAll('[role="doc-footnote"]').length,2);
+  for(const [label,marker] of [[1,'¹'],[2,'²']]){
+   const node=nodes.find(node=>node.id==='p'+label),at=node.text.lastIndexOf(marker),link=doc.querySelector('[aria-label="Footnote '+label+'"] a')??doc.querySelector('a[aria-label="Footnote '+label+'"]');
+   assert.ok(link);assert.equal(link.textContent,marker);assert.equal(Number(link.dataset.sourceStart),node.range.startOffset+at);assert.equal(Number(link.dataset.sourceEnd),node.range.startOffset+at+marker.length);
+   const target=doc.getElementById(link.dataset.footnoteReference);assert.equal(target.getAttribute('role'),'doc-footnote');assert.equal(doc.querySelectorAll('[id="'+target.id+'"]').length,1);assert.equal(doc.querySelectorAll('[data-source-node="n'+label+'"]').length,1);assert.equal(!!target.closest('.source-reader-endnotes'),endnotes);
+  }
+ }
+ assert.equal(JSON.stringify({text,nodes}),before);
+ const p=nodes[0],ambiguous=[{node:{...p,text:'Repeated.¹ Another.¹'},path:[]},entries[1]];
+ assert.equal(sourceRelationFootnotes(ambiguous,[relations[0]],'f').links.size,0);
+ const exponent=[{node:{...nodes[2],text:'One group has order p²'},path:[]},entries[3]];
+ assert.equal(sourceRelationFootnotes(exponent,[relations[1]],'f').links.size,0,'ordinary mathematical exponents are not callouts');
+ assert.equal(sourceRelationFootnotes(entries,relations.map(r=>({...r,uncertain:true})),'f').links.size,0);
+});
+
+test('definite unique plain footnote labels link mid-sentence after punctuation and outside LaTeX',async()=>{
+ const {renderToStaticMarkup}=await import('react-dom/server');const {SourceDocumentView,sourceRelationFootnotes}=await import('../src/client/sources/SourceDocumentView.tsx');
+ let text='';const nodes=[],relations=[];
+ const add=(id,kind,value)=>{const start=text.length;text+=value+'\n\n';nodes.push({id,kind,text:value,range:{startOffset:start,endOffset:start+value.length,startLine:1,endLine:1,startPage:1,endPage:1}});};
+ add('p1','paragraph','Netto [3, pp. 148–149].1 and we follow the proof.');add('n1','footnote','1 Earlier work.');
+ add('p2','paragraph','Elements lie in a common $x^iH$.2 Write this as $x^iH$.');add('n2','footnote','2 Related principle.');
+ for(const label of [1,2])relations.push({kind:'footnote-callout',from:'p'+label,to:'n'+label,uncertain:false});
+ const entries=nodes.map(node=>({node,path:[node]})),before=JSON.stringify({text,nodes});
+ for(const endnotes of [false,true]){
+  const doc=new JSDOM(renderToStaticMarkup(React.createElement(SourceDocumentView,{article:React.createRef(),fileId:'f',name:'Fixture',text,entries,ingestionRelations:relations,endnotes,selected:null,annotations:'clean',structureLabels:false,canonicalNode:id=>id,onSelect:()=>{}}))).window.document;
+  assert.equal(doc.querySelectorAll('a[data-footnote-reference]').length,2);assert.equal(doc.querySelectorAll('[role="doc-footnote"]').length,2);
+  for(const label of [1,2]){const node=nodes.find(node=>node.id==='p'+label),at=node.text.indexOf('.'+label)+1,link=doc.querySelector('a[aria-label="Footnote '+label+'"]');assert.equal(Number(link.dataset.sourceStart),node.range.startOffset+at);assert.equal(Number(link.dataset.sourceEnd),node.range.startOffset+at+1);assert.equal(link.textContent,String(label));assert.equal(doc.querySelectorAll('[id="'+link.dataset.footnoteReference+'"]').length,1);}
+ }
+ assert.equal(JSON.stringify({text,nodes}),before);
+ const check=value=>sourceRelationFootnotes([{node:{...nodes[0],text:value},path:[]},entries[1]],[relations[0]],'f').links.size;
+ assert.equal(check('Theorem 1 states the result.'),0);assert.equal(check('The value is $x^1$.'),0);assert.equal(check('Reference.1 Another.1'),0);assert.equal(check('A value.1x'),0);
+});

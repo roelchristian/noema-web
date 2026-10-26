@@ -32,6 +32,21 @@ for(const provider of ['openai','gemini']){
   assert.match(instructions,/retain the faithful block text with table=null/);
   assert.match(instructions,/earlier same-kind block/);
   assert.match(instructions,/together in this single response/);assert.match(instructions,/metadata\.candidates/);assert.match(instructions,/institutional issuing body/);assert.match(instructions,/concise AI synopsis/);
+  assert.match(instructions,/valid LaTeX using \$\.\.\.\$ for inline mathematics and \$\$\.\.\.\$\$ for display equations/);
+  assert.match(instructions,/mathematical expressions within prose, headings and the synopsis/);
+  assert.match(instructions,/do not use bare caret or underscore notation, or alternate delimiters/);
+  assert.ok(instructions.includes('$x^{i}y^{j}$'));
+  assert.ok(instructions.includes('$$x^{i}y^{j}=e$$'));
+  assert.match(instructions,/including printed mathematical errors; never silently solve, simplify or correct them/);
+  assert.match(instructions,/exact substrings of the emitted block\.text, including any math delimiters/);
+  assert.match(instructions,/Systematically inspect EVERY block/);
+  assert.match(instructions,/Cover single-letter variables and group\/set names embedded in prose/);
+  assert.match(instructions,/relations, products, quotients, set-builder notation, cyclic groups, generated subgroups and complete equations/);
+  assert.match(instructions,/including their operators and operands/);
+  assert.match(instructions,/KaTeX-compatible LaTeX with balanced braces and supported commands/);
+  assert.match(instructions,/Escape every LaTeX backslash correctly in JSON string values/);
+  assert.match(instructions,/Do not stop after formatting exponents or isolated identifiers/);
+  assert.match(instructions,/ordinary counts, dates, bibliography numbers and URLs; these are not automatically math/);
  });
  test(`${provider}: current envelope, one generation, normalized usage and cleanup`,async()=>{
   let generation=0,uploads=0,deletes=0;
@@ -54,6 +69,22 @@ test('portable source page image service requires admitted assets and never fabr
  const directory=mkdtempSync(path.join(tmpdir(),'noema-portable-evidence-'));const filename=path.join(directory,'synthetic.pdf');const document=await PDFDocument.create();document.addPage([200,300]);const bytes=Buffer.from(await document.save({useObjectStreams:false}));writeFileSync(filename,bytes);
  let admitted=1;const files={root:directory,require:()=>({admitted,status:'ready',format:'pdf',pages:1}),filename:()=>filename,evidence:()=>({admittedHash:createHash('sha256').update(bytes).digest('hex')})};const images=new SourcePageImages(files);
  try{const png=await images.get('default','synthetic',1);assert.equal(png.toString('hex',0,8),'89504e470d0a1a0a');assert.deepEqual(await images.layout('default','synthetic',1),[]);admitted=0;await assert.rejects(()=>images.get('default','synthetic',1),error=>error.status===409);admitted=1;await assert.rejects(()=>images.get('default','synthetic',2),error=>error.status===400);}finally{images.close();rmSync(directory,{recursive:true,force:true});}
+});
+test('shared direct and reprocessing math contract examples are valid KaTeX and retain JSON backslashes',async()=>{
+ const {scholarlyMathPrompt}=await import('../dist/server/modules/source-math-prompt.js');
+ const {documentSystemPrompt}=await import('../dist/server/modules/document-provider.js');
+ const katex=(await import('katex')).default;
+ assert.ok(documentSystemPrompt.includes(scholarlyMathPrompt));
+ const {readFileSync}=await import('node:fs');
+ const reprocessing=readFileSync(new URL('../src/server/modules/source-reprocessing-pass.ts',import.meta.url),'utf8');
+ assert.match(reprocessing,/import \{scholarlyMathPrompt\}/);
+ assert.match(reprocessing,/const substantialMathPrompt=.*\+scholarlyMathPrompt\+/);
+ const examples=[...scholarlyMathPrompt.matchAll(/(?<!\$)\$(?!\$)([^$\n]+)\$(?!\$)/g)].map(match=>match[1]).filter(value=>value!=='...');
+ assert.ok(examples.length>=10);
+ assert.ok(examples.includes('\\mathbb{Z}/(p) \\times \\mathbb{Z}/(p)'));
+ assert.ok(examples.includes('\\{x^i y^j : 0 \\le i,j \\le p-1\\}'));
+ for(const expression of examples){assert.doesNotThrow(()=>katex.renderToString(expression,{throwOnError:true,strict:'error',trust:false}));assert.equal(JSON.parse(JSON.stringify({text:expression})).text,expression);}
+ assert.ok(scholarlyMathPrompt.includes('serialized JSON contains \\\\ for each single backslash'));
 });
 for(const provider of ['openai','gemini'])test(`${provider}: unreadable paid response remains uncertain`,async()=>{const Class=provider==='openai'?OpenAIDocumentProvider:GeminiDocumentProvider;const upload=transport(provider,{});const adapter=new Class(()=> 'secret',async(url,options)=>url.endsWith('/responses')||url.endsWith('/interactions')?new Response('{broken'):upload(url,options));await assert.rejects(()=>adapter.extract({...base,model:provider==='openai'?'gpt-6.1-sol':'gemini-3.8-flash'}),error=>error.outcomeUncertain===true);});
 for(const provider of ['openai','gemini'])test(`${provider}: caller cancellation after submission is an uncertain paid outcome`,async()=>{const Class=provider==='openai'?OpenAIDocumentProvider:GeminiDocumentProvider;const controller=new AbortController(),upload=transport(provider,{});const adapter=new Class(()=> 'secret',async(url,options)=>{if(url.endsWith('/responses')||url.endsWith('/interactions')){assert.notEqual(options.signal,controller.signal);controller.abort();if(options.signal.aborted)throw options.signal.reason;}return upload(url,options);});await assert.rejects(()=>adapter.extract({...base,model:provider==='openai'?'gpt-6.1-sol':'gemini-3.8-flash',signal:controller.signal}),error=>error.code==='cancelled'&&error.outcomeUncertain===true);});

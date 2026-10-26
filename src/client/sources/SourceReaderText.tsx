@@ -31,6 +31,10 @@ function MathLeaf({source,display,start,end,highlights}:{source:string;display:b
   const highlight=activeHighlight(highlights,start,end);
   return <span role={highlight?'button':undefined} tabIndex={highlight?0:undefined} aria-label={highlight?uiText("Edit highlight"):undefined} title={highlight?uiText("Change highlight color or add a reading note"):undefined} className={`${display?'summary-math-display':'summary-math-inline'}${highlight?' source-highlight':''}`} data-color={highlight?.color} data-highlight-id={highlight?.id} data-source-start={start} data-source-end={end} data-source-atomic="true" dangerouslySetInnerHTML={{__html:renderMath(source,display)}}/>;
 }
+function RelationFootnoteReference({raw,start,link,highlights}:{raw:string;start:number;link:{end:number;target:string;label:string};highlights:SourceHighlight[]}){
+ const highlight=activeHighlight(highlights,start,link.end),latex=raw.startsWith('$');
+ return <sup className="source-reader-footnote-reference"><a href={`#${link.target}`} data-footnote-reference={link.target} data-source-start={start} data-source-end={link.end} data-source-atomic="true" aria-label={uiText('Footnote {value0}',{value0:link.label})} onClick={event=>{event.preventDefault();const note=document.getElementById(link.target);if(note){window.dispatchEvent(new Event('noema:before-reading-jump'));note.scrollIntoView({block:'center'});note.focus({preventScroll:true});}}}>{latex?<span className={highlight?'source-highlight':undefined} data-color={highlight?.color} data-highlight-id={highlight?.id} data-source-start={start} data-source-end={link.end} data-source-atomic="true">{link.label}</span>:<TextLeaf text={raw} start={start} highlights={highlights}/>}</a></sup>;
+}
 /** Raw offsets belong to the immutable imported text, including Markdown delimiters. */
 export function SourceReaderInline({text,startOffset=0,highlights=[],footnotePrefix='source-footnote'}:ReaderProps) {
   const definitions=useContext(SourceFootnoteDefinitions),bibliography=useContext(SourceBibliography),footnoteLinks=useContext(SourceInlineFootnoteLinks);
@@ -52,7 +56,7 @@ export function SourceReaderInline({text,startOffset=0,highlights=[],footnotePre
     for(let index=0;index<value.length;index++){
       const start=offset+index,link=footnoteLinks.get(start);if(!link||link.end>offset+value.length)continue;
       if(start>offset+cursor)plainText(value.slice(cursor,start-offset),offset+cursor);
-      parts.push(<sup key={`relation-${start}`} className="source-reader-footnote-reference"><a href={`#${link.target}`} data-footnote-reference={link.target} data-source-start={start} data-source-end={link.end} data-source-atomic="true" aria-label={uiText('Footnote {value0}',{value0:link.label})} onClick={event=>{event.preventDefault();const note=document.getElementById(link.target);if(note){window.dispatchEvent(new Event('noema:before-reading-jump'));note.scrollIntoView({block:'center'});note.focus({preventScroll:true});}}}><TextLeaf text={value.slice(start-offset,link.end-offset)} start={start} highlights={highlights}/></a></sup>);
+      parts.push(<RelationFootnoteReference key={`relation-${start}`} raw={value.slice(start-offset,link.end-offset)} start={start} link={link} highlights={highlights}/>);
       cursor=link.end-offset;index=cursor-1;
     }
     if(cursor<value.length)plainText(value.slice(cursor),offset+cursor);
@@ -62,7 +66,9 @@ export function SourceReaderInline({text,startOffset=0,highlights=[],footnotePre
     const index=match.index!,offset=startOffset+index;
     if(index>cursor)plain(text.slice(cursor,index),startOffset+cursor);
     let node:ReactNode;
-    if(match[1])node=<code><TextLeaf text={match[2]??''} start={offset+match[1].length} highlights={highlights}/></code>;
+    const relation=footnoteLinks?.get(offset);
+    if(relation&&relation.end===offset+match[0].length)node=<RelationFootnoteReference raw={match[0]} start={offset} link={relation} highlights={highlights}/>;
+    else if(match[1])node=<code><TextLeaf text={match[2]??''} start={offset+match[1].length} highlights={highlights}/></code>;
     else if(match[3]!==undefined) {
       const href=safeHref(match[4]!),label=<SourceReaderInline text={match[3]} startOffset={offset+1} highlights={highlights} footnotePrefix={footnotePrefix}/>;
       node=href?<a href={href} target="_blank" rel="noopener noreferrer">{label}</a>:label;
@@ -92,8 +98,10 @@ export function SourceReaderInline({text,startOffset=0,highlights=[],footnotePre
 }
 
 /** Shared Noema footnote row for Markdown definitions and exact IR notes. */
-export function SourceFootnote({label,target,text,startOffset,highlights=[],footnotePrefix='source-footnote',labelSource}:{label:string;target:string;text:string;startOffset:number;highlights?:SourceHighlight[];footnotePrefix?:string;labelSource?:{text:string;start:number}}){
- return <aside id={target} tabIndex={-1} role="doc-footnote" className="source-reader-footnote" aria-label={uiText('Footnote {value0}',{value0:label})}><span className="source-reader-footnote-label">{labelSource?<SourceReaderInline text={labelSource.text} startOffset={labelSource.start} highlights={highlights} footnotePrefix={footnotePrefix}/>:label.replace(/^p\d+-/,'')}</span><SourceReaderText text={text} startOffset={startOffset} highlights={highlights} footnotePrefix={footnotePrefix}/><button type="button" className="source-reader-footnote-back" aria-label={uiText('Back to footnote {value0} reference',{value0:label})} onClick={()=>{const reference=Array.from(document.querySelectorAll<HTMLAnchorElement>('a[data-footnote-reference]')).find(element=>element.dataset.footnoteReference===target);reference?.scrollIntoView({block:'center'});reference?.focus({preventScroll:true});}}>↩</button></aside>;
+export function SourceFootnote({label,target,text,startOffset,highlights=[],footnotePrefix='source-footnote',labelSource}:{label:string;target:string;text:string;startOffset:number;highlights?:SourceHighlight[];footnotePrefix?:string;labelSource?:{text:string;start:number;displayText?:string}}){
+ const labelEnd=labelSource?labelSource.start+labelSource.text.length:0,highlight=labelSource?activeHighlight(highlights,labelSource.start,labelEnd):undefined;
+ const labelContent=labelSource?.displayText!==undefined?<span className={highlight?'source-highlight':undefined} data-color={highlight?.color} data-highlight-id={highlight?.id} data-source-start={labelSource.start} data-source-end={labelEnd} data-source-atomic="true">{labelSource.displayText}</span>:labelSource?<SourceReaderInline text={labelSource.text} startOffset={labelSource.start} highlights={highlights} footnotePrefix={footnotePrefix}/>:label.replace(/^p\d+-/,'');
+ return <aside id={target} tabIndex={-1} role="doc-footnote" className="source-reader-footnote" aria-label={uiText('Footnote {value0}',{value0:label})}><span className="source-reader-footnote-label">{labelContent}</span><SourceReaderText text={text} startOffset={startOffset} highlights={highlights} footnotePrefix={footnotePrefix}/><button type="button" className="source-reader-footnote-back" aria-label={uiText('Back to footnote {value0} reference',{value0:label})} onClick={()=>{const reference=Array.from(document.querySelectorAll<HTMLAnchorElement>('a[data-footnote-reference]')).find(element=>element.dataset.footnoteReference===target);reference?.scrollIntoView({block:'center'});reference?.focus({preventScroll:true});}}>↩</button></aside>;
 }
 
 type Line={text:string;start:number;end:number};

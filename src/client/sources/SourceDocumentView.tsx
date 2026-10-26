@@ -48,26 +48,34 @@ export function sourceFurnitureNodeIds(entries:SourceViewEntry[],classified:Iter
 
 /** Relation targets are authoritative; printed callout spans must still be
  * uniquely identifiable in the unchanged source text before becoming links. */
+function printedFootnotePrefix(text:string){
+ const latex=text.match(/^\s*\$\s*\^\s*(?:\{(\d{1,4}|[*†‡])\}|(\d{1,4}|[*†‡]))\s*\$\s*/u);
+ if(latex){const label=latex[1]??latex[2]!;return {label,length:latex[0].length,labelSource:{text:latex[0].trim(),start:latex[0].search(/\S/),displayText:label}};}
+ const plain=text.match(/^\s*(\d{1,4}|[*†‡])(?:[.)])?\s+/u);
+ return plain?{label:plain[1]!,length:plain[0].length,labelSource:{text:plain[1]!,start:plain[0].indexOf(plain[1]!)}}:null;
+}
 export function sourceRelationFootnotes(entries:SourceViewEntry[],relations:{kind:string;from:string|null;to:string|null;uncertain:boolean}[],fileId:string){
  const nodes=new Map(entries.map(entry=>[entry.node.id,entry.node])),links=new Map<number,{end:number;target:string;label:string}>(),notes=new Map<string,string>();
  const definite=relations.filter(relation=>relation.kind==='footnote-callout'&&!relation.uncertain&&relation.from&&relation.to);
  for(const relation of definite){
   const from=nodes.get(relation.from!),to=nodes.get(relation.to!);if(!from?.text||!to?.text||to.kind!=='footnote')continue;
-  const label=to.text.match(/^\s*(\d{1,4}|[*†‡])(?:[.)])?(?=\s)/u)?.[1];if(!label)continue;
+  const label=printedFootnotePrefix(to.text)?.label;if(!label)continue;
   if(definite.some(other=>other.from===relation.from&&other.to!==relation.to))continue;
   const sourceText=from.text,superscript=/^\d+$/.test(label)?Array.from(label,digit=>'⁰¹²³⁴⁵⁶⁷⁸⁹'[Number(digit)]).join(''):null;
   const raised=superscript?[...sourceText.matchAll(/[⁰¹²³⁴⁵⁶⁷⁸⁹]+/gu)].filter(match=>match[0]===superscript&&/[;:,.!?)[\]]/u.test(sourceText[match.index!-1]??'')):[];
   // A definite relation plus one exact raised label can identify a callout in
   // the middle of a sentence. Keep its original Unicode span and text intact.
   const raisedAt=raised.length===1?raised[0]!.index:undefined;
+  const latex=[...sourceText.matchAll(/\$\s*\^\s*(?:\{(\d{1,4}|[*†‡])\}|(\d{1,4}|[*†‡]))\s*\$/gu)].filter(match=>(match[1]??match[2])===label&&/[;:,.!?)[\]]/u.test(sourceText[match.index!-1]??'')&&/^(?:\s|\]|$)/u.test(sourceText.slice(match.index!+match[0].length)));
+  const latexMatch=latex.length===1?latex[0]:undefined;
   const matches:number[]=[];let cursor=0;
   while(cursor<from.text.length){const at=from.text.indexOf(label,cursor);if(at<0)break;cursor=at+label.length;
    const before=from.text[at-1]??'',after=from.text[at+label.length]??'';
    if(!/[\p{L}\p{N}]/u.test(before)&&!/[\p{L}\p{N}]/u.test(after))matches.push(at);
   }
-  if(raisedAt===undefined&&matches.length!==1)continue;const at=raisedAt??matches[0]!,marker=raisedAt===undefined?label:superscript!;
+  if(!latexMatch&&raisedAt===undefined&&matches.length!==1)continue;const at=latexMatch?.index??raisedAt??matches[0]!,marker=latexMatch?.[0]??(raisedAt===undefined?label:superscript!);
   // A plain prose number is not a footnote location merely because it matches.
-  if(raisedAt===undefined&&(!/[;:,.!?)[\]]/u.test(from.text[at-1]??'')||!/^(?:\s|\]|$)/u.test(from.text.slice(at+label.length))))continue;
+  if(!latexMatch&&raisedAt===undefined&&(!/[;:,.!?)[\]]/u.test(from.text[at-1]??'')||!/^(?:\s|\]|$)/u.test(from.text.slice(at+label.length))))continue;
   const start=from.range.startOffset+at,target=footnoteAnchor(fileId,to.id);
   if(links.has(start)&&links.get(start)!.target!==target){links.delete(start);continue;}
   links.set(start,{end:start+marker.length,target,label});notes.set(to.id,label);
@@ -93,7 +101,7 @@ export function SourceDocumentView({article,coordinateHash,ingestionRelations,fi
    const Heading=(node.kind==='chapter'||node.level===1?'h2':node.kind==='subsection'||(node.level??0)>2?'h4':'h3');
    const locator=sourceNodeLocator(path)??`L${node.range.startLine}–${node.range.endLine}`;
    const canonicalId=canonicalNode(node.id),change=changeForNode?.(node.id),furniture=furnitureKind?.(node.id);
-   const semanticLabel=relationFootnotes.notes.get(node.id),semanticPrefix=semanticLabel?node.text?.match(/^\s*(\d{1,4}|[*†‡])(?:[.)])?\s+/u):null;
+   const semanticLabel=relationFootnotes.notes.get(node.id),semanticPrefix=semanticLabel&&node.text?printedFootnotePrefix(node.text):null;
    const semanticNote=!!semanticPrefix,onlyNotes=semanticNote||!!blocks?.notes.length&&!blocks.body.length;
    const table=node.ingestion?.table;
    const heading=node.text===undefined||node.ingestion?.kind==='heading',uncertainty=readerTranscriptionUncertainty(node.ingestion?.uncertainty);
@@ -104,7 +112,7 @@ export function SourceDocumentView({article,coordinateHash,ingestionRelations,fi
     {structureLabels&&<small className="source-reader-structure-label">{node.kind} · {locator}</small>}
     {change&&<button type="button" className={"source-reader-change-indicator"+(change.quiet?" is-quiet":"")} aria-label={change.label} onClick={()=>onReview?.(change.id,change.patchIds)}><span aria-hidden="true">{change.count&&change.count>1?change.count:"│"}</span></button>}
     {uncertainty&&<aside className="section-hint" aria-label={uiText('Transcription uncertainty')}>{uncertainty}</aside>}
-    {semanticNote?<SourceFootnote label={semanticLabel!} target={footnoteAnchor(fileId,node.id)} text={node.text!.slice(semanticPrefix![0].length)} startOffset={node.range.startOffset+semanticPrefix![0].length} highlights={highlights} footnotePrefix={fileId} labelSource={{text:semanticLabel!,start:node.range.startOffset+semanticPrefix![0].indexOf(semanticLabel!)}}/>:heading?<Heading><SourceReaderInline text={node.title??node.text??''} footnotePrefix={fileId} startOffset={node.range.startOffset} highlights={highlights}/></Heading>:node.ingestion?.furniture?<details><summary>{uiText('Running page text')}</summary><div className="source-reader-text">{readingBlocks}</div></details>:table?<><table aria-label={uiText('Source table')}><tbody>{Array.from({length:table.rows},(_,row)=><tr key={row}>{table.cells.filter(cell=>cell.row===row).sort((a,b)=>a.column-b.column).map(cell=><td key={cell.column} rowSpan={cell.rowSpan} colSpan={cell.columnSpan}>{cell.text}</td>)}</tr>)}</tbody></table><details><summary>{uiText('Faithful table transcription')}</summary><div className="source-reader-text">{readingBlocks}</div></details></>:<>{node.kind==='code'?readingBlocks:<div className="source-reader-text">{readingBlocks}</div>}</>}
+    {semanticNote?<SourceFootnote label={semanticLabel!} target={footnoteAnchor(fileId,node.id)} text={node.text!.slice(semanticPrefix!.length)} startOffset={node.range.startOffset+semanticPrefix!.length} highlights={highlights} footnotePrefix={fileId} labelSource={{...semanticPrefix!.labelSource,start:node.range.startOffset+semanticPrefix!.labelSource.start}}/>:heading?<Heading><SourceReaderInline text={node.title??node.text??''} footnotePrefix={fileId} startOffset={node.range.startOffset} highlights={highlights}/></Heading>:node.ingestion?.furniture?<details><summary>{uiText('Running page text')}</summary><div className="source-reader-text">{readingBlocks}</div></details>:table?<><table aria-label={uiText('Source table')}><tbody>{Array.from({length:table.rows},(_,row)=><tr key={row}>{table.cells.filter(cell=>cell.row===row).sort((a,b)=>a.column-b.column).map(cell=><td key={cell.column} rowSpan={cell.rowSpan} colSpan={cell.columnSpan}>{cell.text}</td>)}</tr>)}</tbody></table><details><summary>{uiText('Faithful table transcription')}</summary><div className="source-reader-text">{readingBlocks}</div></details></>:<>{node.kind==='code'?readingBlocks:<div className="source-reader-text">{readingBlocks}</div>}</>}
 
    </section>;
  };

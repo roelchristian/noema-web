@@ -70,10 +70,15 @@ for(const provider of ['openai','gemini']){
   assert.match(instructions,/Escape every LaTeX backslash correctly in JSON string values/);
   assert.match(instructions,/Do not stop after formatting exponents or isolated identifiers/);
   assert.match(instructions,/ordinary counts, dates, bibliography numbers and URLs; these are not automatically math/);
+  assert.match(instructions,/Footnote callout superscripts and leading note labels are apparatus, not mathematical exponents/);
+  assert.match(instructions,/retain their printed number or symbol outside math delimiters/);
+  assert.match(instructions,/Do not encode a footnote marker as an inline equation or absorb it into a neighboring formula/);
+  assert.match(instructions,/Mark up mathematical expressions within the note body normally/);
+  assert.match(instructions,/Use footnote-callout relations to link each supported callout-owning block to its note block/);
  });
  test(`${provider}: current envelope, one generation, normalized usage and cleanup`,async()=>{
   let generation=0,uploads=0,deletes=0;
-  const mocked=transport(provider,provider==='openai'?openai():gemini(),(kind,url,options)=>{if(kind==='upload'){uploads++;if(provider==='openai'){assert.equal(options.body.get('purpose'),'user_data');assert.equal(options.body.get('expires_after[seconds]'),'3600');}return;}generation++;const sent=JSON.parse(options.body);assert.equal(sent.store,false);assert.equal(sent.tools,undefined);assert.equal(sent.model,model);if(provider==='openai'){assert.equal(sent.text.format.strict,true);assert.equal(sent.input[0].content[0].type,'input_file');}else{assert.ok(url.endsWith('/v1/interactions'));assert.equal(sent.input[0].type,'document');assert.equal(sent.response_format.mime_type,'application/json');assert.equal(sent.generation_config.tool_choice,'none');}});
+  const mocked=transport(provider,provider==='openai'?openai():gemini(),(kind,url,options)=>{if(kind==='upload'){uploads++;if(provider==='openai'){assert.equal(options.body.get('purpose'),'user_data');assert.equal(options.body.get('expires_after[seconds]'),'3600');}return;}generation++;const sent=JSON.parse(options.body);assert.equal(sent.store,false);assert.equal(sent.tools,undefined);assert.equal(sent.model,model);if(provider==='openai'){assert.equal(sent.text.format.strict,true);assert.equal(sent.input[0].content[0].type,'input_file');}else{assert.ok(url.endsWith('/v1/interactions'));assert.equal(sent.input.length,1);assert.equal(sent.input[0].type,'user_input');assert.equal(sent.input[0].content[0].type,'document');assert.equal(sent.input[0].content[1].type,'text');assert.equal(sent.input[0].content[1].text,base.prompt);assert.equal(sent.response_format.mime_type,'application/json');assert.equal(sent.generation_config.tool_choice,'none');}});
   const adapter=new Class(()=> 'secret',async(...args)=>{if(args[1].method==='DELETE')deletes++;return mocked(...args);});
   const completed=await adapter.extract({...base,model});assert.equal(completed.status,'completed');assert.deepEqual(completed.candidate,result);assert.equal(completed.usage.thinkingTokens,2);assert.equal(completed.usage.cachedInputTokens,3);assert.equal(generation,1);assert.equal(uploads,1);assert.equal(deletes,1);
  });
@@ -136,3 +141,17 @@ for(const provider of ['openai','gemini'])test(`${provider}: targeted task instr
 });
 
 test('verified OpenAI long-input tariffs are versioned without changing the application window guard',()=>{for(const id of ['gpt-6.1-sol','gpt-6-astra']){const price=documentPrice(id,'2026-10-26');assert.equal(price.longInputThreshold,272000);assert.equal(price.longInputMultiplier,2);assert.equal(price.longOutputMultiplier,1.5);}});
+test('Gemini stable v1 wraps PDF and prompt in a user_input step and reads only model_output steps',async()=>{
+ let generations=0;
+ const response={...gemini(),steps:[{type:'user_input',content:[{type:'text',text:'This echoed request is not output JSON.'}]},{type:'thought',summary:[{type:'text',text:'This is not the response either.'}]},{type:'model_output',content:[{type:'text',text:'{"value":'},{type:'text',text:'"faithful"}'}]}]};
+ const adapter=new GeminiDocumentProvider(()=> 'synthetic',transport('gemini',response,(kind,url,options)=>{
+  if(kind!=='generation')return;
+  generations++;assert.ok(url.endsWith('/v1/interactions'));
+  const sent=JSON.parse(options.body);
+  assert.deepEqual(sent.input,[{type:'user_input',content:[{type:'document',uri:'https://generativelanguage.googleapis.com/v1/files/test',mime_type:'application/pdf'},{type:'text',text:base.prompt}]}]);
+  assert.equal(sent.input.some(step=>step.type==='text'||step.type==='document'),false);
+  assert.equal(sent.response_format.type,'text');assert.deepEqual(sent.response_format.schema,base.schema);
+ }));
+ const completed=await adapter.extract({...base,model:'gemini-3.8-flash'});
+ assert.equal(generations,1);assert.equal(completed.status,'completed');assert.deepEqual(completed.candidate,result);assert.equal(completed.requestId,'interaction_1');
+});

@@ -1,6 +1,6 @@
 /** Provider output is untrusted. Only local assembly assigns citation IDs and offsets. */
 export const SOURCE_INGESTION_SCHEMA_VERSION=1 as const;
-export const SOURCE_INGESTION_PROMPT_VERSION='pdf-transcription-5';
+export const SOURCE_INGESTION_PROMPT_VERSION='pdf-transcription-6';
 export const SOURCE_INGESTION_ASSEMBLY_VERSION=1;
 export const SOURCE_INGESTION_MAX_CHARACTERS=16_000_000;
 export type SourceIngestionRoute='local'|'openai'|'gemini';

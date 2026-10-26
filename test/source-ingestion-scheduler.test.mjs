@@ -109,7 +109,7 @@ for(const route of ['openai','gemini'])test(`${route} Linux PDF import uses port
  const transport=async(url,request)=>{
   if(request.method==='DELETE'){cleanup++;return Response.json({});}
   if(url.includes('/files')){upload++;return Response.json(route==='openai'?{id:'file-synthetic'}:{file:{name:'files/synthetic',uri:'https://generativelanguage.googleapis.com/v1/files/synthetic',state:'ACTIVE'}});}
-  generation++;const body=JSON.parse(request.body),prompt=route==='openai'?body.input[0].content[1].text:body.input[1].text,plan=JSON.parse(prompt),candidate=ir(plan.ownedPhysicalPages,'Synthetic source text.');
+  generation++;const body=JSON.parse(request.body),prompt=body.input[0].content[1].text,plan=JSON.parse(prompt),candidate=ir(plan.ownedPhysicalPages,'Synthetic source text.');
   return Response.json(route==='openai'?{id:'resp-synthetic',status:'completed',model:f.options.model,output:[{type:'message',content:[{type:'output_text',text:JSON.stringify(candidate)}]}],usage:{input_tokens:20,output_tokens:30}}:{id:'interaction-synthetic',status:'completed',model:f.options.model,steps:[{type:'model_output',content:[{type:'text',text:JSON.stringify(candidate)}]}],usage:{total_input_tokens:20,total_output_tokens:30}});
  };
  const adapter=route==='openai'?new OpenAIDocumentProvider(()=>'synthetic-key',transport):new GeminiDocumentProvider(()=>'synthetic-key',transport);

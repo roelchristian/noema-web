@@ -254,3 +254,29 @@ test('definite unique plain footnote labels link mid-sentence after punctuation 
  const check=value=>sourceRelationFootnotes([{node:{...nodes[0],text:value},path:[]},entries[1]],[relations[0]],'f').links.size;
  assert.equal(check('Theorem 1 states the result.'),0);assert.equal(check('The value is $x^1$.'),0);assert.equal(check('Reference.1 Another.1'),0);assert.equal(check('A value.1x'),0);
 });
+
+test('LaTeX superscript footnote labels use Noema notes and retain complete canonical marker spans',async t=>{
+ const {setupDOM}=await import('./helpers/dom.mjs'),env=setupDOM(t);const {SourceDocumentView,sourceRelationFootnotes}=await import('../src/client/sources/SourceDocumentView.tsx');
+ let text='';const nodes=[],relations=[];
+ const add=(id,kind,value)=>{const start=text.length;text+=value+'\n\n';nodes.push({id,kind,text:value,range:{startOffset:start,endOffset:start+value.length,startLine:1,endLine:1,startPage:1,endPage:1}});};
+ add('p1','paragraph','Netto [3, pp. 148–149].$^1$ and a group of order $p^2$.');add('n1','footnote','$^1$The special case $p = 2$ was treated earlier.');
+ add('p2','paragraph','A common coset $x^iH$.$^{2}$ Write the argument.');add('n2','footnote','$^{2}$This is related to the pigeonhole principle.');
+ for(const label of [1,2])relations.push({kind:'footnote-callout',from:'p'+label,to:'n'+label,uncertain:false});
+ const entries=nodes.map(node=>({node,path:[node]})),before=JSON.stringify({text,nodes}),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
+ env.dom.window.HTMLElement.prototype.scrollIntoView=function(){};
+ for(const endnotes of [false,true]){
+  await act(async()=>root.render(React.createElement(SourceDocumentView,{article:React.createRef(),fileId:'f',name:'Fixture',text,entries,ingestionRelations:relations,endnotes,selected:null,annotations:'clean',structureLabels:false,canonicalNode:id=>id,onSelect:()=>{}})));
+  assert.equal(document.querySelectorAll('a[data-footnote-reference]').length,2);assert.equal(document.querySelectorAll('[role="doc-footnote"]').length,2);
+  for(const [label,marker] of [[1,'$^1$'],[2,'$^{2}$']]){
+   const prose=nodes.find(node=>node.id==='p'+label),note=nodes.find(node=>node.id==='n'+label),at=prose.range.startOffset+prose.text.indexOf(marker),link=document.querySelector('a[aria-label="Footnote '+label+'"]'),row=document.getElementById(link.dataset.footnoteReference);
+   assert.equal(link.textContent,String(label));assert.equal(link.querySelector('.katex'),null,'callout uses the Noema superscript link');assert.equal(Number(link.dataset.sourceStart),at);assert.equal(Number(link.dataset.sourceEnd),at+marker.length);assert.equal(Number(link.firstElementChild.dataset.sourceEnd),at+marker.length);
+   const labelSpan=row.querySelector('.source-reader-footnote-label');assert.equal(labelSpan.textContent,String(label));assert.equal(labelSpan.querySelector('.katex'),null);assert.equal(Number(labelSpan.firstElementChild.dataset.sourceEnd),note.range.startOffset+marker.length);
+   const body=row.querySelector('.source-reader-text');assert.equal(Number(body.querySelector('[data-source-start]').dataset.sourceStart),note.range.startOffset+marker.length);assert.equal(body.textContent.startsWith(label===1?'The special case':'This is related'),true);assert.equal(document.querySelectorAll('[id="'+row.id+'"]').length,1);assert.equal(!!row.closest('.source-reader-endnotes'),endnotes);
+   await act(async()=>link.click());assert.equal(document.activeElement,row);await act(async()=>row.querySelector('.source-reader-footnote-back').click());assert.equal(document.activeElement,link);
+  }
+  assert.ok(document.querySelector('[data-source-node="p1"] .katex'),'legitimate powers still use KaTeX');
+ }
+ assert.equal(JSON.stringify({text,nodes}),before);
+ const ambiguous=[{node:{...nodes[0],text:'Repeated.$^1$ Another.$^1$'},path:[]},entries[1]];assert.equal(sourceRelationFootnotes(ambiguous,[relations[0]],'f').links.size,0);
+ assert.equal(sourceRelationFootnotes(entries,relations.map(r=>({...r,uncertain:true})),'f').links.size,0);
+});

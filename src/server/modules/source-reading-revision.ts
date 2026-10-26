@@ -6,7 +6,7 @@ import {Store} from '../store.js';
 import {HttpError} from '../validation.js';
 import {sourceTextHash} from './source-math-text.js';
 import {materializeSourceRevision} from './source-reprocessing.js';
-import {processedSourceDocument} from './source-document.js';
+import {resolveSourceDocument} from './source-ingestion-document.js';
 import {sourceDocumentEntries,sourceReferenceLocator} from '../../shared/source-document.js';
 
 /** Annotation storage stays on the original; projections never rewrite evidence. */
@@ -23,7 +23,7 @@ export function sourceReadingRevision(store:Store,vault:string,file:SourceFile,r
  const text=revision?.reprocessed.text??file.text,hash=sourceTextHash(text),originalHash=sourceTextHash(file.text);
  const forward=createSourceAnnotationMapper(file.text,text,revision?.patches);
  const reverse=createSourceAnnotationMapper(file.text,text,revision?.patches,true);
- const document=revision?.reprocessed.document??processedSourceDocument(file);
+ const document=revision?.reprocessed.document??resolveSourceDocument(store,file);
  function project<T extends {sourceHash:string;startOffset:number;endOffset:number}>(value:T):T|null {
   if(value.sourceHash===hash)return {...value};
   // Only known original coordinates can be projected. Historical evidence is kept intact.

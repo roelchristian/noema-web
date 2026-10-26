@@ -17,5 +17,5 @@ export function planSourceIngestionWindows(input:{pageCount:number;depth:SourceI
 
 /** Freeze compact, evidence-bound context; provider interpretation never becomes a citation fact. */
 export function sourceIngestionContextManifest(input:{title?:string|null;language?:string|null;sections?:{page:number;title:string}[];conventions?:string[]}) {
- return Object.freeze({version:1,provisional:true,evidenceBound:true,title:(input.title??'').slice(0,512)||null,language:(input.language??'').slice(0,64)||null,sections:(input.sections??[]).filter(s=>Number.isSafeInteger(s.page)&&s.page>0).slice(0,64).map(s=>Object.freeze({page:s.page,title:s.title.slice(0,256)})),conventions:(input.conventions??[]).slice(0,12).map(s=>s.slice(0,256))});
+ return Object.freeze({version:1,provisional:true,evidenceBound:true,title:(input.title??'').slice(0,512)||null,language:(input.language??'').slice(0,64)||null,sections:Object.freeze((input.sections??[]).filter(s=>Number.isSafeInteger(s.page)&&s.page>0).slice(0,64).map(s=>Object.freeze({page:s.page,title:s.title.slice(0,256)}))),conventions:Object.freeze((input.conventions??[]).slice(0,12).map(s=>s.slice(0,256)))});
 }

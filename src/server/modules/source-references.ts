@@ -1,4 +1,4 @@
-import {processedSourceDocument} from './source-document.js';
+import {resolveSourceDocument} from './source-ingestion-document.js';
 import {sourceDocumentEntries,sourceNodeLabel,sourceReferenceLocator} from '../../shared/source-document.js';
 import {mathSource,sourceTextHash} from './source-math-text.js';
 import {createHash, randomUUID} from 'node:crypto';
@@ -86,7 +86,7 @@ export function enrichCitationPages(store:Store,blocks:Block[]) {
     if(matches&&!(ref.userLocator&&ref.startOffset===undefined)){
       Object.assign(ref,referencePages(file,ref.startLine,ref.endLine));
       const key=file.id+':'+ref.sourceHash;
-      if(!documents.has(key))documents.set(key,sourceDocumentEntries(processedSourceDocument(hashes.get(file.id)===ref.sourceHash?file:mathSource(store,file))));
+      if(!documents.has(key))documents.set(key,sourceDocumentEntries(resolveSourceDocument(store,hashes.get(file.id)===ref.sourceHash?file:mathSource(store,file))));
       const entries=documents.get(key)!;
       const entry=ref.nodeId?entries.find(entry=>entry.node.id===ref.nodeId):entries.filter(({node})=>
         ref.startOffset!==undefined?node.range.startOffset<=ref.startOffset&&node.range.endOffset>(ref.startOffset):node.range.startLine<=ref.startLine&&node.range.endLine>=ref.startLine

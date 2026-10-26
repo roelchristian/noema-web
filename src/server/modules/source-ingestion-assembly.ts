@@ -20,6 +20,8 @@ export function assembleSourceIngestionDocument(input:SourceIngestionDocument,op
  for(const block of document.blocks){const list=byPage.get(block.page)??[];list.push(block);byPage.set(block.page,list);}
  const originalBlocks=new Map(document.blocks.map(block=>[block.id,block]));
  const chunks:string[]=[],pageStartLines:number[]=[],blockRanges:SourceIngestionAssembledBlock[]=[],structuralNodes:SourceStructureNode[]=[];
+ const blocksByPage=new Map<number,SourceIngestionDocument['blocks']>();
+ for(const block of document.blocks){const page=blocksByPage.get(block.page)??[];page.push(block);blocksByPage.set(block.page,page);}
  let offset=0,line=1;
  const append=(value:string)=>{chunks.push(value);offset+=value.length;line+=(value.match(/\n/g)?.length??0);};
  for(const page of [...document.pages].filter(p=>p.role==='owned').sort((a,b)=>a.number-b.number)){
@@ -36,7 +38,7 @@ export function assembleSourceIngestionDocument(input:SourceIngestionDocument,op
  }
  const text=chunks.join('');
  if(!blockRanges.some(b=>b.text.trim()))throw new Error('No readable transcription; page markers are not source prose');
- const ids=new Map(blockRanges.map(b=>[b.temporaryId,b.id])),rangeById=new Map(blockRanges.map(b=>[b.temporaryId,b.range]));
+ const ids=new Map(blockRanges.map(b=>[b.temporaryId,b.id])),rangeById=new Map(blockRanges.map(b=>[b.temporaryId,b.range])),blocksById=new Map(document.blocks.map(block=>[block.id,block]));
  const repairs=document.repairs.map(repair=>{const range=rangeById.get(repair.blockId)!,block=originalBlocks.get(repair.blockId)!;return {...repair,blockId:ids.get(repair.blockId)!,startOffset:range.startOffset+repair.start,endOffset:range.startOffset+repair.end,startLine:range.startLine+(block.text.slice(0,repair.start).match(/\n/g)?.length??0),endLine:range.startLine+(block.text.slice(0,Math.max(repair.start,repair.end-1)).match(/\n/g)?.length??0)};});
  const semanticNodes:SourceDocumentNode[]=blockRanges.map(block=>{
   const original=originalBlocks.get(block.temporaryId)!;

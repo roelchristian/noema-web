@@ -1,3 +1,6 @@
+import type {SourceDocument} from '../../shared/source-document.js';
+import {sourceDocumentEntries} from '../../shared/source-document.js';
+import {resolveSourceDocument} from './source-ingestion-document.js';
 import {mathSource} from './source-math-text.js';
 import {createHash,randomUUID} from 'node:crypto';
 import type {SourceFile,SourceReference,SourceStructureNode} from '../../shared/domain.js';
@@ -39,7 +42,7 @@ export function passageReference(row:SourcePassage):SourceReference {
 
 /** UTF-16 offsets address canonical sourceTextLines().join('\n'), as in the source viewer.
  * Byte budgets avoid overflowing the embedding API for Unicode-heavy documents. */
-function chunkSource(file:SourceFile,generationId:string,countTokens?:PassageTokenizer):SourcePassage[] {
+export function chunkSource(file:SourceFile,generationId:string,countTokens?:PassageTokenizer,richDocument?:SourceDocument):SourcePassage[] {
   const lines=sourceTextLines(file.text),text=lines.join('\n'),sourceHash=hash(file.text),contentEnd=text.trimEnd().length;
   const lineStarts:number[]=[],headings:{offset:number;text:string}[]=[];
   let offset=0;
@@ -57,6 +60,21 @@ function chunkSource(file:SourceFile,generationId:string,countTokens?:PassageTok
     if(existing)existing.text=headingContext(node.text);
     else headings.push({offset:nodeOffset,text:headingContext(node.text)});
   }
+  // Rich leaf boundaries keep small tables, equations and apparatus intact.
+  // Legacy sources retain precisely their existing chunk algorithm and identities.
+  const protectedRanges=(richDocument?.ingestion?sourceDocumentEntries(richDocument):[]).filter(({node})=>node.ingestion&&['table','equation','footnote'].includes(node.ingestion.kind)).map(({node})=>({start:node.range.startOffset,end:node.range.endOffset,kind:node.ingestion!.kind})).filter(r=>r.start>=0&&r.end>r.start&&r.end<=text.length);
+  headings.sort((a,b)=>a.offset-b.offset);
+  const originalHeadings=[...headings],headingOffsets=new Set(headings.map(h=>h.offset));
+  const contextAt=(position:number)=>{let low=0,high=originalHeadings.length;while(low<high){const mid=(low+high)>>>1;if(originalHeadings[mid]!.offset<=position)low=mid+1;else high=mid;}return originalHeadings[low-1]?.text??null;};
+  const addBoundary=(offset:number,text:string)=>{if(!headingOffsets.has(offset)){headings.push({offset,text});headingOffsets.add(offset);}};
+  for(const region of protectedRanges){
+    const prior=contextAt(region.start);
+    addBoundary(region.start,headingContext([prior,region.kind].filter(Boolean).join(' · ')));
+    if(region.end<contentEnd)addBoundary(region.end,prior??'');
+  }
+  const protectedByStart=new Map(protectedRanges.map(r=>[r.start,r]));
+  const pageMarkers=new Map<number,number>();
+  if(richDocument?.ingestion)for(const page of richDocument.physical.pages){const start=page.range.startOffset,marker=`<!-- Page ${page.number} -->`;if(text.slice(start,start+marker.length)===marker){pageMarkers.set(start,start+marker.length);addBoundary(start,contextAt(start)??'');}}
   headings.sort((a,b)=>a.offset-b.offset);
   const lineAt=(position:number)=>{
     let lo=0,hi=lineStarts.length;
@@ -68,7 +86,7 @@ function chunkSource(file:SourceFile,generationId:string,countTokens?:PassageTok
   if(file.format==='pdf'&&!pageStarts.length&&file.pages===1)pageStarts=[1];
   const passages:SourcePassage[]=[],occurrences=new Map<string,number>();let start=0,headingIndex=-1;
   while(start<contentEnd) {
-    while(start<contentEnd&&/\s/u.test(text[start]!))start++;
+    while(start<contentEnd){const markerEnd=pageMarkers.get(start);if(markerEnd!==undefined){start=markerEnd;continue;}if(/\s/u.test(text[start]!)){start++;continue;}break;}
     if(start>=contentEnd)break;
     while(headingIndex+1<headings.length&&headings[headingIndex+1]!.offset<=start)headingIndex++;
     const sectionEnd=Math.min(contentEnd,headings[headingIndex+1]?.offset??contentEnd);
@@ -78,6 +96,8 @@ function chunkSource(file:SourceFile,generationId:string,countTokens?:PassageTok
       if(bytes+size>TARGET_BYTES)break;
       bytes+=size;end+=point>0xffff?2:1;
     }
+    const protectedRegion=protectedByStart.get(start);
+    if(protectedRegion?.end===sectionEnd&&Buffer.byteLength(text.slice(start,sectionEnd),'utf8')<=MAX_PASSAGE_BYTES)end=sectionEnd;
     if(end<sectionEnd) {
       const candidate=text.slice(start,end);
       // Sections never share a chunk; within a section prefer paragraph boundaries.
@@ -165,7 +185,8 @@ export class SourcePassages {
         this.store.run('DELETE FROM source_passage_dirty WHERE file_id=?',fileId);return;
       }
       const rawText=file.text;file=mathSource(this.store,file);
-      const sourceHash=hash(file.text),contextHash=hash(JSON.stringify([file.entity_id,file.vault_id,file.format,file.pages,file.page_start_lines,file.structural_nodes]));
+      const richDocument=file.ingestion_origin&&file.ingestion_origin!=='local'?resolveSourceDocument(this.store,file):undefined;
+      const sourceHash=hash(file.text),contextHash=hash(JSON.stringify([file.entity_id,file.vault_id,file.format,file.pages,file.page_start_lines,file.structural_nodes,...(richDocument?.ingestion?[richDocument.ingestion.documentId,richDocument.ingestion.contentHash,richDocument.ingestion.assemblyVersion]:[])]));
       const state=this.store.get<{source_hash:string;context_hash:string;chunk_version:number;status:string;active_generation_id:string|null}>('SELECT * FROM source_passage_state WHERE file_id=?',fileId);
       if(state?.active_generation_id&&state.source_hash===sourceHash&&state.context_hash===contextHash&&state.chunk_version===CHUNK_VERSION) {
         this.store.run("UPDATE source_passage_state SET status='completed',error=NULL WHERE file_id=?",fileId);
@@ -173,7 +194,7 @@ export class SourcePassages {
       }
       const generationId=randomUUID();
       // Construction and validation finish before touching the active passage set.
-      const passages=chunkSource(file,generationId,this.countTokens);
+      const passages=chunkSource(file,generationId,this.countTokens,richDocument);
       const previous=this.store.all<SourcePassage>('SELECT * FROM source_passages WHERE file_id=? ORDER BY ordinal',fileId);
       const identities=new Map<string,SourcePassage[]>();
       for(const row of previous) {

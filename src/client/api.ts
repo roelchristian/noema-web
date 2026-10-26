@@ -42,8 +42,8 @@ export async function uploadImage(vault: string, file: File): Promise<{id: strin
   if(!response.ok) throw new ApiError(response.status,result.error || 'Image upload failed');
   return result;
 }
-export async function uploadSourceFile(vault:string,file:File,entityId?:string,containsMath=false):Promise<import('../shared/domain').SourceFile> {
-  const params=new URLSearchParams({name:file.name,containsMath:String(containsMath)});if(entityId)params.set('entity',entityId);
+export async function uploadSourceFile(vault:string,file:File,entityId?:string,containsMath=false,ingestion?:import('../shared/source-ingestion').SourceIngestionOptions,stagingKey?:string):Promise<import('../shared/domain').SourceFile> {
+  const params=new URLSearchParams({name:file.name,containsMath:String(containsMath)});if(entityId)params.set('entity',entityId);if(ingestion)params.set('ingestion',JSON.stringify(ingestion));if(stagingKey)params.set('stagingKey',stagingKey);
   const response=await fetch('/api/source-files?'+params,{method:'POST',headers:{'X-Noema-Request':'1','X-Vault-Id':vault,'Content-Type':'application/octet-stream'},body:file});
   const result=await response.json();if(!response.ok)throw new ApiError(response.status,result.error||'Source upload failed');return result;
 }

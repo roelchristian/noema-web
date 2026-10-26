@@ -1,5 +1,6 @@
 import {useEffect,useId,useRef,useState,type FormEvent} from 'react';
-import {api} from '../api';
+import {api,request} from '../api';
+import type {PdfProcessingCapabilities} from '../knowledge/SourcePdfProcessing';
 import {getLocale} from '../i18n';
 import {geminiApiKeyMaxLength,type SpeechCredentialStatus} from '../../shared/intelligence';
 
@@ -10,6 +11,9 @@ const stateLabels:Record<ConnectionState,string>={ready:'Ready','setup-required'
 export function ProviderConnection({provider,onChange}:{provider:'openai'|'gemini';onChange?:(status:SpeechCredentialStatus)=>void}) {
   const label=provider==='openai'?'OpenAI':'Gemini',id=useId();
   const [status,setStatus]=useState<SpeechCredentialStatus|null>(null),[state,setState]=useState<ConnectionState>('checking');
+  const [documents,setDocuments]=useState<PdfProcessingCapabilities|null>(null);
+  useEffect(()=>{const controller=new AbortController();setDocuments(null);void request<PdfProcessingCapabilities>('source-ingestion/capabilities','GET',undefined,undefined,controller.signal).then(setDocuments).catch(()=>{});return()=>controller.abort();},[provider,status?.configured]);
+  const documentProvider=documents?.providers.find(item=>item.provider===provider);
   const [key,setKey]=useState(''),[days,setDays]=useState(30),[busy,setBusy]=useState(false),[message,setMessage]=useState('');
   const revision=useRef(0),mounted=useRef(false),onChangeRef=useRef(onChange);
   onChangeRef.current=onChange;
@@ -19,7 +23,7 @@ export function ProviderConnection({provider,onChange}:{provider:'openai'|'gemin
     void (provider==='openai'?api.intelligence():api.geminiCredential()).then(value=>{
       if(!mounted.current||current!==revision.current)return;
       const next={configured:value.configured,expiresAt:value.expiresAt};setStatus(next);setState(next.configured?'ready':'setup-required');onChangeRef.current?.(next);
-    }).catch(()=>{if(mounted.current&&current===revision.current){setState('error');setMessage('Secure storage is unavailable. Unlock your macOS login keychain and try again.');}});
+    }).catch(()=>{if(mounted.current&&current===revision.current){setState('error');setMessage('Secure credential storage is unavailable. Check this server’s configured secret store and try again.');}});
     return()=>{mounted.current=false;revision.current++;};
   },[provider]);
   async function perform(action:'save'|'remove'|'validate'|'refresh') {
@@ -46,7 +50,8 @@ export function ProviderConnection({provider,onChange}:{provider:'openai'|'gemin
   function submit(event:FormEvent){event.preventDefault();void perform('save');}
   return <section className="provider-connection" aria-label={label+' connection'} aria-busy={busy}>
     <div className="ai-setting-row"><strong>{label}</strong><span role="status" data-connection-state={state}>{stateLabels[state]}</span></div>
-    <p>Available across all vaults. Credentials use macOS Keychain; search indexing is configured separately for each vault.</p>
+    <p>Available across all vaults. Credentials stay on the server in its configured secret store (macOS Keychain or explicitly configured server credentials); search indexing is configured separately for each vault.</p>
+    {documents&&<div className="section-hint" aria-label="PDF document capabilities"><p>PDF ingestion: {!documents.enabled?'development capability disabled':documentProvider?.available?'credential configured; account model access is checked when a request starts':'provider credential unavailable'}.</p><p>Local PDF extraction: {documents.localExtraction?'available':'unavailable on this server'}. PDF page rendering and admission are checked before use.</p>{documents.enabled&&!!documentProvider?.models.length&&<p>Verified document models: {documentProvider.models.map(model=>model.id).join(', ')}. Writing, speech and embedding models remain separate choices.</p>}</div>}
     <details className="settings-advanced ai-key-settings" onToggle={event=>{if(!event.currentTarget.open)setKey('');}}>
       <summary>Manage {label} connection</summary>
       {status?.configured&&status.expiresAt&&<p>Credential expires {new Date(status.expiresAt).toLocaleString(getLocale())}.</p>}

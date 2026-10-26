@@ -1,3 +1,5 @@
+import {SourcePdfProcessing,initialPdfIngestionOptions} from './SourcePdfProcessing';
+import type {SourceIngestionOptions} from '../../shared/source-ingestion';
 import {ReferentStatusPicker} from './ReferentStatusPicker';
 import {maxSourceBytes,pastedSourceFilename,validatePastedSourceText} from '../../shared/source-input';
 import {t as uiText} from '../i18n';
@@ -25,8 +27,12 @@ export function CreateEntityDialog({vaultId, initial, onSubmit, onClose}: {vault
   const submitting=useRef(false);
   const [stagedSource,setStagedSource]=useState<SourceFile|null>(null);
   const [containsMath,setContainsMath]=useState(false);
+  const [pdfOptions,setPdfOptions]=useState<SourceIngestionOptions>(initialPdfIngestionOptions),[pdfReady,setPdfReady]=useState(true);
+  const stagingKey=useRef(crypto.randomUUID());
+  function changePdfOptions(options:SourceIngestionOptions){setPdfOptions(options);setStagedSource(null);stagingKey.current=crypto.randomUUID();}
   const [aliases, setAliases] = useState('');
   const [sourceMethod,setSourceMethod]=useState<''|'file'|'url'|'text'>('');
+  const isPdf=sourceMethod==='file'&&!!sourceFile&&/\.pdf$/i.test(sourceFile.name);
   const [nameEdited,setNameEdited]=useState(!!initial.name);
   let suggestedName=sourceMethod==='text'?'Pasted text':sourceFile?.name.slice(0,200)??'';
   if(sourceMethod==='url') {
@@ -40,7 +46,7 @@ export function CreateEntityDialog({vaultId, initial, onSubmit, onClose}: {vault
   const resolvedName=type==='source'&&!nameEdited?suggestedName:name;
   const sourceReady=sourceMethod==='file'?!!sourceFile:sourceMethod==='url'?!!sourceUrl.trim():sourceMethod==='text'?sourceText.length>0:false;
   function selectFile(file:File|null) {
-    setStagedSource(null);setError('');setSourceFile(null);
+    setStagedSource(null);stagingKey.current=crypto.randomUUID();setError('');setSourceFile(null);
     if(!file)return;
     if(!/\.(txt|md|pdf)$/i.test(file.name)){setError('Choose a TXT, MD, or PDF file.');return;}
     if(!file.size||file.size>maxSourceBytes){setError('Choose a nonempty file of 50 MB or smaller.');return;}
@@ -50,6 +56,7 @@ export function CreateEntityDialog({vaultId, initial, onSubmit, onClose}: {vault
   async function submit(e: FormEvent) {
     e.preventDefault();
     if(submitting.current||busy)return;
+    if(type==='source'&&isPdf&&!pdfReady)return;
     if(type==='source'&&sourceMethod==='text'){try{validatePastedSourceText(sourceText);}catch(reason){setError(reason instanceof Error?reason.message:'Enter valid source text.');return;}}
     if(!allowedTypes.includes(type)||(type==='source'?!sourceReady:!resolvedName.trim()))return;
     submitting.current=true;setBusy(true);setError('');
@@ -57,7 +64,7 @@ export function CreateEntityDialog({vaultId, initial, onSubmit, onClose}: {vault
       let source=stagedSource;
       if(type==='source'&&!source) {
         source=sourceMethod==='file'
-          ? await uploadSourceFile(vaultId,sourceFile!,undefined,containsMath)
+          ? await uploadSourceFile(vaultId,sourceFile!,undefined,containsMath,isPdf?{...pdfOptions,containsMath}:undefined,stagingKey.current)
           : sourceMethod==='text'
           ? await uploadSourceFile(vaultId,new File([sourceText],pastedSourceFilename(resolvedName),{type:'text/plain'}),undefined,containsMath)
           : await request<SourceFile>('source-files/url','POST',{url:sourceUrl.trim(),containsMath},vaultId);
@@ -81,9 +88,10 @@ export function CreateEntityDialog({vaultId, initial, onSubmit, onClose}: {vault
           : sourceMethod==='text'
           ? <label key="text" htmlFor="pasted-source-text">{uiText("Source text")}<textarea id="pasted-source-text" name="source-text" required rows={10} value={sourceText} aria-describedby="pasted-source-help" disabled={busy} onChange={event=>{setSourceText(event.target.value);setStagedSource(null);setError('');}} placeholder={uiText("Paste your source text here")}/><span id="pasted-source-help" className="source-math-help">{uiText("Plain text, up to 16 MB in UTF-8. Your text is uploaded as a TXT source without changing its content.")}</span></label>
           : <label key="url">{uiText("Source URL")}<input type="url" inputMode="url" required value={sourceUrl} onChange={event=>{setSourceUrl(event.target.value);setStagedSource(null);setError('');}} disabled={busy} placeholder={uiText("https://example.com/article")}/></label>}
-        <label className="source-math-option"><input type="checkbox" checked={containsMath} disabled={busy} onChange={event=>{setContainsMath(event.target.checked);setStagedSource(null);}} aria-describedby="source-math-help"/><span>{uiText("This document contains substantial mathematical notation")}</span></label>
+        {isPdf&&<SourcePdfProcessing vaultId={vaultId} value={pdfOptions} onChange={changePdfOptions} onReady={setPdfReady} disabled={busy}/>}
+        <label className="source-math-option"><input type="checkbox" checked={containsMath} disabled={busy} onChange={event=>{setContainsMath(event.target.checked);setStagedSource(null);stagingKey.current=crypto.randomUUID();}} aria-describedby="source-math-help"/><span>{uiText("This document contains substantial mathematical notation")}</span></label>
         <p id="source-math-help" className="source-math-help">{uiText("Prepare mathematical notation for rendering during source processing. Leave unchecked for ordinary prose.")}</p>
-        <SourcePolicy method={sourceMethod}/>
+        <SourcePolicy method={sourceMethod} ingestionRoute={isPdf?pdfOptions.route:undefined}/>
       </section>}
 
       <label>{uiText("Name")}<input name="entity-name" autoFocus={type!=='source'} required={type!=='source'} maxLength={200} value={resolvedName} onChange={e => {setName(e.target.value);setNameEdited(true);}} disabled={busy} placeholder={type==='source'?uiText(sourceMethod==='text'?"Pasted text":"Uses the source filename"):namePlaceholder[type] ?? uiText("Entity name")} autoComplete="off"/></label>
@@ -94,6 +102,6 @@ export function CreateEntityDialog({vaultId, initial, onSubmit, onClose}: {vault
       {schemaError && <p className="dialog-error" role="alert">{schemaError}</p>}
       {error && <p className="dialog-error" role="alert">{error}</p>}
     </div>
-    <footer className="dialog-actions create-entity-actions"><button type="button" className="button" onClick={cancel} disabled={busy}>{uiText("Cancel")}</button><button className="button primary" disabled={busy||(type==='source'?!sourceReady:!resolvedName.trim())}>{busy?uiText("Creating…"):initial.intent==='insert'?uiText("Create and insert"):initial.source?uiText("Create source"):uiText("Create entity")}</button></footer>
+    <footer className="dialog-actions create-entity-actions"><button type="button" className="button" onClick={cancel} disabled={busy}>{uiText("Cancel")}</button><button className="button primary" disabled={busy||(type==='source'?!sourceReady||isPdf&&!pdfReady:!resolvedName.trim())}>{busy?uiText("Creating…"):initial.intent==='insert'?uiText("Create and insert"):initial.source?uiText("Create source"):uiText("Create entity")}</button></footer>
   </form></Modal>;
 }

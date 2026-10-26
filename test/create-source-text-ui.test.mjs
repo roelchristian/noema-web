@@ -89,3 +89,27 @@ test('existing file and URL source paths still stage an attachment',async t=>{
   assert.equal(JSON.parse(f.requests[1].options.body).url,'https://example.com/reference.txt');
   assert.equal(f.created[1].type,'source');assert.equal(f.requests.length,2);
 });
+
+test('PDF provider upload freezes consent and options and retries entity creation without another upload',async t=>{
+ let failEntity=true;
+ const f=await fixture(t,{onSubmit:async()=>{if(failEntity)throw new Error('Entity not saved');},upload:async(route)=>route.includes('capabilities')?Response.json({enabled:true,localExtraction:false,providers:[{provider:'openai',available:true,models:[{id:'fixture-pdf-model'}]},{provider:'gemini',available:false,models:[]}]}):Response.json({id:'provider.pdf',name:'fixture.pdf'})});
+ await f.method('file');
+ const input=document.querySelector('input[type=file]');
+ await act(async()=>input[Object.keys(input).find(key=>key.startsWith('__reactProps'))].onChange({target:{files:[new File(['%PDF synthetic'],'fixture.pdf',{type:'application/pdf'})]}}));
+ const route=document.querySelector('[aria-label="PDF processing"]');assert.ok(route);
+ assert.equal(route.querySelector('[value="local"]').disabled,true);
+ await f.enter(route,'openai');
+ await f.submit();assert.equal(f.created.length,0,'PDF cannot be transmitted without affirmative consent');
+ const consent=[...document.querySelectorAll('input[type=checkbox]')].find(item=>item.closest('label').textContent.includes('Allow selected source evidence'));
+ await act(async()=>consent[Object.keys(consent).find(key=>key.startsWith('__reactProps'))].onChange({target:{checked:true}}));
+ await f.submit();
+ const uploads=f.requests.filter(item=>new URL(item.route,'http://localhost').pathname==='/api/source-files');assert.equal(uploads.length,1);
+ const options=JSON.parse(new URL(uploads[0].route,'http://localhost').searchParams.get('ingestion'));
+ assert.equal(options.route,'openai');assert.equal(options.model,'fixture-pdf-model');assert.equal(options.depth,'balanced');assert.equal(options.reviewPolicy,'verified');assert.equal(options.transmissionConsent,true);
+ failEntity=false;await f.submit();assert.equal(f.requests.filter(item=>new URL(item.route,'http://localhost').pathname==='/api/source-files').length,1);
+ assert.equal(f.created.length,2);assert.deepEqual(f.created[0].attachmentIds,f.created[1].attachmentIds);
+ await f.enter(document.querySelector('[aria-label="Reconstruction depth"]'),'light');await f.submit();
+ const changedUploads=f.requests.filter(item=>new URL(item.route,'http://localhost').pathname==='/api/source-files');assert.equal(changedUploads.length,2,'Changing frozen options invalidates the staged attachment');
+ assert.equal(JSON.parse(new URL(changedUploads[1].route,'http://localhost').searchParams.get('ingestion')).depth,'light');
+ assert.notEqual(new URL(changedUploads[0].route,'http://localhost').searchParams.get('stagingKey'),new URL(changedUploads[1].route,'http://localhost').searchParams.get('stagingKey'));
+});

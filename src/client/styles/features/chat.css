@@ -422,3 +422,38 @@ main > .chat-workspace:not([hidden]) { flex: 1; height: auto; min-height: 0; }
 .chat-mention-group button strong { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--ui-text-sm); font-weight: 400; }
 .chat-mention-group button small { display: block; margin-top: 2px; white-space: normal; overflow-wrap: anywhere; }
 @media (pointer: coarse) { .chat-context-trigger, .chat-context-remove { min-height: 44px; } .chat-context-remove { width: 44px; } }
+
+/* Research reader: user questions remain bubbles; answers sit on the reading surface. */
+.chat-message.is-assistant { max-width: 74ch; margin-bottom: 32px; }
+.chat-message.is-assistant .chat-message-body { width: 100%; padding: 0; border-radius: 0; background: transparent; }
+.chat-message.is-assistant :is(.chat-claim, .chat-prose) { margin-bottom: 20px; font-size: 15px; line-height: 1.85; }
+.chat-message.is-assistant :is(.chat-claim, .chat-prose):last-child { margin-bottom: 0; }
+.chat-attribution:not(.sr-only) { font-size: 12px; padding: 2px 7px; margin-bottom: 7px; }
+.chat-citation { font-size: 12px; min-height: 28px; min-width: 28px; }
+.chat-citation[aria-pressed=true] { background: var(--chat-selected); border-color: var(--chat-muted); color: var(--text); }
+.chat-references { font-size: 12px; min-height: 36px; }
+.chat-workspace.has-evidence { grid-template-columns: 270px minmax(0, 1fr) var(--chat-evidence-width, 360px); }
+.chat-workspace.has-evidence.is-history-collapsed { grid-template-columns: 0 minmax(0, 1fr) var(--chat-evidence-width, 360px); }
+.chat-evidence { position: relative; padding-left: 24px; }
+.chat-evidence-kind { font-size: 12px; line-height: 1.6; }
+.chat-evidence blockquote { font-size: 14px; }
+.chat-evidence-index-link { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; margin-top: 10px; padding: 6px 0; border: 0; background: transparent; color: var(--chat-muted); text-align: left; font-size: 12px; }
+.chat-evidence-index-link .icon { width: 14px; height: 14px; }
+.chat-evidence-group + .chat-evidence-group { padding-top: 12px; border-top: 1px solid var(--chat-border); }
+.chat-evidence-group h3 { margin: 8px 0; font-size: 13px; font-weight: 550; }
+.chat-evidence-group h3 small { display: block; font-size: 11px; font-weight: 400; }
+.chat-evidence-group button { display: block; width: 100%; margin-bottom: 4px; }
+.chat-evidence-group button strong { font-size: 12px; font-weight: 500; }
+.chat-evidence-list small { font-size: 11px; line-height: 1.6; }
+.chat-evidence-preview { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; margin-top: 6px; color: var(--chat-muted); font-size: 12px; line-height: 1.6; white-space: pre-wrap; }
+.chat-evidence-resize { position: absolute; top: 0; bottom: 0; left: 0; width: 10px; z-index: 1; cursor: col-resize; touch-action: none; }
+.chat-evidence-resize:hover, .chat-evidence-resize:focus-visible { background: var(--chat-selected); }
+@media (max-width: 1200px) and (min-width: 751px) {
+ .chat-workspace.has-evidence, .chat-workspace.has-evidence.is-history-collapsed { grid-template-columns: 0 minmax(0, 1fr) var(--chat-evidence-width, 320px); }
+}
+@media (max-width: 750px) {
+ .chat-workspace.has-evidence, .chat-workspace.has-evidence.is-history-collapsed { grid-template-columns: minmax(0, 1fr); }
+ .chat-evidence { position: fixed; padding-left: 20px; }
+ .chat-citation { min-width: 44px; min-height: 44px; }
+}
+@media (pointer: coarse) { .chat-citation, .chat-references { min-height: 44px; min-width: 44px; } }

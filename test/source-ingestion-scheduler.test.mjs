@@ -222,3 +222,11 @@ test('each paid attempt preserves its exact transmitted PDF hash across repeated
 
 test('a failed or queued legacy retry cannot replace existing canonical text through initial ingestion',t=>{const f=setup(t);for(const status of ['failed','queued']){f.store.run('UPDATE source_files SET status=?,text=? WHERE id=?',status,'Existing canonical source with citation anchors.',f.file.id);assert.throws(()=>f.ingestion.stage('default',f.file.id,f.options),/immutable/);assert.equal(f.store.get('SELECT count(*) n FROM source_ingestion_runs').n,0);assert.equal(f.files.require('default',f.file.id).text,'Existing canonical source with citation anchors.');}assert.equal(f.calls(),0);});
 test('legacy flattened bytes without retained original cannot become provider original evidence',async t=>{const f=setup(t);f.store.run('UPDATE source_files SET pdf_flattened=1 WHERE id=?',f.file.id);let calls=0;await assert.rejects(()=>f.files.prepareProviderPDF('default',f.file.id,{admit:async()=>{calls++;throw Error('Unexpected admission');},count:async()=>{calls++;return 1;}}),error=>error.status===409&&/Re-upload the original/.test(error.message));assert.equal(calls,0);assert.equal(f.files.evidence('default',f.file.id).originalAvailable,false);});
+
+test('processing view exposes durable window checkpoints without dispatching work',async t=>{
+ const f=setup(t);f.ingestion.stage('default',f.file.id,f.options);await f.ingestion.tick();
+ const before=f.calls(),view=f.ingestion.view('default',f.file.id);
+ assert.equal(view.depth,'balanced');assert.equal(view.reviewPolicy,'verified');assert.equal(view.windows.length,1);
+ assert.deepEqual(view.windows[0].pages,[1,2]);assert.equal(view.windows[0].state,'completed');assert.equal(view.windows[0].attempts,1);assert.equal(view.windows[0].error,null);
+ assert.equal(f.calls(),before);
+});

@@ -58,4 +58,6 @@ export interface SourceProcessingRunView {
  provider:SourceIngestionRoute;model:string|null;pageCount:number;completedPages:number;completedWindows:number;totalWindows:number;
  activePages:number[];pendingReview:number;startedAt:string;updatedAt:string;
  error:string|null;warnings?:string[];canRetryOptional?:boolean;unknownOutcome:boolean;canResume:boolean;
+ windows?:{id:string;number:number;kind:'extraction'|'relations'|'page-recovery';pages:number[];state:string;repairState:string;attempts:number;error:string|null}[];
+ depth?:SourceIngestionDepth;reviewPolicy?:SourceIngestionReviewPolicy;
 }

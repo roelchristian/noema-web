@@ -20,7 +20,9 @@ export class PdfPlatform {
   if(bytes.length>maxBytes)return Promise.reject(new HttpError(413,'PDF exceeds the application byte limit.'));
   if(operation==='sanitize'&&!this.sandboxAvailable())return Promise.reject(new HttpError(503,'This PDF requires passive reconstruction, but the isolated portable PDF sandbox is unavailable.'));
   if(signal?.aborted)return Promise.reject(new HttpError(409,'PDF processing was stopped.'));
-  const script=fileURLToPath(new URL('./pdf-platform-worker.js',import.meta.url));
+  // tsx development runs the parent from src; the isolated worker still runs
+  // compiled JavaScript with Node, just as it does in production.
+  const script=fileURLToPath(new URL(import.meta.url.endsWith('.ts')?'../../../dist/server/modules/pdf-platform-worker.js':'./pdf-platform-worker.js',import.meta.url));
   if(!existsSync(script))return Promise.reject(new HttpError(503,'Build the portable PDF worker before using PDF operations.'));
   const workerArgs=['--max-old-space-size=384',script];
   // Sanitization cannot access vaults, credentials, the network or writable host paths.

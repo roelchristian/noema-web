@@ -2516,3 +2516,24 @@ main.source-workspace > #content > .source-reader[data-reader-width='wide'] {
 }
 
 .source-pdf-processing :is(.source-pdf-enable, .source-pdf-route) > input { display: inline-block; width: 16px; height: 16px; padding: 0; margin-inline: 0; accent-color: var(--accent); }
+
+.source-ingestion-monitor { border:1px solid var(--line); border-radius:var(--radius-md, 12px); padding:20px; margin:16px 0; background:var(--surface); font-size:var(--ui-text-md); }
+.source-ingestion-heading { display:flex; align-items:center; gap:16px; }
+.source-ingestion-heading > div { flex:1; min-width:0; }
+.source-ingestion-eyebrow { color:var(--text-muted); margin:0 0 8px; }
+.source-ingestion-percent { font-variant-numeric:tabular-nums; font-size:24px; font-weight:600; }
+.source-ingestion-checkpoints { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; padding:0; margin:20px 0; list-style:none; }
+.source-ingestion-checkpoints li { display:flex; gap:8px; align-items:flex-start; color:var(--text-muted); }
+.source-ingestion-checkpoints strong,.source-ingestion-checkpoints small { display:block; }
+.source-ingestion-checkpoints strong { font-size:inherit; }
+.source-ingestion-checkpoints small { margin-top:4px; font-size:var(--ui-text-xs); }
+.source-ingestion-checkpoints [aria-current],.source-ingestion-checkpoints [data-status="completed"] { color:var(--text); }
+.source-ingestion-step { display:grid; place-items:center; width:24px; height:24px; flex-shrink:0; border:1px solid currentColor; border-radius:50%; font-size:var(--ui-text-xs); }
+.source-ingestion-details { border-top:1px solid var(--line); margin-top:16px; padding-top:12px; }
+.source-ingestion-details summary { cursor:pointer; }
+.source-ingestion-help { color:var(--text-muted); }
+.source-ingestion-windows { padding-left:24px; }
+.source-ingestion-windows li { padding:12px 0; border-bottom:1px solid var(--line); overflow-wrap:anywhere; }
+.source-ingestion-windows li > div { display:flex; flex-wrap:wrap; gap:8px 16px; }
+.source-ingestion-windows strong { flex-basis:100%; }
+@media (max-width:600px) { .source-ingestion-checkpoints { grid-template-columns:repeat(2,minmax(0,1fr)); } .source-ingestion-monitor { padding:14px; } }

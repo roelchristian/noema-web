@@ -103,7 +103,7 @@ test('completed provider benchmark summary retains model and stable recorded wal
  assert.match(document.body.textContent,/2m 5s recorded wall time.*Includes queueing, pauses and retries/);
  assert.match(document.body.textContent,/AI activity log, or Export CSV/);
  assert.doesNotMatch(document.body.textContent,/Building search index/);
- assert.equal(document.querySelector('progress'),null);assert.equal(document.querySelector('button'),null);
+ assert.equal(document.querySelector('progress').value,100);assert.equal(document.querySelector('button'),null);
  await act(async()=>root.render(React.createElement(SourceIngestionProgress,{vaultId:'v',fileId:'f',onPresence:()=>{}})));
  assert.match(document.body.textContent,/2m 5s recorded wall time/,'Reopening completed work must not count time since completion');
 });
@@ -120,4 +120,20 @@ test('unreadable provider page recovery is explicit, page-bound and creates only
  assert.match(document.body.textContent,/original transcription remains unchanged/);assert.match(document.body.textContent,/manual acceptance in revision review/);assert.equal(document.querySelector('.source-evidence-comparison pre').textContent,'','The PDF baseline is not replaced with a fabricated all-added diff');
  await act(async()=>{const select=document.querySelector('select');select.value='2';select.dispatchEvent(new Event('change',{bubbles:true}));});assert.equal(document.querySelector('.source-evidence-comparison pre').textContent,baseline);assert.equal([...document.querySelectorAll('button')].some(button=>button.textContent==='Recover unreadable page'),false,'Readable pages cannot request missing-page recovery');
  await act(async()=>{const select=document.querySelector('select');select.value='3';select.dispatchEvent(new Event('change',{bubbles:true}));});assert.equal([...document.querySelectorAll('button')].some(button=>button.textContent==='Recover unreadable page'),false,'Context-only pages cannot own recovery output');assert.equal(calls.filter(call=>call.options.method==='POST').length,1);
+});
+
+test('failed PDF monitor shows retained checkpoints and details without retrying',async t=>{
+ const {setupDOM}=await import('./helpers/dom.mjs');const {SourceIngestionProgress}=await import('../src/client/knowledge/SourceIngestionProgress.tsx');
+ const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
+ const calls=[];
+ const run={id:'r',fileId:'f',mode:'ingestion',state:'failed',stage:'extraction',provider:'openai',model:'fixture-model',pageCount:15,completedPages:5,completedWindows:1,totalWindows:3,activePages:[],pendingReview:0,startedAt:'2026-10-26T00:00:00Z',updatedAt:'2026-10-26T00:02:00Z',error:'Incompatible continued block kinds or table dimensions',unknownOutcome:false,canResume:true,windows:[{id:'w1',number:1,kind:'extraction',pages:[1,2,3,4,5],state:'completed',repairState:'pending',attempts:1,error:null},{id:'w2',number:2,kind:'extraction',pages:[6,7,8,9,10],state:'failed',repairState:'pending',attempts:2,error:'Incompatible continued block kinds or table dimensions'}]};
+ t.mock.method(globalThis,'fetch',async(route,options)=>{calls.push({route,options});return Response.json(run);});
+ await act(async()=>root.render(React.createElement(SourceIngestionProgress,{vaultId:'v',fileId:'f',onPresence:()=>{}})));
+ assert.match(document.body.textContent,/PDF processing failed/);
+ const checkpoints=document.querySelectorAll('[aria-label="PDF processing checkpoints"] li');assert.equal(checkpoints.length,4);assert.equal(checkpoints[0].dataset.status,'completed');assert.equal(checkpoints[1].dataset.status,'failed');assert.equal(checkpoints[2].dataset.status,'waiting');
+ const progress=document.querySelector('progress');assert.ok(progress.value>0&&progress.value<100);assert.equal(progress.max,100);
+ await act(async()=>document.querySelector('.source-ingestion-details summary').click());
+ assert.ok(document.querySelector('.source-ingestion-details').open);assert.match(document.body.textContent,/Physical pages: 6, 7, 8, 9, 10.*Failed.*Attempts: 2/);assert.match(document.body.textContent,/Processing is stopped/);
+ assert.ok(calls.every(call=>call.options.method==='GET'),'Viewing checkpoints and opening details must never retry or generate');
+ assert.equal([...document.querySelectorAll('button')].filter(button=>/Resume unfinished work|Retry failed work/.test(button.textContent)).length,1);
 });

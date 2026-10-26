@@ -8,6 +8,11 @@ import {ServerSecretStore} from '../dist/server/modules/intelligence.js';
 import {documentModel,documentPrice} from '../dist/shared/document-models.js';
 const base={pdf:new Uint8Array([1,2,3]),pages:1,prompt:'Owned original physical pages: 1',schema:{type:'object',properties:{value:{type:'string'}},required:['value'],additionalProperties:false},maxOutputTokens:1000};
 const result={value:'faithful'};
+test('tsx development PDF platform launches the compiled isolated worker',async()=>{
+ const {PdfPlatform:DevelopmentPdfPlatform}=await import('../src/server/modules/pdf-platform.ts');
+ const document=await PDFDocument.create();document.addPage([200,300]);
+ assert.equal(await new DevelopmentPdfPlatform().count(await document.save({useObjectStreams:false})),1);
+});
 function openai(status='completed',content=[{type:'output_text',text:JSON.stringify(result)}]){return {id:'resp_1',status,model:'gpt-6.1-sol',output:[{type:'message',content}],usage:{input_tokens:9,output_tokens:7,output_tokens_details:{reasoning_tokens:2},input_tokens_details:{cached_tokens:3}}};}
 function gemini(status='completed'){return {id:'interaction_1',status,model:'gemini-3.8-flash',steps:[{type:'model_output',content:[{type:'text',text:JSON.stringify(result)}]}],usage:{total_input_tokens:9,total_output_tokens:7,total_thought_tokens:2,total_cached_tokens:3}};}
 function transport(provider,response,check=()=>{}){return async(url,options)=>{assert.equal(options.redirect,'error');assert.ok(!url.includes('secret'));if(options.method==='DELETE')return Response.json({});if(url.includes('/files')){check('upload',url,options);return Response.json(provider==='openai'?{id:'file-test'}:{file:{name:'files/test',uri:'https://generativelanguage.googleapis.com/v1/files/test',state:'ACTIVE',expirationTime:'2099-01-01T00:00:00Z'}});}check('generation',url,options);return Response.json(response);};}

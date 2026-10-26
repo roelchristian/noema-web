@@ -1,3 +1,4 @@
+import {SourceLoadingProgress} from '../knowledge/SourceLoadingProgress';
 import {classifiedFurnitureNodes} from './source-furniture-presentation';
 import {useContext} from 'react';
 import {ReviewDestination} from '../review/review-destination';
@@ -227,6 +228,7 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,onTogg
     {loaded&&<div className="source-reader-layout">
       <div className="source-reader-content" hidden={reviewOpen&&reviewPresentation==='diff'&&!reviewEvidence} onKeyDown={event=>{if(event.key==='Escape'&&reviewOpen&&reviewEvidence){event.stopPropagation();window.dispatchEvent(new Event('noema:return-to-source-correction'));}}}>
         {reviewOpen&&reviewEvidence&&<button ref={evidenceReturn} type="button" className="button small source-reader-evidence-return" onClick={()=>window.dispatchEvent(new Event('noema:return-to-source-correction'))}>{uiText("Return to correction")}</button>}
+        {!!loaded?.ingestion_origin&&loaded.ingestion_origin!=='local'&&<SourceLoadingProgress file={loaded}/>}
         {loaded?.format==='pdf'&&<SourceEvidence vaultId={vaultId} fileId={loaded.id} pageCount={loaded.pages??0} page={comparisonPage} onPage={setComparisonPage}/> }
         <div hidden={reviewOpen&&comparisonPage!==null}>
         {reference&&<aside className="source-reader-selection" aria-label={uiText("Selected passage")}><div className="source-reader-selection-heading"><strong>{uiText(editorial?"Selected original passage":"Selected passage")}</strong><button type="button" aria-label={uiText("Clear selected passage")} onClick={()=>setSelected(null)}><Icon name="close"/></button></div><small>{citationLocation(reference)}</small><blockquote>{reference.excerpt}</blockquote><div className="source-reader-selection-actions"><button className="button small" type="button" onClick={()=>void copyCitation()}>{copied?uiText("Copied"):uiText("Copy citation")}</button><button className="button small" type="button" onClick={()=>onAddPassage(reference)}>{uiText("Add to page")}</button><button className="button small" type="button" onClick={()=>onAnnotate(reference)}>{uiText("Annotate")}</button></div><span role="status" className="sr-only">{copied?uiText("Citation copied"):''}</span></aside>}

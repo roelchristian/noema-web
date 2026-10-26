@@ -75,3 +75,27 @@ test('queued provider attachment mounts detailed monitor before any readable sou
  assert.ok(document.querySelector('[aria-label="PDF processing progress"]'));assert.match(document.body.textContent,/Uploading PDF/);assert.match(document.body.textContent,/0 of 42 physical pages validated/);assert.match(document.body.textContent,/Stop and keep progress/);
  assert.equal(document.querySelector('article.source-reader-document'),null);
 });
+
+test('ready provider attachment exposes optional retry without invalidating readable canonical source',async t=>{
+ const {setupDOM}=await import('./helpers/dom.mjs');const {SourceAttachments}=await import('../src/client/knowledge/SourceAttachments.tsx');
+ const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
+ const file={id:'ready.pdf',vault_id:'v',entity_id:'e',ingestion_origin:'openai',status:'ready',enrichment_status:'completed',admitted:1,format:'pdf',name:'Ready PDF',original_filename:'ready.pdf',text:'Canonical transcription remains readable.',size:100,pages:2,progress:100,contains_math:0};
+ let run={id:'r',fileId:file.id,mode:'ingestion',state:'completed',stage:'indexing',provider:'openai',model:'fixture-model',pageCount:2,completedPages:2,completedWindows:1,totalWindows:1,activePages:[],pendingReview:0,startedAt:new Date().toISOString(),updatedAt:new Date().toISOString(),error:null,warnings:['Optional equation recovery failed.'],unknownOutcome:false,canResume:false,canRetryOptional:true};
+ const calls=[];t.mock.method(globalThis,'fetch',async(route,options)=>{calls.push({route,options});if(options.method==='POST'){assert.equal(route,'/api/source-files/ready.pdf/ingestion/retry');run={...run,state:'pending',stage:'repair',warnings:[],canRetryOptional:false};}return Response.json(run);});
+ let changed=0;await act(async()=>root.render(React.createElement(SourceAttachments,{vaultId:'v',entityId:'e',initial:[file],compact:true,onChange:()=>changed++})));
+ const retry=[...document.querySelectorAll('button')].find(button=>button.textContent==='Retry failed optional work');assert.ok(retry,'Completed provider files mount the monitor even in compact attachments');
+ assert.equal(calls.filter(call=>call.options.method==='POST').length,0,'Inspecting completed work does not generate or retry anything');
+ assert.ok(document.querySelector('a[href*="download-processed"]'));
+ await act(async()=>retry.click());assert.equal(calls.filter(call=>call.options.method==='POST').length,1);assert.deepEqual(JSON.parse(calls.find(call=>call.options.method==='POST').options.body),{});
+ assert.ok(calls.filter(call=>call.options.method==='GET').length>=2,'Optional retry restarts status polling after completed state');
+ assert.match(document.body.textContent,/Checking unresolved passages/);assert.match(document.body.textContent,/Stop and keep progress/);assert.ok(document.querySelector('a[href*="download-processed"]'));
+ assert.equal(file.status,'ready');assert.equal(file.text,'Canonical transcription remains readable.');assert.equal(changed,0,'Optional retry does not replace source attachment or canonical text');
+});
+
+test('completed clean provider monitor is a compact summary',async t=>{
+ const {setupDOM}=await import('./helpers/dom.mjs');const {SourceIngestionProgress}=await import('../src/client/knowledge/SourceIngestionProgress.tsx');
+ const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
+ t.mock.method(globalThis,'fetch',async()=>Response.json({id:'r',fileId:'f',mode:'ingestion',state:'completed',stage:'indexing',provider:'gemini',model:'fixture-model',pageCount:2,completedPages:2,completedWindows:1,totalWindows:1,activePages:[],pendingReview:0,startedAt:new Date().toISOString(),updatedAt:new Date().toISOString(),error:null,unknownOutcome:false,canResume:false,canRetryOptional:false}));
+ await act(async()=>root.render(React.createElement(SourceIngestionProgress,{vaultId:'v',fileId:'f',onPresence:()=>{}})));
+ assert.match(document.body.textContent,/PDF transcription published.*2 of 2 physical pages validated.*Gemini/);assert.equal(document.querySelector('progress'),null);assert.equal(document.querySelector('button'),null);
+});

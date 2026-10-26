@@ -88,6 +88,15 @@ try {
   if(await close.isVisible())await close.click();
   await entry.click();
  }
+ async function activate(control,width) {if(width===390)await control.tap();else await control.click();}
+ async function headerGeometry(page,width) {
+  assert.ok(await page.locator('#chat-toolbar').evaluate(node=>node.getBoundingClientRect().width>180),'Chat toolbar retains space beside navigation and notifications');
+  const targets=await page.locator('.chat-toolbar button,.chat-toolbar summary').evaluateAll(nodes=>nodes.filter(node=>node.checkVisibility()&&!node.disabled).map(node=>{
+   const r=node.getBoundingClientRect(),hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);
+   return {name:node.getAttribute('aria-label')??node.textContent.trim(),left:r.left,right:r.right,width:r.width,height:r.height,receivesPointer:!!hit&&node.contains(hit)};
+  }));
+  for(const target of targets){assert.ok(target.left>=0&&target.right<=width,JSON.stringify(target));assert.ok(target.receivesPointer,JSON.stringify(target));if(width===390)assert.ok(target.width>=44&&target.height>=44,JSON.stringify(target));}
+ }
  async function geometry(page,width) {
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'No horizontal document overflow');
   const boxes=await page.locator('.chat-workspace button,.chat-workspace select,.chat-workspace textarea').evaluateAll(nodes=>nodes.filter(node=>node.checkVisibility()).map(node=>{const r=node.getBoundingClientRect();return {name:node.getAttribute('aria-label')??node.textContent.trim().slice(0,40),x:r.x,right:r.right,width:r.width,height:r.height};}));
@@ -124,12 +133,18 @@ try {
   await page.getByRole('button',{name:'Close Chat',exact:true}).click();
   await page.getByRole('button',{name:'Ask about this',exact:true}).click();
   assert.match(await page.locator('[data-chat-scope]').innerText(),/Page · Synthetic grace notebook/);
-  await ask(page);if(width===390)await page.getByRole('button',{name:'Show conversations',exact:true}).click();const history=page.getByRole('navigation',{name:'Conversation history',exact:true});const active=history.locator('[aria-current=page]');await active.waitFor();
-  const threadId=await active.getAttribute('data-thread-id');assert.ok(threadId);if(width===390)await page.getByRole('button',{name:'Close conversations',exact:true}).click();
-  await page.getByRole('button',{name:'Rename conversation',exact:true}).click();await page.getByRole('textbox',{name:'Conversation title',exact:true}).fill(`Browser ${width} ${mode}`);await page.getByRole('button',{name:'Save title',exact:true}).click();
+  await ask(page);await headerGeometry(page,width);if(width===390)await activate(page.getByRole('button',{name:'Show conversations',exact:true}),width);const history=page.getByRole('navigation',{name:'Conversation history',exact:true});const active=history.locator('[aria-current=page]');await active.waitFor();
+  const threadId=await active.getAttribute('data-thread-id');assert.ok(threadId);if(width===390){
+   await activate(page.getByRole('button',{name:'Close conversations',exact:true}),width);
+   const toggle=page.getByRole('button',{name:'Show conversations',exact:true});await toggle.focus();await toggle.press('Tab');assert.equal(await page.getByRole('button',{name:'New conversation',exact:true}).evaluate(node=>node===document.activeElement),true);await page.keyboard.press('Shift+Tab');await page.keyboard.press('Enter');await active.waitFor();await page.keyboard.press('Escape');await page.getByRole('dialog',{name:'Conversations',exact:true}).waitFor({state:'hidden'});assert.equal(await toggle.evaluate(node=>node===document.activeElement),true,'History dismissal restores keyboard focus');
+  }
+  const rename=page.getByRole('button',{name:'Rename conversation',exact:true}),titleInput=page.getByRole('textbox',{name:'Conversation title',exact:true}),savedTitle=`Browser ${width} ${mode}`;
+  await activate(rename,width);await titleInput.fill(savedTitle);await headerGeometry(page,width);await activate(page.getByRole('button',{name:'Save title',exact:true}),width);await rename.waitFor();assert.equal(await rename.locator('span[aria-hidden="true"]').innerText(),savedTitle);
+  await rename.focus();await rename.press('Enter');await titleInput.fill('Discard this synthetic title');await titleInput.press('Escape');assert.equal(await rename.locator('span[aria-hidden="true"]').innerText(),savedTitle);await page.waitForFunction(()=>document.querySelector('[aria-label="Rename conversation"]')===document.activeElement);
+  await activate(page.locator('.chat-options > summary'),width);await activate(page.getByRole('button',{name:'Rename in menu',exact:true}),width);await titleInput.fill(savedTitle);await titleInput.press('Enter');await rename.waitFor();await headerGeometry(page,width);await screenshot(page,`${width}-${mode}-header`);
   await page.locator('.chat-citation').first().click();await page.getByRole('button',{name:'Open in original',exact:true}).click();await page.locator('#page-title').waitFor();
   assert.equal(new URL(page.url()).searchParams.get('page'),specimen.id,'Evidence opens original note');
-  await openChat(page,width);if(width===390)await page.getByRole('button',{name:'Show conversations',exact:true}).click();await history.locator(`[data-thread-id="${threadId}"]`).click();await page.locator('.chat-message.is-assistant').waitFor();
+  await openChat(page,width);await headerGeometry(page,width);if(width===390)await activate(page.getByRole('button',{name:'Show conversations',exact:true}),width);await activate(history.locator(`[data-thread-id="${threadId}"]`),width);await page.locator('.chat-message.is-assistant').waitFor();
   await page.locator('.chat-options > summary').click();await page.getByRole('button',{name:'Delete conversation',exact:true}).click();await page.locator('.chat-message').first().waitFor({state:'hidden'});
   // Pending requests are stoppable and never expose partial provider prose.
   transportMode='pending';const before=requests.length;

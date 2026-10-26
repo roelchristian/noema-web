@@ -1,3 +1,6 @@
+import {OpenAIDocumentProvider} from './document-provider-openai.js';
+import {GeminiDocumentProvider} from './document-provider-gemini.js';
+import {documentModels} from '../../shared/document-models.js';
 import {defaultNarrationPreferences,parseNarrationPreferences,type NarrationPreferences} from '../../shared/narration.js';
 import {transformNarration} from '../../shared/narration-text.js';
 import {appendSpeechSilence} from './speech-silence.js';
@@ -21,7 +24,7 @@ import { limitSummaryWords } from '../../shared/summary-text.js';
 import { pageLanguage } from './page-language.js';
 import { defaultIntelligencePreferences, defaultPageEnrichmentPreferences, defaultManualRequestsPerMinute, maxManualRequestsPerMinute, validManualRequestLimit, intelligenceModels, type IntelligenceConfiguration, supportedIntelligencePreferences, type IntelligencePreferences } from '../../shared/intelligence.js';
 import { spawnSync } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { randomUUID,createHash } from 'node:crypto';
 import {sourceStructureKinds,type IntelligenceStatus,type SourceStructureNode} from '../../shared/domain.js';
 import {isSectionKind,semanticBlockLabel} from './source-structure.js';
 import { Store } from '../store.js';
@@ -78,7 +81,7 @@ export class GenerationCancellationError extends HttpError {
   constructor(public outcomeUncertain:boolean) {super(409,outcomeUncertain?'AI generation was stopped after dispatch. The provider outcome is unknown.':'AI generation was stopped before sending the request.');this.name='GenerationCancellationError';}
 }
 
-interface Credential { key: string; expiresAt: string; generation: string }
+export interface Credential { key: string; expiresAt: string; generation: string }
 function parseSourceAuthors(value:unknown):SourceAuthor[] {
  if(!Array.isArray(value)||value.length>100||value.some((author:unknown)=>!author||typeof author!=='object'||!('name' in author)||typeof author.name!=='string'||!author.name.trim()||author.name.length>200||/[\x00-\x1f\x7f]/.test(author.name)||!('type' in author)||!['person','organization'].includes(String(author.type))))throw new HttpError(502,'AI returned invalid source authors. Retry enrichment.');
  return (value as SourceAuthor[]).map(author=>({name:author.name.trim().replace(/\s+/g,' '),type:author.type}));
@@ -113,11 +116,25 @@ export class MacKeychain implements SecretStore {
   }
   remove() { this.run(['delete-generic-password','-a',this.account,'-s',`app.noema.${this.provider}`]); }
 }
+/** Explicit server configuration, scoped by the existing vault account identity.
+ * Environment credentials never enter database/export or mutable browser settings. */
+export class ServerSecretStore implements SecretStore {
+ constructor(private provider:'openai'|'gemini',private account:string,private environment:NodeJS.ProcessEnv=process.env){}
+ read():Credential|null {
+  const prefix=`NOEMA_${this.provider.toUpperCase()}`;
+  if(this.environment[prefix+'_ACCOUNT']!==this.account)return null;
+  const key=this.environment[prefix+'_API_KEY'],expiresAt=this.environment[prefix+'_EXPIRES_AT'];
+  if(!key||!expiresAt||!Number.isFinite(Date.parse(expiresAt)))return null;
+  return {key,expiresAt,generation:createHash('sha256').update(this.account+'\0'+key+'\0'+expiresAt).digest('hex')};
+ }
+ write(_value:Credential):void {throw new HttpError(503,'Configure this account credential in the server secret store; browser writes are unavailable on this server.');}
+ remove():void {throw new HttpError(503,'Remove or renew this account credential in the server secret store.');}
+}
 export function keychainFor(store: Store,provider:'openai'|'gemini'='openai') {
   let account=store.get<{value:string}>("SELECT value FROM metadata WHERE key='intelligence_account'")?.value;
   if(!account) {account=randomUUID();store.run("INSERT INTO metadata(key,value) VALUES ('intelligence_account',?)",account);}
   if(!/^[a-f0-9-]{36}$/.test(account))throw new Error('Invalid intelligence account');
-  return new MacKeychain(account,spawnSync,provider);
+  return process.platform==='darwin'?new MacKeychain(account,spawnSync,provider):new ServerSecretStore(provider,account);
 }
 export interface PreferencesStore { read(): unknown; write(value: IntelligenceConfiguration): void }
 export function intelligencePreferencesFor(store: Store): PreferencesStore {
@@ -177,6 +194,14 @@ export class Intelligence {
       if ('manualRequestsPerMinute' in saved && validManualRequestLimit(saved.manualRequestsPerMinute)) this.manualRequestsPerMinute=saved.manualRequestsPerMinute;
     }
   }
+  documentStatus(provider:'openai'|'gemini') {
+    const credential=provider==='openai'?this.credential():this.geminiCredential();
+    return {configured:!!credential,expiresAt:credential?.expiresAt??null,credentialStorage:process.platform==='darwin'?'keychain':'server',modelAccess:'unchecked' as const,models:documentModels.filter(model=>model.provider===provider)};
+  }
+  documentProvider(provider:'openai'|'gemini') {
+    const readKey=()=>{const credential=provider==='openai'?this.credential():this.geminiCredential();if(!credential)throw new HttpError(409,'Configure an unexpired server credential for the selected document provider.');return credential.key;};
+    return provider==='openai'?new OpenAIDocumentProvider(readKey,this.transport):new GeminiDocumentProvider(readKey,this.transport);
+  }
   selection(): IntelligencePreferences {return {...this.preferences};}
   editorialImageCapability(){return intelligenceModels.find(model=>model.id===this.selection().model)?.imageInput===true;}
   editorialSelection():IntelligencePreferences {
@@ -229,7 +254,7 @@ export class Intelligence {
   private abortCloudPreviews(provider:SpeechProvider) {for(const [request,selected] of this.speechPreviews)if(selected===provider)request.abort();}
   private credential() {
     const value=this.secrets.read();
-    if(value && Date.parse(value.expiresAt)<=this.clock()) {this.remove();return null;}
+    if(value && Date.parse(value.expiresAt)<=this.clock()) {if(!(this.secrets instanceof ServerSecretStore))this.remove();return null;}
     return value;
   }
   status(): IntelligenceStatus {
@@ -250,7 +275,7 @@ export class Intelligence {
   remove() {this.abortCloudPreviews('openai');if(this.ttsProvider==='openai')for(const request of this.speechRequests)request.abort();for(const request of this.generationRequests)request.abort();for(const request of this.embeddingRequests)request.abort();this.secrets.remove();return {configured:false,expiresAt:null,manualRequestsPerMinute:this.manualRequestsPerMinute,personaId:this.personaId,personaExpression:this.personaExpression,ttsEnabled:this.ttsEnabled,ttsProvider:this.ttsProvider,ttsVoice:this.ttsVoice,narration:structuredClone(this.narration),...this.selection(),pageEnrichment:this.enrichmentSelection()};}
   private geminiCredential() {
     const value=this.geminiSecrets?.read();
-    if(value&&Date.parse(value.expiresAt)<=this.clock()){this.geminiSecrets!.remove();this.abortCloudPreviews('gemini');if(this.ttsProvider==='gemini')for(const request of this.speechRequests)request.abort();return null;}
+    if(value&&Date.parse(value.expiresAt)<=this.clock()){if(!(this.geminiSecrets instanceof ServerSecretStore))this.geminiSecrets!.remove();this.abortCloudPreviews('gemini');if(this.ttsProvider==='gemini')for(const request of this.speechRequests)request.abort();return null;}
     return value??null;
   }
   geminiStatus() {const value=this.geminiCredential();return {configured:!!value,expiresAt:value?.expiresAt??null};}

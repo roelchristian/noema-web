@@ -47,6 +47,20 @@ export function candidateResult(body:Record<string,any>,request:DocumentRequest,
 export async function providerHTTP(transport:typeof fetch,url:string,options:RequestInit,submitted=false):Promise<Response>{
  let response:Response;
  try{response=await transport(url,{...options,redirect:'error'});}catch{throw new DocumentProviderError(options.signal?.aborted?(options.signal.reason?.name==='TimeoutError'?'timeout':'cancelled'):'transport',502,submitted?'Document request interrupted after submission; paid outcome is unknown.':'Document upload interrupted.',submitted);}
- if(!response.ok){await response.body?.cancel();throw new DocumentProviderError(response.status===429?'rate_limit':response.status===401||response.status===403?'credentials':response.status===404?'model_or_file_unavailable':'provider_http',response.status,'The document provider rejected this request. Check model access, quota and configuration.',false,undefined,Number(response.headers.get('retry-after')??0)*1000);}
+ if(!response.ok){
+  let detail:Record<string,any>|undefined;
+  try{detail=await readDocumentResponse(response,16*1024);}catch{/* Only bounded JSON errors contribute safe diagnostics. */}
+  const error=detail?.error,statuses=new Set(['INVALID_ARGUMENT','UNAUTHENTICATED','PERMISSION_DENIED','NOT_FOUND','RESOURCE_EXHAUSTED','FAILED_PRECONDITION','ABORTED','OUT_OF_RANGE','UNIMPLEMENTED','INTERNAL','UNAVAILABLE','DEADLINE_EXCEEDED']);
+  const providerStatus=typeof error?.status==='string'&&statuses.has(error.status)?error.status:undefined;
+  const codes=new Set(['invalid_request_error','invalid_json_schema','invalid_api_key','insufficient_quota','model_not_found','rate_limit_exceeded','context_length_exceeded','unsupported_parameter','invalid_value']);
+  const providerCode=typeof error?.code==='string'&&codes.has(error.code)?error.code:undefined;
+  // Field locations are useful; free-form messages/descriptions may echo source
+  // text, request payloads or credentials and must never enter persisted errors.
+  const field=(value:unknown)=>typeof value==='string'&&value.length<=160&&/^(?:generation_config|response_format|input|model|system_instruction|store|stream|file|files|text|reasoning|max_output_tokens|tools|tool_choice|temperature|api_key|key)(?:\.[A-Za-z_][A-Za-z_0-9]{0,40}|\[\d{1,5}\]){0,12}$/.test(value)?value:undefined;
+  const fields=[...new Set([field(error?.param),...(Array.isArray(error?.details)?error.details:[]).flatMap((entry:any)=>(Array.isArray(entry?.fieldViolations)?entry.fieldViolations:[]).map((entry:any)=>field(entry?.field)))].filter((value):value is string=>!!value))].slice(0,4);
+  let phase='document request';try{const pathname=new URL(url).pathname;phase=pathname.endsWith('/interactions')||pathname.endsWith('/responses')?'generation':pathname.includes('/files')?'file transfer':'document request';}catch{}
+  const diagnostic=[`HTTP ${response.status}`,providerStatus,providerCode,fields.length?'fields: '+fields.join(', '):undefined].filter(Boolean).join('; ');
+  throw new DocumentProviderError(response.status===429?'rate_limit':response.status===401||response.status===403?'credentials':response.status===404?'model_or_file_unavailable':'provider_http',response.status,`The document provider rejected ${phase} (${diagnostic}). Check model access, quota and configuration.`,false,undefined,Number(response.headers.get('retry-after')??0)*1000);
+ }
  return response;
 }

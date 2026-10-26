@@ -8,6 +8,18 @@ import {ServerSecretStore} from '../dist/server/modules/intelligence.js';
 import {documentModel,documentPrice} from '../dist/shared/document-models.js';
 const base={pdf:new Uint8Array([1,2,3]),pages:1,prompt:'Owned original physical pages: 1',schema:{type:'object',properties:{value:{type:'string'}},required:['value'],additionalProperties:false},maxOutputTokens:1000};
 const result={value:'faithful'};
+test('provider rejections retain safe HTTP, phase and validation fields without echoed source or secrets',async()=>{
+ const {providerHTTP}=await import('../dist/server/modules/document-provider.js');
+ const secret='private-credential-and-source';
+ const body={error:{code:400,status:'INVALID_ARGUMENT',message:secret,param:'response_format.schema',details:[{fieldViolations:[{field:'generation_config.thinking_level',description:secret},{field:'response_format.schema',description:secret},{field:secret,description:secret}]}]}};
+ await assert.rejects(()=>providerHTTP(async()=>Response.json(body,{status:400}),'https://generativelanguage.googleapis.com/v1/interactions?key='+secret,{method:'POST'},true),error=>{
+  assert.equal(error.status,400);assert.equal(error.code,'provider_http');assert.equal(error.outcomeUncertain,false);
+  assert.match(error.message,/generation \(HTTP 400; INVALID_ARGUMENT; fields: response_format\.schema, generation_config\.thinking_level\)/);
+  assert.equal(error.message.includes(secret),false);assert.equal(error.message.includes('https:'),false);return true;
+ });
+ await assert.rejects(()=>providerHTTP(async()=>Response.json({error:{code:secret,status:secret,message:secret}},{status:403}),'https://generativelanguage.googleapis.com/upload/v1/files?key='+secret,{method:'POST'}),error=>{assert.equal(error.code,'credentials');assert.match(error.message,/file transfer \(HTTP 403\)/);assert.equal(error.message.includes(secret),false);return true;});
+ await assert.rejects(()=>providerHTTP(async()=>new Response(secret.repeat(2000),{status:429,headers:{'retry-after':'2'}}),'https://example.com/v1/responses',{method:'POST'},true),error=>{assert.equal(error.code,'rate_limit');assert.equal(error.outcomeUncertain,false);assert.equal(error.retryAfterMs,2000);assert.match(error.message,/generation \(HTTP 429\)/);assert.equal(error.message.includes(secret),false);return true;});
+});
 test('tsx development PDF platform launches the compiled isolated worker',async()=>{
  const {PdfPlatform:DevelopmentPdfPlatform}=await import('../src/server/modules/pdf-platform.ts');
  const document=await PDFDocument.create();document.addPage([200,300]);

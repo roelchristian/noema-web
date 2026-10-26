@@ -280,6 +280,8 @@
     "test/source-ingestion-restore.test.mjs",
     "test/source-ingestion-scheduler.test.mjs",
     "test/source-ingestion-runtime.test.mjs",
-    "test/source-ingestion-activity.test.mjs"
+    "test/source-ingestion-activity.test.mjs",
+    "test/persona-style-repair.test.mjs",
+    "test/persona-repair-generation.test.mjs"
   ]
 }

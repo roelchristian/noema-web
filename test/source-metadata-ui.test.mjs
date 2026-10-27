@@ -73,3 +73,11 @@ test('entry type is revision guarded and uncertain writes require a publication 
 test('scoped bibliography changes refresh Metadata for the matching Source only',async t=>{
  let reads=0;t.mock.method(sourceMetadataAPI,'snapshot',async()=>{const value=snapshot();value.fields[1].value=++reads>1?'Imported title':'Published title';return value;});await mount(t);await act(async()=>bibliographyChanged('other-vault','source-one'));await act(async()=>bibliographyChanged('synthetic','other-source'));assert.equal(reads,1);await act(async()=>bibliographyChanged('synthetic','source-one'));assert.equal(reads,2);assert.match(document.querySelector('dl').textContent,/Imported title/);
 });
+
+test('DOI controls remain available after acceptance waits for a delayed workspace refresh',async t=>{
+ let revision=1,finishRefresh;const record=()=>({sourceId:'delayed-source',citationKey:'stable',entryType:'book',fields:{title:'Published title',doi:'10.1234/synthetic'},revision,provenance:{},rawImports:[]});
+ t.mock.method(sourceMetadataAPI,'snapshot',async()=>{const value=snapshot('delayed-source');value.fields[1].fingerprint=String(revision);return value;});t.mock.method(bibliographyAPI,'record',async()=>record());
+ t.mock.method(bibliographyAPI,'verify',async()=>({proposalId:'proposal',provider:'Crossref',revision,fields:{title:'Updated title'}}));t.mock.method(bibliographyAPI,'reconcilePreview',async()=>({conflicts:[]}));t.mock.method(bibliographyAPI,'accept',async()=>{revision++;return record();});
+ await mount(t,{sourceId:'delayed-source',onUpdated:()=>new Promise(resolve=>{finishRefresh=resolve;})});await publicationControls();await check(document.querySelector('.bibliography-consent input'),true);await click('Look up DOI');await check(document.querySelector('[aria-label="Accept DOI title"]'),true);await click('Accept selected facts');
+ assert.ok(document.querySelector('[aria-label="Publication entry type"]'),'saved publication remains visible during workspace refresh');assert.equal(button('Cancel request'),undefined);await act(async()=>finishRefresh());assert.ok(button('Look up DOI'));assert.equal(button('Look up DOI').disabled,false);assert.doesNotMatch(document.querySelector('details').textContent,/Add publication facts below/);
+});

@@ -11,7 +11,10 @@ import { mentionEvidence } from '../src/shared/entity-scan.ts';
 import {completedResponse as completed} from './helpers/providers.ts';
 import {providerBarrier} from './helpers/provider-barrier.mjs';
 const candidate = (name,type='person',extra={}) => ({name,type,subtypes:[],description:'Mentioned in this note',evidence:name,reason:'Named in the note',existingId:null,...extra});
-test('entity scan reviews are explicit, persistent, scoped and revision safe', async()=>{
+test('entity scan reviews are explicit, persistent, scoped and revision safe', async t=>{
+  // Assertions inspect queued indexing work. Hold background workers so elapsed
+  // HTTP/provider time cannot drain that queue before the assertion observes it.
+  t.mock.timers.enable({apis:['setInterval']});
   const db=openDatabase(':memory:');
   let output, providerBody, heldProvider, calls=0;
   const secrets={value:null,read(){return this.value;},write(v){this.value=v;},remove(){this.value=null;}};

@@ -42,7 +42,8 @@ async function mount(t,{initial=null,history,remove,post,onReadingRevision,get,o
  const button=text=>[...document.querySelectorAll('button')].find(el=>el.textContent===text||el.getAttribute('aria-label')===text);
  const click=async el=>{assert.ok(el,'Expected control exists');await act(async()=>el.click());if(legacyDetails&&/^Review changes \(/.test(el.textContent)){const details=button('Detailed review');if(details)await act(async()=>details.click());}};
  const remount=async()=>act(async()=>root.render(React.createElement(component,{...props,key:Math.random()})));
- return {button,click,requests,dom,switchFile,remount};
+ const switchScope=async(vaultId,fileId)=>act(async()=>root.render(React.createElement(component,{...props,vaultId,fileId,key:'f'})));
+ return {button,click,requests,dom,switchFile,switchScope,remount};
 }
 test('failed initial reprocessing render still closes its DOM and restores global descriptors',{timeout:5000},async t=>{
  const keys=['window','document','Node','NodeFilter','Element','HTMLElement','HTMLAnchorElement','HTMLInputElement','HTMLSelectElement','HTMLTextAreaElement','Range','DOMParser','InputEvent','MouseEvent','Event','CustomEvent','MutationObserver','getComputedStyle','getSelection','requestAnimationFrame','cancelAnimationFrame','innerWidth','innerHeight','IS_REACT_ACT_ENVIRONMENT'];
@@ -712,4 +713,20 @@ test('switching source cancels a pending summary-only acceptance before any muta
  await env.click(env.button('Accept and read (2)'));assert.equal(typeof release,'function');
  await env.switchFile('another-file');await act(async()=>release(r));
  assert.equal(env.requests.filter(entry=>entry.method==='POST').length,0);
+});
+
+
+test('reusing a reader instance in another vault cancels its prior acceptance detail request',async t=>{
+ const r={...fixture(),fileId:'f',status:'completed'};r.report.chunksCompleted=r.report.chunksTotal;
+ let release;const env=await mount(t,{initial:r,visible:false,reviewOnDemand:true,get:()=>new Promise(resolve=>{release=resolve;})});
+ await env.click(env.button('Accept and read (2)'));await env.switchScope('another-vault','f');await act(async()=>release(r));
+ assert.equal(env.requests.filter(entry=>entry.method==='POST').length,0);
+});
+
+test('accept and read opens an already-settled fetched revision without posting an empty decision',async t=>{
+ const r={...fixture(),fileId:'f',status:'completed'};r.report.chunksCompleted=r.report.chunksTotal;
+ const settled={...r,patches:r.patches.map(patch=>({...patch,decision:'accepted'}))},readings=[];
+ const env=await mount(t,{initial:r,visible:false,reviewOnDemand:true,onReadingRevision:value=>readings.push(value),get:()=>settled});
+ await env.click(env.button('Accept and read (2)'));
+ assert.equal(env.requests.filter(entry=>entry.method==='POST').length,0);assert.equal(readings.at(-1).id,r.id);assert.equal(env.button('Accept and read (2)'),undefined);
 });

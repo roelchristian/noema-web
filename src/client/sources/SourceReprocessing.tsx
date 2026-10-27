@@ -269,18 +269,21 @@ export function SourceReprocessing({onRevisionChanged,reviewOnDemand=false,sourc
     await decideMany(revision?.patches.filter(patch=>selected.includes(patch.id))??[],decision);
   }
   function acceptAllPending(){return decideMany(revision?.patches.filter(patch=>patch.decision==='pending')??[],'accepted');}
-  const acceptReadRequest=useRef<AbortController|null>(null);
-  useEffect(()=>()=>acceptReadRequest.current?.abort(),[]);
+  const acceptReadRequest=useRef<AbortController|null>(null),acceptReadScope=useRef('');
+  acceptReadScope.current=JSON.stringify([vaultId,fileId]);
+  useEffect(()=>()=>acceptReadRequest.current?.abort(),[vaultId,fileId]);
   async function acceptAndRead(){
     if(!revisionId||!beginAction())return;
-    const selectedId=revisionId,controller=new AbortController();acceptReadRequest.current=controller;
+    const selectedId=revisionId,selectedScope=acceptReadScope.current,controller=new AbortController();acceptReadRequest.current=controller;
     try {
       // This explicit editorial action may load decision evidence; ordinary reading never does.
       const base=revision?.id===selectedId?revision:await request<SourceReprocessingRevision>(`${route}/${encodeURIComponent(selectedId)}`,'GET',undefined,vaultId,controller.signal);
-      if(!mounted.current||controller.signal.aborted||latestRevisionId.current!==selectedId)return;
+      if(!mounted.current||controller.signal.aborted||acceptReadScope.current!==selectedScope||latestRevisionId.current!==selectedId)return;
       if(base.id!==selectedId||base.fileId!==fileId||base.stale||active(base.status))throw new Error('This revision changed or is still processing. Reopen review before accepting it.');
-      const value=await decideMany(base.patches.filter(patch=>patch.decision==='pending'),'accepted',base,true);
-      if(!value||!mounted.current||latestRevisionId.current!==value.id)return;
+      const pendingPatches=base.patches.filter(patch=>patch.decision==='pending');
+      const value=pendingPatches.length?await decideMany(pendingPatches,'accepted',base,true):base;
+      if(!value||!mounted.current||acceptReadScope.current!==selectedScope||latestRevisionId.current!==value.id)return;
+      setRevision(value);
       contextReading.current=null;setEvidenceSurface('reading');onReturnContext?.();++readingRequest.current;publishReading(value);setReadingChoice(value.id);setTab('read');
     }catch(cause){if(mounted.current&&!controller.signal.aborted)setError(cause instanceof Error?cause.message:String(cause));}
     finally {if(acceptReadRequest.current===controller)acceptReadRequest.current=null;finishAction();}

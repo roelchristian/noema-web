@@ -27,3 +27,13 @@ export function entityIconName(entity:Pick<Entity,'type'|'subtypes'|'icon'>|unde
   const icon=overrides===undefined&&entity.icon!==undefined?entity.icon:resolveEntityIcon(entity,overrides);
   return icon?'page:'+icon:entity.type;
 }
+
+/** Retain unchanged UI records across processing-status updates. */
+export function createEntityIconDecorator() {
+  const records=new WeakMap<Entity,{icons:SubtypeIcons;value:Entity}>();
+  return (entities:Entity[],icons:SubtypeIcons):Entity[]=>entities.map(entity=>{
+    const prior=records.get(entity);if(prior?.icons===icons)return prior.value;
+    const icon=resolveEntityIcon(entity,icons),value=entity.icon===icon?entity:{...entity,icon};
+    records.set(entity,{icons,value});return value;
+  });
+}

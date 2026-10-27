@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {sourceReadingPresentation} from '../src/shared/source-reprocessing.ts';
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {sourceDocumentEntries} from '../src/shared/source-document.ts';
@@ -40,7 +41,7 @@ test('delayed enrichment refreshes headings and navigation without reloading or 
  const revision={...JSON.parse(readFileSync(new URL('./fixtures/dante-editorial-revision.json',import.meta.url),'utf8')),id:'revision',fileId:'file',baseHash:'snapshot-fingerprint-distinct-from-text-hash',stale:false,status:'completed',original:{text,document:canonicalDocument},reprocessed:{text:revisedText,document:revisedDocument},nodeLinks:originalEntries.map((entry,index)=>({originalNodeId:entry.node.id,reprocessedNodeIds:[revisedEntries[index].node.id]}))};
  revision.report.chunksCompleted=revision.report.chunksTotal;
  globalThis.fetch=async(url,options)=>{
-  if(url==='/api/entities/source'){detailReads++;return Response.json({attachments:[attachment()]});}
+  if(url==='/api/source-files?compact=1&entity=source'){detailReads++;return Response.json([attachment()]);}
   if(url==='/api/source-files/file?fingerprint=1&context=1'){documentReads++;const current=attachment();return Response.json({...current,document:processedSourceDocument(current)});}
   if(url==='/api/source-files/file/reading-locations?revisionId=revision')return Response.json({resume:null,bookmarks:[]});
   if(url==='/api/source-files/file/highlights?revisionId=revision')return Response.json([{id:'persisted-highlight',fileId:'file',sourceId:'source',sourceHash:createHash('sha256').update(revisedText).digest('hex'),startOffset:16,endOffset:revisedText.length,excerpt:revisedText.slice(16),color:'yellow',createdAt:'2026-10-25'}]);
@@ -48,6 +49,7 @@ test('delayed enrichment refreshes headings and navigation without reloading or 
   if(url==='/api/source-files/file/reading-locations')return Response.json({resume:null,bookmarks:[bookmark]});
   if(url==='/api/source-files/file/reading-locations/bookmark-1'){assert.equal(options.method,'PATCH');bookmark.label=JSON.parse(options.body).label;return Response.json({ok:true});}
   if(url==='/api/source-files/file/reprocessing')return Response.json([{...revision,patchCount:0,pendingCount:0}]);
+  if(url==='/api/source-files/file/reprocessing/revision/reading')return Response.json(sourceReadingPresentation(revision));
   if(url==='/api/source-files/file/reprocessing/revision')return Response.json(revision);
   if(url==='/api/source-files/file/highlights')return Response.json([{id:'highlight-1',fileId:'file',sourceId:'source',sourceHash:file.textHash,startOffset:16,endOffset:text.length,excerpt:'A stable paragraph for citation.',color:'yellow',createdAt:'2026-10-25'}]);
   if(url==='/api/source-files/file/highlights/highlight-1')return Response.json({ok:true});
@@ -146,7 +148,7 @@ test('delayed enrichment refreshes headings and navigation without reloading or 
   const versions=document.querySelector('[aria-label="Reading version"]');
   await act(async()=>{versions.value='revision';versions.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
   assert.equal(document.querySelector('.source-reader').classList.contains('has-revision-diff'),false,'Version selection starts in Changes applied');
-  await act(async()=>[...document.querySelectorAll('button')].find(button=>button.textContent==='Diff').click());
+  await act(async()=>[...document.querySelectorAll('button')].find(button=>button.textContent.startsWith('Review changes (')).click());
   const mountedContent=document.querySelector('.source-reader-content');
   assert.ok(document.querySelector('.source-reader').classList.contains('has-revision-diff'));
   assert.equal(mountedContent.hidden,true,'Diff occupies the reader while keeping its document mounted');
@@ -224,14 +226,13 @@ test('accepted page shows the selected snapshot immediately while its background
  localStorage.setItem('noema:source-reading:default:file',preferred.id);
  let selectedReads=0,releaseReading;
  t.mock.method(globalThis,'fetch',async url=>{
-  if(url==='/api/entities/source')return Response.json({attachments:[file]});
+  if(url==='/api/source-files?compact=1&entity=source')return Response.json([file]);
   if(url==='/api/source-files/file?fingerprint=1&context=1')return Response.json({...file,document:original.document});
   if(url==='/api/source-files/file/reprocessing')return Response.json([selected,preferred]);
+  if(url==='/api/source-files/file/reprocessing/preferred/reading')return Response.json(sourceReadingPresentation(preferred));
   if(url==='/api/source-files/file/reprocessing/preferred')return Response.json(preferred);
-  if(url==='/api/source-files/file/reprocessing/selected'){
-   if(++selectedReads===1)return new Promise(resolve=>{releaseReading=()=>resolve(Response.json(selected));});
-   return Response.json(selected);
-  }
+  if(url==='/api/source-files/file/reprocessing/selected/reading'){selectedReads++;return new Promise(resolve=>{releaseReading=()=>resolve(Response.json(sourceReadingPresentation(selected)));});}
+  if(url==='/api/source-files/file/reprocessing/selected'){selectedReads++;return Response.json(selected);}
   if(url.startsWith('/api/source-files/file/reading-locations'))return Response.json({resume:null,bookmarks:[]});
   if(url.startsWith('/api/source-files/file/highlights')||url.startsWith('/api/source-files/file/reading-notes'))return Response.json([]);
   throw Error(`Unexpected request: ${url}`);
@@ -240,7 +241,9 @@ test('accepted page shows the selected snapshot immediately while its background
  await act(async()=>root.render(React.createElement(SourceReader,{vaultId:'default',source:{id:'source',name:'Article',subtypes:[],updated_at:'fixed'},entities:[],onOpenEntity:noop,onCreatePageFromSource:noop,onError:noop,onAddPassage:noop,onAnnotate:noop,onReadingNoteCreated:noop,onOpenReadingNote:noop,onRemoveReadingNote:noop})));
  const picker=document.querySelector('[aria-label="Reading version"]');
  await act(async()=>{picker.value=selected.id;picker.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
- assert.equal(typeof releaseReading,'function');assert.equal(selectedReads,2,'The diff detail is available while the reading request is delayed');
+ assert.equal(typeof releaseReading,'function');
+ await act(async()=>[...document.querySelectorAll('button')].find(button=>button.textContent.startsWith('Review changes (')).click());
+ assert.equal(selectedReads,2,'The diff detail is available while the reading request is delayed');
  await act(async()=>[...document.querySelectorAll('button')].find(button=>button.textContent==='Changes applied').click());
  const article=document.querySelector('.source-reader-document');
  assert.equal(document.querySelector('.source-reader-content').hidden,false);assert.match(article.textContent,/Selected reading paragraph/);assert.doesNotMatch(article.textContent,/Preferred reading paragraph/);
@@ -259,9 +262,10 @@ test('selected accepted page recovery labels recovered reading without rewriting
  const recoveredText=text+'Recovered second page.',recoveredDocument=processedSourceDocument({...file,text:recoveredText});recoveredDocument.ingestion={pages,readingMapping:{nodes:[],relations:[],recoveredNodes:[{readingId:'recovered',originalId:null,page:2}]}};
  const base=JSON.parse(readFileSync(new URL('./fixtures/dante-editorial-revision.json',import.meta.url),'utf8')),revision={...base,id:'recovered',fileId:'file',versionNumber:1,status:'completed',stale:false,patches:[],original,reprocessed:{text:recoveredText,document:recoveredDocument},report:{...base.report,chunksCompleted:base.report.chunksTotal}};
  t.mock.method(globalThis,'fetch',async url=>{
-  if(url==='/api/entities/source')return Response.json({attachments:[file]});
+  if(url==='/api/source-files?compact=1&entity=source')return Response.json([file]);
   if(url==='/api/source-files/file?fingerprint=1&context=1')return Response.json({...file,document:original.document});
   if(url==='/api/source-files/file/reprocessing')return Response.json([revision]);
+  if(url==='/api/source-files/file/reprocessing/recovered/reading')return Response.json(sourceReadingPresentation(revision));
   if(url==='/api/source-files/file/reprocessing/recovered')return Response.json(revision);
   if(url.startsWith('/api/source-files/file/reading-locations'))return Response.json({resume:null,bookmarks:[]});
   if(url.startsWith('/api/source-files/file/highlights')||url.startsWith('/api/source-files/file/reading-notes'))return Response.json([]);
@@ -278,7 +282,7 @@ test('selected accepted page recovery labels recovered reading without rewriting
 test('failed provider source shows checkpoints before document text is available without retrying',async t=>{
  const {setupDOM}=await import('./helpers/dom.mjs');const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
  const file={id:'failed.pdf',vault_id:'default',entity_id:'source',name:'Failed PDF',format:'pdf',status:'failed',admitted:1,text:'',progress:0,pages:15,ingestion_origin:'openai',enrichment_status:'pending',error:'Invalid response'};
- const calls=[];t.mock.method(globalThis,'fetch',async(route,options)=>{calls.push({route,options});if(route==='/api/entities/source')return Response.json({attachments:[file]});if(route.endsWith('/ingestion'))return Response.json({id:'r',fileId:file.id,mode:'ingestion',state:'failed',stage:'extraction',provider:'openai',model:'fixture',pageCount:15,completedPages:0,completedWindows:0,totalWindows:3,activePages:[],pendingReview:0,startedAt:'2026-10-26T00:00:00Z',updatedAt:'2026-10-26T00:01:00Z',error:file.error,unknownOutcome:false,canResume:true});throw new Error('Unexpected route '+route);});
+ const calls=[];t.mock.method(globalThis,'fetch',async(route,options)=>{calls.push({route,options});if(route==='/api/source-files?compact=1&entity=source')return Response.json([file]);if(route.endsWith('/ingestion'))return Response.json({id:'r',fileId:file.id,mode:'ingestion',state:'failed',stage:'extraction',provider:'openai',model:'fixture',pageCount:15,completedPages:0,completedWindows:0,totalWindows:3,activePages:[],pendingReview:0,startedAt:'2026-10-26T00:00:00Z',updatedAt:'2026-10-26T00:01:00Z',error:file.error,unknownOutcome:false,canResume:true});throw new Error('Unexpected route '+route);});
  const noop=()=>{};await act(async()=>root.render(React.createElement(SourceReader,{vaultId:'default',source:{id:'source',name:'Failed PDF'},entities:[],onOpenEntity:noop,onCreatePageFromSource:noop,onError:noop,onAddPassage:noop,onAnnotate:noop,onReadingNoteCreated:noop,onOpenReadingNote:noop,onRemoveReadingNote:noop})));
  assert.ok(document.querySelector('[aria-label="PDF processing checkpoints"]'));assert.match(document.body.textContent,/PDF processing failed/);assert.equal(document.querySelector('.source-reader-document'),null);assert.ok(calls.every(call=>call.options.method==='GET'));
 });
@@ -291,7 +295,7 @@ test('ready provider reader offers enriched JSON download without generating ano
  Object.defineProperty(document,'fonts',{value:{ready:Promise.resolve()}});dom.window.Range.prototype.getClientRects=()=>[];
  const text='Readable source.',file={id:'provider.pdf',vault_id:'default',entity_id:'source',name:'article.pdf',format:'pdf',status:'ready',admitted:1,text,textHash:'canonical',pages:1,page_start_lines:'[1]',structural_nodes:'[]',enrichment_status:'completed',ingestion_origin:'openai',generated_name:null,language:null,source_url:null},calls=[];
  t.mock.method(globalThis,'fetch',async(url,options)=>{
-  calls.push({url,method:options.method});if(url==='/api/entities/source')return Response.json({attachments:[file]});
+  calls.push({url,method:options.method});if(url==='/api/source-files?compact=1&entity=source')return Response.json([file]);
   if(url.startsWith('/api/source-files/provider.pdf?'))return Response.json({...file,document:processedSourceDocument(file)});
   if(url.endsWith('/ingestion'))return Response.json({id:'r',fileId:file.id,state:'completed',stage:'publication',provider:'openai',model:'fixture',pageCount:1,completedPages:1,completedWindows:1,totalWindows:1,activePages:[],pendingReview:0,startedAt:'2026-10-26T00:00:00Z',updatedAt:'2026-10-26T00:01:00Z',unknownOutcome:false,canResume:false});
   if(url.includes('/reading-locations'))return Response.json({resume:null,bookmarks:[]});return Response.json([]);

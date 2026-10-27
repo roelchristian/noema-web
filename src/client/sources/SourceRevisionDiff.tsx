@@ -66,26 +66,39 @@ function displayRows(rows:RevisionDiffLine[],split:boolean,rendered:boolean):Dis
  return result;
 }
 
-/** Context always compares canonical text with the complete proposal in that interval.
- * Expand across intersecting patches so no changed text is presented as unchanged. */
-export function buildRevisionDiffContext(text:string,patch:SourceEditorialPatch,all:SourceEditorialPatch[]){
- const start=patch.range.startOffset,end=patch.range.endOffset;
- const lineStart=(offset:number)=>offset===0?0:text.lastIndexOf('\n',offset-1)+1;
- const lineEnd=(offset:number)=>{const next=text.indexOf('\n',offset);return next<0?text.length:next;};
- let from=lineStart(start),to=lineEnd(end);
- // Two unchanged lines provide orientation without expanding distant linked notes.
- for(let i=0;i<2;i++){if(from>0)from=text.lastIndexOf('\n',from-2)+1;if(to<text.length){const next=text.indexOf('\n',to+1);to=next<0?text.length:next;}}
- const ordered=[...all].sort((a,b)=>a.range.startOffset-b.range.startOffset);
- const intersects=(item:SourceEditorialPatch)=>item.id===patch.id||(item.range.startOffset===item.range.endOffset?item.range.startOffset>=from&&item.range.startOffset<=to:item.range.startOffset<to&&item.range.endOffset>from);
+function lowerBound(values:number[],value:number){let low=0,high=values.length;while(low<high){const middle=(low+high)>>>1;if(values[middle]!<value)low=middle+1;else high=middle;}return low;}
+function upperBound(values:number[],value:number){let low=0,high=values.length;while(low<high){const middle=(low+high)>>>1;if(values[middle]!<=value)low=middle+1;else high=middle;}return low;}
+/** All offsets remain JavaScript UTF-16 offsets, matching stored patch coordinates. */
+export function buildRevisionDiffIndex(text:string,all:SourceEditorialPatch[]){
+ const newlines:number[]=[];for(let offset=text.indexOf('\n');offset>=0;offset=text.indexOf('\n',offset+1))newlines.push(offset);
+ const ordered=[...all].sort((a,b)=>a.range.startOffset-b.range.startOffset),starts=ordered.map(item=>item.range.startOffset),maxEnds:number[]=[];
+ for(const item of ordered)maxEnds.push(Math.max(maxEnds.at(-1)??0,item.range.endOffset));
+ const endOrdered=[...ordered].sort((a,b)=>a.range.endOffset-b.range.endOffset),ends=endOrdered.map(item=>item.range.endOffset),deltas=[0];
+ const newlineCount=(from:number,to:number)=>lowerBound(newlines,to)-lowerBound(newlines,from);
+ for(const item of endOrdered)deltas.push(deltas.at(-1)!+(item.userReplacement??item.replacement).split('\n').length-1-newlineCount(item.range.startOffset,item.range.endOffset));
+ const lineAt=(offset:number)=>lowerBound(newlines,offset)+1;
+ const lineStart=(offset:number)=>{const at=lowerBound(newlines,offset)-1;return at<0?0:newlines[at]!+1;};
+ const lineEnd=(offset:number)=>newlines[lowerBound(newlines,offset)]??text.length;
+ const within=(from:number,to:number)=>ordered.slice(lowerBound(maxEnds,from),upperBound(starts,to)).filter(item=>item.range.startOffset===item.range.endOffset?item.range.startOffset>=from&&item.range.startOffset<=to:item.range.startOffset<to&&item.range.endOffset>from);
+ const deltaBefore=(from:number,included:SourceEditorialPatch[])=>deltas[upperBound(ends,from)]!-included.filter(item=>item.range.endOffset<=from).reduce((sum,item)=>sum+(item.userReplacement??item.replacement).split('\n').length-1-newlineCount(item.range.startOffset,item.range.endOffset),0);
+ const groups=new Map<string,SourceEditorialPatch[]>();for(const item of ordered){const key=item.patchGroupId?`group:${item.patchGroupId}`:`patch:${item.id}`;const group=groups.get(key)??[];group.push(item);groups.set(key,group);}
+ return {ordered,lineAt,lineStart,lineEnd,within,deltaBefore,groups};
+}
+type DiffIndex=ReturnType<typeof buildRevisionDiffIndex>;
+function revisionDiffRange(text:string,patch:SourceEditorialPatch,index:DiffIndex){
+ const {lineStart,lineEnd}=index;
+ let from=lineStart(patch.range.startOffset),to=lineEnd(patch.range.endOffset);
+ for(let i=0;i<2;i++){if(from>0)from=lineStart(from-1);if(to<text.length)to=lineEnd(to+1);}
  let changed=true;
- while(changed){changed=false;for(const item of ordered){if(!intersects(item))continue;const nextFrom=Math.min(from,lineStart(item.range.startOffset)),nextTo=Math.max(to,lineEnd(item.range.endOffset));if(nextFrom!==from||nextTo!==to){from=nextFrom;to=nextTo;changed=true;}}}
- const included=ordered.filter(intersects),includedIds=new Set(included.map(item=>item.id));
- const before=text.slice(from,to);let after=before;
- for(const item of [...included].reverse())after=after.slice(0,item.range.startOffset-from)+(item.userReplacement??item.replacement)+after.slice(item.range.endOffset-from);
- let delta=0;
- for(const item of ordered){if(includedIds.has(item.id)||item.range.endOffset>from)continue;delta+=((item.userReplacement??item.replacement).match(/\n/g)?.length??0)-(text.slice(item.range.startOffset,item.range.endOffset).match(/\n/g)?.length??0);}
- const line=text.slice(0,from).split('\n').length;
- return {before,after,line,newLine:line+delta,from,to,patchIds:included.map(item=>item.id)};
+ while(changed){changed=false;for(const item of index.within(from,to)){const nextFrom=Math.min(from,lineStart(item.range.startOffset)),nextTo=Math.max(to,lineEnd(item.range.endOffset));if(nextFrom!==from||nextTo!==to){from=nextFrom;to=nextTo;changed=true;}}}
+ return {from,to};
+}
+/** Context compares canonical text with the complete proposal, including overlapping changes. */
+export function buildRevisionDiffContext(text:string,patch:SourceEditorialPatch,all:SourceEditorialPatch[],index:DiffIndex=buildRevisionDiffIndex(text,all)){
+ const {from,to}=revisionDiffRange(text,patch,index),included=index.within(from,to),before=text.slice(from,to);let after=before;
+ for(let i=included.length-1;i>=0;i--){const item=included[i]!;after=after.slice(0,item.range.startOffset-from)+(item.userReplacement??item.replacement)+after.slice(item.range.endOffset-from);}
+ const line=index.lineAt(from);
+ return {before,after,line,newLine:line+index.deltaBefore(from,included),from,to,patchIds:included.map(item=>item.id)};
 }
 
 function Notes({group}:{group:SourceEditorialPatch[]}){
@@ -112,19 +125,24 @@ function LineText({row,paired}:{row:RevisionDiffLine;paired?:RevisionDiffLine}){
 
 /** Merge overlapping contexts into a continuous diff, rather than repeating a
  * paragraph or enclosing each individual edit in a separate visual group. */
-export function buildRevisionDiffSections(text:string,all:SourceEditorialPatch[],visible=all){
- const requested=buildRevisionDiffGroups(all,visible).flat(),contexts=requested.map(patch=>buildRevisionDiffContext(text,patch,all)).sort((a,b)=>a.from-b.from);
+/** Lightweight section plan: no source text slicing, proposal copying or LCS work. */
+export function planRevisionDiffSections(text:string,all:SourceEditorialPatch[],visible=all,index:DiffIndex=buildRevisionDiffIndex(text,all)){
+ const requested=buildRevisionDiffGroups(all,visible).flat(),requestedIds=new Set(requested.map(item=>item.id)),contexts=requested.map(patch=>revisionDiffRange(text,patch,index)).sort((a,b)=>a.from-b.from);
  const ranges:{from:number;to:number}[]=[];
  for(const context of contexts){const previous=ranges.at(-1);if(previous&&context.from<=previous.to)previous.to=Math.max(previous.to,context.to);else ranges.push({from:context.from,to:context.to});}
- const ordered=[...all].sort((a,b)=>a.range.startOffset-b.range.startOffset);
  return ranges.map(({from,to})=>{
-  const included=ordered.filter(patch=>patch.range.startOffset<to&&patch.range.endOffset>from||patch.range.startOffset===patch.range.endOffset&&patch.range.startOffset>=from&&patch.range.startOffset<=to);
-  const before=text.slice(from,to);let after=before;
-  for(const patch of [...included].reverse())after=after.slice(0,patch.range.startOffset-from)+(patch.userReplacement??patch.replacement)+after.slice(patch.range.endOffset-from);
-  const line=text.slice(0,from).split('\n').length;
-  const delta=ordered.filter(patch=>patch.range.endOffset<=from&&!included.includes(patch)).reduce((sum,patch)=>sum+((patch.userReplacement??patch.replacement).match(/\n/g)?.length??0)-(text.slice(patch.range.startOffset,patch.range.endOffset).match(/\n/g)?.length??0),0);
-  return {from,to,before,after,line,newLine:line+delta,hunkPatches:buildRevisionDiffGroups(all,included).flat(),patches:requested.filter(patch=>included.some(item=>item.id===patch.id))};
+  const included=index.within(from,to),line=index.lineAt(from),hunkIds=new Set<string>(),hunkPatches:SourceEditorialPatch[]=[];
+  for(const item of included)for(const linked of index.groups.get(item.patchGroupId?`group:${item.patchGroupId}`:`patch:${item.id}`)??[item])if(!hunkIds.has(linked.id)){hunkIds.add(linked.id);hunkPatches.push(linked);}
+  return {from,to,line,newLine:line+index.deltaBefore(from,included),included,hunkPatches,patches:included.filter(item=>requestedIds.has(item.id))};
  });
+}
+export function materializeRevisionDiffSection(text:string,plan:ReturnType<typeof planRevisionDiffSections>[number]){
+ const {included,...section}=plan,before=text.slice(section.from,section.to);let after=before;
+ for(let i=included.length-1;i>=0;i--){const patch=included[i]!;after=after.slice(0,patch.range.startOffset-section.from)+(patch.userReplacement??patch.replacement)+after.slice(patch.range.endOffset-section.from);}
+ return {...section,before,after};
+}
+export function buildRevisionDiffSections(text:string,all:SourceEditorialPatch[],visible=all,index:DiffIndex=buildRevisionDiffIndex(text,all)){
+ return planRevisionDiffSections(text,all,visible,index).map(plan=>materializeRevisionDiffSection(text,plan));
 }
 
 function ChangeControls({patch,revision,disabled,onDecision,onEdit,onLocate,onCompare}:Omit<Props,'patches'>&{patch:SourceEditorialPatch}){
@@ -158,7 +176,11 @@ export function SourceRevisionDiff(props:Props){
   return()=>observer.disconnect();
  },[]);
  const split=wide&&layout==='split';
- const sections=useMemo(()=>buildRevisionDiffSections(revision.original.text,revision.patches,patches),[revision.original.text,revision.patches,patches]);
+ const diffIndex=useMemo(()=>buildRevisionDiffIndex(revision.original.text,revision.patches),[revision.original.text,revision.patches]);
+ const sectionPlans=useMemo(()=>planRevisionDiffSections(revision.original.text,revision.patches,patches,diffIndex),[revision.original.text,revision.patches,patches,diffIndex]);
+ const [sectionLimit,setSectionLimit]=useState(12);
+ useEffect(()=>setSectionLimit(12),[revision.id]);
+ const sections=useMemo(()=>sectionPlans.slice(0,sectionLimit).map(plan=>materializeRevisionDiffSection(revision.original.text,plan)),[sectionPlans,sectionLimit,revision.original.text]);
  const textCell=(lines:RevisionDiffLine[],side:'original'|'revision',paired?:RevisionDiffLine)=>{
   const row=lines[0],line=side==='original'?row?.oldLine:row?.newLine;
   return <div className={`revision-diff-side ${row?'is-'+row.kind:'is-empty'}`}>
@@ -182,7 +204,7 @@ export function SourceRevisionDiff(props:Props){
   {!sections.length&&<p className="revision-diff-empty" role="status">{uiText('No changes to review.')}</p>}
   {sections.map(section=>{
    const rows=displayRows(revisionDiffLines(section.before,section.after,section.line,section.newLine),split,rendered),controls=new Map<number,SourceEditorialPatch[]>();
-   for(const patch of section.patches){const line=revision.original.text.slice(0,patch.range.startOffset).split('\n').length;const index=rows.findIndex(row=>row.left.some(item=>item.oldLine===line));const at=index<0?0:index;controls.set(at,[...(controls.get(at)??[]),patch]);}
+   for(const patch of section.patches){const line=diffIndex.lineAt(patch.range.startOffset);const index=rows.findIndex(row=>row.left.some(item=>item.oldLine===line));const at=index<0?0:index;controls.set(at,[...(controls.get(at)??[]),patch]);}
    const pending=section.hunkPatches.filter(patch=>patch.decision==='pending');
    return <div className="revision-diff-section" key={section.from}>
     <div className="revision-diff-hunk-heading">
@@ -208,5 +230,6 @@ export function SourceRevisionDiff(props:Props){
     </div>
    </div>;
   })}
+  {sectionLimit<sectionPlans.length&&<button type="button" className="button small" onClick={()=>setSectionLimit(limit=>limit+12)}>{uiText('Show more changes')} ({sectionPlans.length-sectionLimit})</button>}
  </div>;
 }

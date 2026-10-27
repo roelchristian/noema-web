@@ -55,7 +55,9 @@
     "test/source-ingestion-geometry.test.mjs",
     "test/source-ingestion-diagram.test.mjs",
     "test/source-ingestion-layout-evidence.test.mjs",
-    "test/document-provider-diagnostics.test.mjs"
+    "test/document-provider-diagnostics.test.mjs",
+    "test/workspace-startup.test.mjs",
+    "test/scoped-request-cache.test.mjs"
   ],
   "dom": [
     "test/trash-ui.test.mjs",
@@ -133,7 +135,8 @@
     "test/chat-research.test.mjs",
     "test/chat-evidence-panel.test.mjs",
     "test/chat-reliability.test.mjs",
-    "test/source-reader-math.test.mjs"
+    "test/source-reader-math.test.mjs",
+    "test/lazy-feature.test.mjs"
   ],
   "server": [
     "test/activity-page-titles.test.mjs",
@@ -292,6 +295,7 @@
     "test/source-ingestion-runtime.test.mjs",
     "test/source-ingestion-activity.test.mjs",
     "test/persona-style-repair.test.mjs",
-    "test/persona-repair-generation.test.mjs"
+    "test/persona-repair-generation.test.mjs",
+    "test/page-save-cost.test.mjs"
   ]
 }

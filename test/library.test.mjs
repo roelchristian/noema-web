@@ -391,3 +391,15 @@ test('Reveal in sidebar reopens a collapsed Folders section and focuses the cano
   assert.equal(revealed, 1);
   assert.equal(document.querySelector('section[aria-label="Collections"] .organization-section-toggle').getAttribute('aria-expanded'), 'false');
 });
+
+test('organization indexes preserve location, collection, favourites and folder-count semantics after inventory replacement',async()=>{
+ const {organizationIndex}=await import('../src/client/organization/organization-index.ts');
+ const pages=[{id:'a'},{id:'b'}],inventory={collections:[{id:'manual',name:'Manual'}],folders:[{id:'root',name:'Root',parent_id:null},{id:'child',name:'Child',parent_id:'root'}],folderLinks:[{collection_id:'manual',folder_id:'root'}],locations:[{kind:'page',item_id:'a',folder_id:'root'},{kind:'page',item_id:'removed',folder_id:'root'}],memberships:[{kind:'page',item_id:'a',collection_id:'manual',automatic:true},{kind:'entity',item_id:'a',collection_id:'manual'}],favourites:[{kind:'page',item_id:'a'}]};
+ const index=organizationIndex(inventory,pages);
+ assert.equal(index.locations.get('page:a'),inventory.locations[0]);assert.equal(index.collectionItems.get('manual').has('page:a'),true);assert.equal(index.collectionItems.get('manual').has('entity:a'),true);
+ assert.deepEqual(index.memberships.get('page:a'),[inventory.memberships[0]]);assert.equal(index.favourites.has('page:a'),true);assert.equal(index.favourites.has('entity:a'),false);
+ assert.equal(index.folderPages.get('root'),1);assert.equal(index.folderChildren.get('root'),1);assert.equal(index.linkedFolders.get('manual').size,1);
+ const replacement=organizationIndex({...inventory,locations:[],memberships:[],favourites:[]},pages);
+ assert.equal(replacement.locations.size,0);assert.equal(replacement.memberships.size,0);assert.equal(replacement.favourites.size,0);assert.equal(replacement.folderPages.size,0);
+ assert.equal(index.locations.size,2,'building replacement never mutates the prior inventory index');
+});

@@ -60,10 +60,12 @@ const tabLabels = {overview:'Overview', metadata:'Metadata', connections:'Connec
 export function EntityHome({vaultId, id, entities, refreshKey, onOpen, onInspect, onOpenPage, onOpenMention, onOpenSourcePassage, onUpdated, onError, onClose, pages = [], onCreatePage}: EntityHomeProps) {
   const reviewDestination=useContext(ReviewDestination);
   const reviewTab=reviewDestination?.category==='discovery'&&reviewDestination.originId===id?'connections':reviewDestination?.category==='property'&&reviewDestination.originId===id?(entities.find(item=>item.id===id)?.type==='source'?'metadata':'overview'):null;
-  const [entity, setEntity] = useState<EntityDetail | null>(null);
+  const [loadedEntity, setEntity] = useState<EntityDetail | null>(null);
+  const entity=loadedEntity?.vault_id===vaultId&&loadedEntity.id===id?loadedEntity:null;
   const [error, setError] = useState('');
   const [detailAttempt, setDetailAttempt] = useState(0);
   const [entityAttempt, setEntityAttempt] = useState(0);
+  const [detailRequired, setDetailRequired] = useState(false);
   const navigationKey = vaultId + ':' + id;
   const savedNavigation = () => window.history.state?.entityHome?.key === navigationKey ? window.history.state.entityHome : null;
   const initialTab = (): HomeTab => reviewTab ?? (hasEntityDraft(vaultId,id) ? 'overview' : tabs.includes(savedNavigation()?.tab) ? savedNavigation().tab : savedNavigation()?.tab === 'sources' ? 'evidence' : savedNavigation()?.tab === 'mentions' || savedNavigation()?.tab === 'discovery' ? 'connections' : 'overview');
@@ -101,27 +103,31 @@ export function EntityHome({vaultId, id, entities, refreshKey, onOpen, onInspect
   const {schema, error: schemaError} = useEntitySchema(vaultId);
   // A Review Centre destination selects Discovery without clearing this entity or its drafts.
   useEffect(() => {if(reviewTab){restoring.current=true;setTab(reviewTab);if(reviewDestination?.category==='discovery'){setDiscoveryOpen(true);setDiscoveryLoaded(true);}}}, [reviewTab]);
-  useEffect(() => {setEntity(null); setManage(false); setConnecting(false);setConnectingBusy(false);setConnectionUndo(null);setConnectionError('');setUndoing(false); setExploring(false); setDiscoveryOpen(reviewDestination?.category==='discovery'&&reviewDestination.originId===id);setDiscoveryLoaded(reviewDestination?.category==='discovery'&&reviewDestination.originId===id); setDetailsOpen(hasEntityDraft(vaultId,id)); setTab(initialTab());}, [vaultId, id]);
+  useEffect(() => {setEntity(null); setDetailRequired(false); setManage(false); setConnecting(false);setConnectingBusy(false);setConnectionUndo(null);setConnectionError('');setUndoing(false); setExploring(false); setDiscoveryOpen(reviewDestination?.category==='discovery'&&reviewDestination.originId===id);setDiscoveryLoaded(reviewDestination?.category==='discovery'&&reviewDestination.originId===id); setDetailsOpen(hasEntityDraft(vaultId,id)); setTab(initialTab());}, [vaultId, id]);
   useEffect(() => {
-    let active = true; const version=mutationVersion.current; setError('');
-    // Refresh an open editor with full details so transient previews cannot unmount its forms.
-    void api.entity(vaultId, id, !hasEntityDraft(vaultId,id) && !entity && activeTab.current!=='connections').then(async value => {
-      if (!active||version!==mutationVersion.current)return;
-      if(value.previewLimited && ['connections','overview'].includes(activeTab.current))value=await api.entity(vaultId,id);
-      if(active&&version===mutationVersion.current)setEntity(value);
-    }).catch(value => {if (active&&version===mutationVersion.current) setError(String(value));});
-    return () => {active = false;};
+    const controller = new AbortController(); const version=mutationVersion.current; setError('');
+    // Publish bounded content before scheduling the independent detail request.
+    // An existing editor keeps its complete record while a refresh is pending.
+    void api.entity(vaultId, id, !hasEntityDraft(vaultId,id) && (!entity || entity.id!==id || entity.vault_id!==vaultId) && activeTab.current!=='connections', controller.signal).then(value => {
+      if (controller.signal.aborted||version!==mutationVersion.current)return;
+      setEntity(previous => value.previewLimited && previous?.id===id && previous.vault_id===vaultId && !previous.previewLimited ? previous : value);
+      setDetailRequired(!!value.previewLimited);
+    }).catch(value => {if (!controller.signal.aborted&&version===mutationVersion.current) setError(String(value));});
+    return () => {controller.abort();};
   }, [vaultId, id, refreshKey, entityAttempt]);
   useEffect(() => {
-    if (!entity?.previewLimited || !['overview','connections'].includes(tab)) return;
-    let active = true;const version=mutationVersion.current;
-    void api.entity(vaultId,id).then(value=>{if(active&&version===mutationVersion.current)setEntity(value);}).catch(value=>{if(active&&version===mutationVersion.current)setError(String(value));});
-    return ()=>{active=false;};
-  }, [vaultId,id,tab,entity?.previewLimited,detailAttempt]);
+    if (entity?.id!==id || entity.vault_id!==vaultId || !(entity.previewLimited || detailRequired) || !['overview','connections'].includes(tab)) return;
+    const controller=new AbortController();const version=mutationVersion.current;
+    void api.entity(vaultId,id,false,controller.signal).then(value=>{
+      if(controller.signal.aborted||version!==mutationVersion.current)return;
+      setEntity(value);setDetailRequired(false);
+    }).catch(value=>{if(!controller.signal.aborted&&version===mutationVersion.current)setError(String(value));});
+    return ()=>{controller.abort();};
+  }, [vaultId,id,tab,entity?.previewLimited,detailRequired,detailAttempt]);
   const sameEntity = () => current.current===owner;
   async function mutate(work: () => Promise<EntityDetail>) {
     const version=++mutationVersion.current;
-    try {const result = await work(); if(sameEntity()){if(version===mutationVersion.current){mutationVersion.current++;setEntity(result);}else {const refreshVersion=mutationVersion.current;void api.entity(vaultId,id).then(value=>{if(sameEntity()&&refreshVersion===mutationVersion.current)setEntity(value);}).catch(onError);}} void onUpdated().catch(onError); return result;}
+    try {const result = await work(); if(sameEntity()){if(version===mutationVersion.current){mutationVersion.current++;setDetailRequired(false);setEntity(result);}else {const refreshVersion=mutationVersion.current;void api.entity(vaultId,id).then(value=>{if(sameEntity()&&refreshVersion===mutationVersion.current)setEntity(value);}).catch(onError);}} void onUpdated().catch(onError); return result;}
     catch (value) {if(sameEntity()&&version===mutationVersion.current)mutationVersion.current++;onError(value); throw value;}
   }
   function switchTab(value: HomeTab) {

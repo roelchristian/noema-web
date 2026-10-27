@@ -59,3 +59,35 @@ test('human description saves bypass unavailable matching previews and send no m
  }
  assert.ok(requests.every(request=>request.url.endsWith('semantic-preview')||request.url.endsWith('example-preview')));assert.equal(saves.length,2);
 });
+
+test('fifty selected pages use one bulk request, keep selection on failure, and clear it after retry',async t=>{
+ const env=setupDOM(t),{createRoot}=await import('react-dom/client'),{OrganizationLibrary}=await import('../src/client/organization/OrganizationLibrary.tsx'),root=createRoot(document.querySelector('#mount'));
+ env.defer(()=>act(async()=>root.unmount()));
+ env.dom.window.HTMLElement.prototype.hidePopover=function(){};env.dom.window.HTMLElement.prototype.showPopover=function(){};
+ const observer=Object.getOwnPropertyDescriptor(globalThis,'ResizeObserver');
+ Object.defineProperty(globalThis,'ResizeObserver',{configurable:true,value:class {observe(){}disconnect(){}}});
+ env.defer(()=>{if(observer)Object.defineProperty(globalThis,'ResizeObserver',observer);else delete globalThis.ResizeObserver;});
+ const pages=Array.from({length:50},(_,i)=>({id:'bulk-'+i,title:'Synthetic page '+i,updated_at:'2026-10-27'}));
+ const data={collections:[],folders:[],memberships:[],locations:[],favourites:[]},requests=[],changes=[],errors=[];let fail=true;
+ t.mock.method(api,'organize',async(vault,route,body)=>{requests.push({vault,route,body});if(fail)throw new Error('Synthetic bulk unavailable');return {...data,favourites:pages.map(page=>({kind:'page',item_id:page.id}))};});
+ const props={vaultId:'bulk-ui',data,pages,entities:[],context:{collection:'',folder:''},favouritesOnly:false,onContextChange(){},onChanged:value=>changes.push(value),onOpenPage(){},onOpenEntity(){},onOpenFolder(){},onRenamePage(){},onDeletePage(){},onNewNote(){},onOpenPassage(){},onError:error=>errors.push(error)};
+ await act(async()=>root.render(React.createElement(OrganizationLibrary,props)));
+ await act(async()=>document.querySelector('[aria-label="Select all visible pages"]').click());
+ assert.equal(document.querySelectorAll('.organization-item.is-checked').length,50);
+ const favourite=()=>[...document.querySelectorAll('.organization-bulk-actions button')].find(button=>button.textContent==='Favourite');
+ await act(async()=>favourite().click());
+ assert.equal(requests.length,1);assert.equal(requests[0].route,'bulk');assert.equal(requests[0].body.operation,'favourites');assert.equal(requests[0].body.item_ids.length,50);
+ assert.equal(document.querySelectorAll('.organization-item.is-checked').length,50);assert.equal(changes.length,0);assert.match(String(errors[0]),/Synthetic bulk unavailable/);
+ fail=false;await act(async()=>favourite().click());
+ assert.equal(requests.length,2);assert.deepEqual(requests[1],requests[0]);assert.equal(changes.length,1);assert.equal(document.querySelectorAll('.organization-item.is-checked').length,0);
+ const largePages=Array.from({length:101},(_,i)=>({id:'large-'+i,title:'Large synthetic '+i,updated_at:'2026-10-27'}));
+ await act(async()=>root.render(React.createElement(OrganizationLibrary,{...props,pages:largePages})));
+ await act(async()=>document.querySelector('[aria-label="Select all visible pages"]').click());
+ assert.equal(document.querySelectorAll('.organization-item.is-checked').length,101);
+ assert.match(document.querySelector('.organization-bulk-actions [role="status"]').textContent,/Choose up to 100 pages/);
+ for(const label of ['Favourite','Unfavourite','Organize'])assert.equal([...document.querySelectorAll('.organization-bulk-actions button')].find(button=>button.textContent===label).disabled,true);
+ assert.equal(requests.length,2,'over-bound selection is never silently truncated or sent');
+ await act(async()=>[...document.querySelectorAll('.organization-bulk-actions button')].find(button=>button.textContent==='Clear').click());
+ assert.equal(document.querySelectorAll('.organization-item.is-checked').length,0);
+
+});

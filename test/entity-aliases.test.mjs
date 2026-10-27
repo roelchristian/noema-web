@@ -184,3 +184,20 @@ test('inline decorations only render cached records for the matching paragraph o
   assert.doesNotMatch(segmentHTML(content, entities, {blockId: 'table', row: 0, col: 1, matches: [item]}), /entity-review-highlight/);
   assert.match(segmentHTML(content, entities, {blockId: 'table', row: 0, col: 1, matches: [{...item, blockId: 'table', row: 0, col: 1}]}), /entity-review-highlight/);
 });
+
+test('source status inventory contains only compact scalars and is vault scoped',()=>{
+  const db=openDatabase(':memory:');
+  try {
+    const knowledge=new Knowledge(new Store(db));
+    const source=knowledge.create('default',{name:'Synthetic PDF',type:'person',description:'Large editorial description '.repeat(300)});
+    db.prepare("UPDATE entities SET type='source' WHERE id=?").run(source.id);
+    knowledge.create('default',{name:'Ada',type:'person'});
+    const statuses=knowledge.sourceStatuses('default');
+    assert.equal(statuses.length,1);assert.equal(statuses[0].id,source.id);
+    assert.deepEqual(Object.keys(statuses[0]).sort(),['id','inactive','sourceEnrichmentStatus','sourceSize','sourceStatus']);
+    assert.deepEqual(knowledge.sourceStatuses('foreign'),[]);
+    const fullBytes=Buffer.byteLength(JSON.stringify(knowledge.list('default'))),compactBytes=Buffer.byteLength(JSON.stringify(statuses));
+    assert.ok(compactBytes<fullBytes/40);
+    console.log(JSON.stringify({sourceStatusPayload:{fullBytes,compactBytes}}));
+  } finally {db.close();}
+});

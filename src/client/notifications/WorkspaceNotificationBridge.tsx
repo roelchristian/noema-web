@@ -17,6 +17,7 @@ export function WorkspaceNotificationBridge({workspace}:{workspace:Workspace}) {
   const occurrence=state.errorOccurrence;
   commands.notify({tone:'error',message:state.error,priority:'important',durationMs:null,
    scope:active?{kind:'vault',vaultId:active}:{kind:'global'},
+   ...(state.error.startsWith('Workspace lists could not load.')?{actions:[{label:t('Retry'),run:()=>workspace.retryInventories()}]}:{}),
    onDismiss:()=>{if(workspace.snapshot().errorOccurrence===occurrence)workspace.dismissError();}});
  },[state.error,state.errorOccurrence,active,commands,workspace]);
  useEffect(()=>{

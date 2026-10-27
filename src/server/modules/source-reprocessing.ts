@@ -1,3 +1,4 @@
+import {sourceReadingPresentation} from '../../shared/source-reprocessing.js';
 import {maxSourceTextBytes} from '../../shared/source-input.js';
 import {SOURCE_INGESTION_MAX_CHARACTERS} from '../../shared/source-ingestion.js';
 import {mapSourceIngestionRevision} from './source-ingestion-revision-mapping.js';
@@ -183,6 +184,7 @@ export class SourceReprocessing {
   if(r.pipelineVersion===2&&!r.stale&&!['queued','running'].includes(r.status)&&r.patches.some(patch=>patch.decision==='accepted'&&preserveReconstructionSeparators(patch.original,patch.userReplacement??patch.replacement)!==(patch.userReplacement??patch.replacement)))materializeSourceRevision(r);
   return r;
  }
+ reading(vault:string,id:string,revisionId:string){return sourceReadingPresentation(this.detail(vault,id,revisionId));}
  status(vault:string,id:string,revisionId:string){
   this.files.require(vault,id);
   // Read only status fields rather than transferring/parsing both full document snapshots.

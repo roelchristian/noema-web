@@ -418,3 +418,80 @@ test('archive flushes autosave, keeps successful batch transitions undoable, and
  await workspace.restoreArchivedPages(workspace.snapshot().archiveUndo);
  assert.equal(workspace.snapshot().page.archived_at,null);assert.equal(workspace.snapshot().archiveUndo.length,0);assert.equal(workspace.snapshot().pages.length,1);
 });
+
+test('source progress preserves cached bodies and unchanged identities; dictionary changes invalidate', async t => {
+  const {entityMatchingDictionary}=await import('../src/shared/entity-matching-dictionary.ts');
+  const workspace=new Workspace();
+  t.after(()=>{workspace.saver.dispose();workspace.titler.dispose();});
+  const person={id:'ada',vault_id:'a',name:'Ada',type:'person',subtypes:[],aliases:[],description:'',updated_at:''};
+  const source={...person,id:'pdf',name:'PDF',type:'source',sourceStatus:'processing',sourceEnrichmentStatus:'running',inactive:false};
+  const note={id:'note',vault_id:'a',title:'Draft',blocks:[],sourceIds:[],revision:1,updated_at:''};
+  workspace.state={...workspace.snapshot(),vault:{id:'a',name:'A',locked:false},entities:[person,source],busy:false};
+  workspace.pageCache.set(note.id,note);
+  let status=source;
+  let fullCalls=0;
+  t.mock.method(api,'sourceStatuses',async()=>[status]);
+  t.mock.method(api,'entities',async()=>{fullCalls++;return structuredClone(workspace.snapshot().entities);});
+  const dictionary=entityMatchingDictionary(workspace.snapshot().entities);
+  for(let n=0;n<4;n++) {
+    status={id:'pdf',sourceStatus:'processing',sourceEnrichmentStatus:'running',inactive:false,sourceSize:n};
+    await workspace.refreshSourceStatuses();
+    assert.equal(workspace.pageCache.get(note.id),note);
+    assert.equal(workspace.snapshot().entities[0],person);
+    assert.equal(entityMatchingDictionary(workspace.snapshot().entities),dictionary);
+  }
+  assert.equal(fullCalls,0,'progress never fetches the full inventory');
+  const unchanged=workspace.snapshot().entities;
+  await workspace.refreshSourceStatuses();
+  assert.equal(workspace.snapshot().entities,unchanged,'unchanged status retains the array');
+  await workspace.refreshEntities();
+  assert.equal(workspace.snapshot().entities,unchanged,'identical full refresh retains all identities');
+  assert.equal(workspace.pageCache.get(note.id),note);
+  t.mock.method(api,'entities',async()=>[{...person,aliases:['Augusta']},source]);
+  await workspace.refreshEntities();
+  assert.equal(workspace.pageCache.size,0,'alias changes invalidate recognition dependencies');
+});
+
+test('late source status cannot cross vault, lock, or cancelled request boundaries',async t=>{
+  const workspace=new Workspace();
+  t.after(()=>{workspace.saver.dispose();workspace.titler.dispose();});
+  const entity={id:'pdf',vault_id:'a',type:'source',name:'PDF',subtypes:[],description:'',sourceStatus:'processing'};
+  workspace.state={...workspace.snapshot(),vault:{id:'a',name:'A',locked:false},entities:[entity]};
+  let finish;
+  t.mock.method(api,'sourceStatuses',()=>new Promise(resolve=>{finish=resolve;}));
+  for(const mode of ['cancel','lock','switch']) {
+    workspace.state={...workspace.snapshot(),vault:{id:'a',name:'A',locked:false},entities:[entity]};
+    const controller=new AbortController(),pending=workspace.refreshSourceStatuses(controller.signal);
+    if(mode==='cancel')controller.abort();
+    else workspace.state={...workspace.snapshot(),vault:mode==='lock'?{id:'a',locked:true}:{id:'b',locked:false}};
+    finish([{id:'pdf',sourceStatus:'ready'}]);await pending;
+    assert.equal(workspace.snapshot().entities[0],entity,mode);
+  }
+});
+
+test('source completion retries inventory failures before consuming terminal status',async t=>{
+  const workspace=new Workspace();
+  t.after(()=>{workspace.saver.dispose();workspace.titler.dispose();});
+  const source={id:'pdf',vault_id:'a',type:'source',name:'PDF',subtypes:[],description:'',sourceStatus:'processing',sourceEnrichmentStatus:'running'};
+  workspace.state={...workspace.snapshot(),vault:{id:'a',name:'A',locked:false},entities:[source]};
+  t.mock.method(api,'sourceStatuses',async()=>[{id:'pdf',sourceStatus:'ready',sourceEnrichmentStatus:'completed'}]);
+  let calls=0;
+  t.mock.method(api,'entities',async()=>{if(++calls===1)throw new Error('offline');return [{...source,sourceStatus:'ready',sourceEnrichmentStatus:'completed'}];});
+  await assert.rejects(workspace.refreshSourceStatuses(),/offline/);
+  assert.equal(workspace.snapshot().entities[0],source,'failed final inventory remains retryable');
+  await workspace.refreshSourceStatuses();
+  assert.equal(calls,2);assert.equal(workspace.snapshot().entities[0].sourceStatus,'ready');
+});
+
+test('source content changes evict dependent cached notes while preserving unrelated drafts',t=>{
+  const workspace=new Workspace();
+  t.after(()=>{workspace.saver.dispose();workspace.titler.dispose();});
+  const page={id:'dependent',vault_id:'a',title:'Draft',blocks:[],sourceIds:['pdf'],revision:1,updated_at:''};
+  const other={...page,id:'other',sourceIds:[]};
+  workspace.state={...workspace.snapshot(),vault:{id:'a',locked:false},page};
+  workspace.pageCache.set(page.id,page);workspace.pageCache.set(other.id,other);
+  workspace.invalidateSourceDependencies('pdf');
+  assert.equal(workspace.pageCache.has(page.id),false);
+  assert.equal(workspace.pageCache.get(other.id),other);
+  assert.equal(workspace.snapshot().page,page,'active editor draft remains untouched');
+});

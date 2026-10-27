@@ -113,3 +113,13 @@ export interface SourceReprocessingRevision {
 }
 export type SourceReprocessingSummary=Omit<SourceReprocessingRevision,'original'|'reprocessed'|'patches'|'nodeLinks'|'furniture'> & {patchCount:number;pendingCount:number};
 export interface SourceEditorialDecision {patchId:string;decision:'accepted'|'rejected'|'pending';replacement?:string}
+
+/** Presentation and mapping needed to read a chosen version, without comparison evidence. */
+export type SourceReadingRevision=Pick<SourceReprocessingRevision,'id'|'fileId'|'updatedAt'|'status'|'stale'|'nodeLinks'|'furniture'|'reprocessed'> & {
+ original:{text:string};report:Pick<SourceReprocessingReport,'chunksCompleted'|'chunksTotal'>;
+ patches:Pick<SourceEditorialPatch,'id'|'nodeIds'|'decision'>[];
+};
+export function sourceReadingPresentation(revision:SourceReprocessingRevision):SourceReadingRevision {
+ const {id,fileId,updatedAt,status,stale,nodeLinks,furniture,reprocessed}=revision;
+ return {id,fileId,updatedAt,status,stale,nodeLinks,furniture,reprocessed,original:{text:revision.original.text},report:{chunksCompleted:revision.report.chunksCompleted,chunksTotal:revision.report.chunksTotal},patches:revision.patches.filter(patch=>patch.decision==='accepted').map(({id,nodeIds,decision})=>({id,nodeIds,decision}))};
+}

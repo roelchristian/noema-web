@@ -65,6 +65,13 @@ export class Knowledge {
     }
     return this.store.all<EntityRow>('SELECT e.*, (SELECT f.size FROM source_files f WHERE f.entity_id=e.id LIMIT 1) AS sourceSize, (SELECT f.status FROM source_files f WHERE f.entity_id=e.id LIMIT 1) AS sourceStatus, (SELECT f.enrichment_status FROM source_files f WHERE f.entity_id=e.id LIMIT 1) AS sourceEnrichmentStatus FROM entities e WHERE e.vault_id=? ORDER BY e.name COLLATE NOCASE',vault).map(row => this.entity(row,assignments.get(row.id)??[]));
   }
+  sourceStatuses(vault: string): import('../../shared/domain.js').SourceEntityStatus[] {
+    return this.store.all<{id:string;sourceSize:number|null;sourceStatus:Entity['sourceStatus'];sourceEnrichmentStatus:Entity['sourceEnrichmentStatus'];inactive:number}>(`SELECT e.id,e.inactive,
+      (SELECT f.size FROM source_files f WHERE f.entity_id=e.id AND f.vault_id=e.vault_id LIMIT 1) AS sourceSize,
+      (SELECT f.status FROM source_files f WHERE f.entity_id=e.id AND f.vault_id=e.vault_id LIMIT 1) AS sourceStatus,
+      (SELECT f.enrichment_status FROM source_files f WHERE f.entity_id=e.id AND f.vault_id=e.vault_id LIMIT 1) AS sourceEnrichmentStatus
+      FROM entities e WHERE e.vault_id=? AND e.type='source' ORDER BY e.id`,vault).map(row=>({...row,inactive:!!row.inactive}));
+  }
   referenceOptions(vault: string, options: {query?: string; types?: string[]; subtypes?: string[]; offset?: number; limit?: number; selected?: string} = {}) {
     const {query = '', types = [], subtypes = [], offset = 0, limit = 30, selected = ''} = options;
     if (query.length > 200 || !Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(limit) || limit < 1 || limit > 50) throw new HttpError(400,'Invalid reference search bounds.');

@@ -43,6 +43,8 @@ export interface Page extends PageSummary { titleEdited?:boolean; generationMeta
 export interface PageInput { editedAfterGeneration?: boolean; titleEdited?:boolean; aiReviewAccepted?:boolean; language?: string | null; featuredImageId?: string | null; icon?: PageIconId | null; title: string; blocks: Block[]; sourceIds?: string[]; revision?: number }
 export type PageEnrichmentMetadata = Pick<Page,'id'|'vault_id'|'title'|'revision'|'pageDomains'|'summaryContentHash'|'enrichmentPending'|'enrichmentPendingFields'|'enrichmentFields'|'language'>;
 export type EntityMentionCase = 'canonical' | 'lowercase';
+/** Compact polling representation: never contains entity descriptions, files or revisions. */
+export type SourceEntityStatus = Pick<Entity,'id'|'sourceSize'|'sourceStatus'|'sourceEnrichmentStatus'|'inactive'>;
 export interface Entity { referentStatus?: ReferentStatus; icon?: import('./page-icons.js').PageIconId | null; archived_at?: string | null; domainIds?: string[]; sourceSize?: number | null; sourceEnrichmentStatus?: SourceFile['enrichment_status'] | null; sourceStatus?: SourceFile['status'] | null; inactive?: boolean; id: string; vault_id: string; name: string; aliases?: string[]; mentionCase?: EntityMentionCase; type: EntityType; subtypes: string[]; description: string; updated_at: string }
 export interface EntityInput { referentStatus?: ReferentStatus; classification_mode?:'retain_legacy'; impact_fingerprint?:string; domainIds?: string[]; name: string; aliases?: string[]; mentionCase?: EntityMentionCase; type: EntityType; subtypes?: string[]; subtype?: string | null; description?: string; attachmentIds?: string[] }
 export function entityMentionName(entity: Pick<Entity,'name'|'mentionCase'> | undefined): string | undefined {

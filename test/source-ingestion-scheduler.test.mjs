@@ -327,3 +327,16 @@ test('local math review findings mark math for review without a second paid requ
  assert.equal(f.ingestion.view('default',f.file.id).state,'completed');assert.equal(f.calls(),1);assert.equal(repairs,0);
  const ledger=JSON.parse(f.store.get('SELECT capabilities_json FROM source_ingestion_documents WHERE file_id=?',f.file.id).capabilities_json);assert.equal(ledger.math.state,'requires-review');assert.match(f.files.require('default',f.file.id).text,/unreadable sign/);
 });
+
+for(const scenario of ['omitted-invalid-diagram','uncertain-valid-diagram'])test(`explicit enrichment preserves structure review state for ${scenario}`,async t=>{
+ const f=setup(t,{pages:1,extract:async input=>{input.onSubmitted('initial-figure');const candidate=ir(input.plan.ownedPages,'L K');candidate.blocks[0].kind='figure';return {status:'completed',candidate,usage:{inputTokens:1,outputTokens:2},responseHash:sha('initial-figure')};}});
+ f.ingestion.stage('default',f.file.id,f.options);await f.ingestion.tick();
+ const baseline=f.files.require('default',f.file.id).text,original=f.store.get('SELECT document_json,assembly_json FROM source_ingestion_documents WHERE file_id=?',f.file.id);
+ assert.equal(JSON.parse(f.store.get('SELECT capabilities_json FROM source_ingestion_documents WHERE file_id=?',f.file.id).capabilities_json).structure.state,'completed');
+ f.dependencies.enrich=async input=>{input.onSubmitted('enrichment-figure');const block=input.document.blocks[0],diagram=scenario==='omitted-invalid-diagram'?{nodes:[],edges:[],uncertainty:null}:{nodes:[{id:'L',label:'L',quote:'L'},{id:'K',label:'K',quote:'K'}],edges:[],uncertainty:'The connecting line is unreadable.'};return {status:'completed',candidate:{metadata:{title:null,language:null,synopsis:'A source figure.',candidates:[]},blocks:[{id:block.id,kind:'figure',headingLevel:null,table:null,diagram,quote:'L K',uncertainty:null}],relations:[]},usage:{inputTokens:1,outputTokens:2},responseHash:sha(scenario)};};
+ f.ingestion.enrich('default',f.file.id);await f.ingestion.tick();const progress=f.ingestion.view('default',f.file.id);assert.equal(progress.state,'completed',progress.error);
+ assert.equal(f.files.require('default',f.file.id).text,baseline);assert.deepEqual(f.store.get('SELECT document_json,assembly_json FROM source_ingestion_documents WHERE file_id=?',f.file.id),original);
+ const {resolveSourceIngestionAssembly}=await import('../src/server/modules/source-ingestion-document.ts'),block=resolveSourceIngestionAssembly(f.store,f.files.require('default',f.file.id)).document.blocks[0];
+ assert.equal(block.uncertainty,null);if(scenario==='omitted-invalid-diagram')assert.ok(block.layoutWarnings.length);else assert.equal(block.diagram.uncertainty,'The connecting line is unreadable.');
+ assert.equal(JSON.parse(f.store.get('SELECT capabilities_json FROM source_ingestion_documents WHERE file_id=?',f.file.id).capabilities_json).structure.state,'requires-review');assert.equal(f.calls(),1);
+});

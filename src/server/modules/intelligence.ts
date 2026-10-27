@@ -558,22 +558,35 @@ export class Intelligence {
       let promptBytes=Buffer.byteLength(prompt.instructions+inputText,'utf8');
       let observer=request.onRequest?.(promptBytes);
       // Activity rows represent the logical operation, including its bounded second request.
-      const usageTotals:Record<string,number>={};
+      // Keep one slot per dispatched provider request. An unreported count in
+      // either request stays unknown rather than becoming a partial total.
+      const usageRequests:unknown[]=[];
+      const logicalUsage=()=>{
+        const keys=['total_tokens','input_tokens','output_tokens','cached_tokens','cache_write_tokens','reasoning_tokens'] as const;
+        const totals:Record<string,number>={};
+        const fields=usageRequests.map(value=>{
+          const usage=value&&typeof value==='object'?value as Record<string,unknown>:{};
+          const input=(usage.input_tokens_details??usage.prompt_tokens_details) as Record<string,unknown>|undefined;
+          const output=(usage.output_tokens_details??usage.completion_tokens_details) as Record<string,unknown>|undefined;
+          return {total_tokens:usage.total_tokens,input_tokens:usage.input_tokens??usage.prompt_tokens,output_tokens:usage.output_tokens??usage.completion_tokens,cached_tokens:input?.cached_tokens,cache_write_tokens:input?.cache_write_tokens,reasoning_tokens:output?.reasoning_tokens};
+        });
+        for(const key of keys)if(fields.length&&fields.every(value=>typeof value[key]==='number'&&Number.isSafeInteger(value[key])&&(value[key] as number)>=0)){
+          const total=fields.reduce((sum,value)=>sum+(value[key] as number),0);if(Number.isSafeInteger(total))totals[key]=total;
+        }
+        return {logical_operation:true,...('total_tokens' in totals?{total_tokens:totals.total_tokens}:{}),...('input_tokens' in totals?{input_tokens:totals.input_tokens}:{}),...('output_tokens' in totals?{output_tokens:totals.output_tokens}:{}),input_tokens_details:{...('cached_tokens' in totals?{cached_tokens:totals.cached_tokens}:{}),...('cache_write_tokens' in totals?{cache_write_tokens:totals.cache_write_tokens}:{})},output_tokens_details:{...('reasoning_tokens' in totals?{reasoning_tokens:totals.reasoning_tokens}:{})}};
+      };
+      const beginUsageRequest=()=>{if(bufferForRepair){usageRequests.push(undefined);observer?.usage?.(logicalUsage());}};
       const recordUsage=(value:unknown)=>{
         if(!bufferForRepair){observer?.usage?.(value);return;}
-        if(!value||typeof value!=='object')return;
-        const usage=value as Record<string,unknown>;
-        const inputDetails=(usage.input_tokens_details??usage.prompt_tokens_details) as Record<string,unknown>|undefined;
-        const outputDetails=(usage.output_tokens_details??usage.completion_tokens_details) as Record<string,unknown>|undefined;
-        const counts={total_tokens:usage.total_tokens,input_tokens:usage.input_tokens??usage.prompt_tokens,output_tokens:usage.output_tokens??usage.completion_tokens,cached_tokens:inputDetails?.cached_tokens,cache_write_tokens:inputDetails?.cache_write_tokens,reasoning_tokens:outputDetails?.reasoning_tokens};
-        for(const [name,count] of Object.entries(counts))if(typeof count==='number'&&Number.isSafeInteger(count)&&count>=0)usageTotals[name]=(usageTotals[name]??0)+count;
-        if(Object.keys(usageTotals).length)observer?.usage?.({...('total_tokens' in usageTotals?{total_tokens:usageTotals.total_tokens}:{}),...('input_tokens' in usageTotals?{input_tokens:usageTotals.input_tokens}:{}),...('output_tokens' in usageTotals?{output_tokens:usageTotals.output_tokens}:{}),input_tokens_details:{...('cached_tokens' in usageTotals?{cached_tokens:usageTotals.cached_tokens}:{}),...('cache_write_tokens' in usageTotals?{cache_write_tokens:usageTotals.cache_write_tokens}:{})},output_tokens_details:{...('reasoning_tokens' in usageTotals?{reasoning_tokens:usageTotals.reasoning_tokens}:{})}});
+        usageRequests[usageRequests.length-1]=value;observer?.usage?.(logicalUsage());
       };
-      trace=redactedTrace(observer,credential.key);
+      const logicalTrace=(value:AIDebugTrace|undefined):AIDebugTrace|undefined=>value&&bufferForRepair?{...value,response:payload=>value.response({...((payload&&typeof payload==='object'&&!Array.isArray(payload))?payload:{}),usage:logicalUsage()})}:value;
+      trace=logicalTrace(redactedTrace(observer,credential.key));
       const payload={model:selection.model,store:false,max_output_tokens:policy.maxOutputTokens,reasoning:{effort:selection.reasoningEffort},tools:[],tool_choice:'none',...prompt,...(trace||policy.stream&&!bufferForRepair?{stream:true}:{})};
       trace?.request('https://api.openai.com/v1/responses',request.kind==='editorial'&&request.evidenceImages?.length?{...payload,input:[{role:'user',content:[{type:'input_text',text:request.input},...request.evidenceImages.map(image=>({type:'input_image',page:image.page,sha256:image.sha256,image_url:'[redacted original-page image]'}))]}]}:payload);
       trace?.event('prompt',{template:request.kind,version:1,...(policy.persona?{persona:{id:policy.persona.id,version:policy.persona.version,origin:policy.persona.origin,...(policy.persona.expression?{expression:policy.persona.expression}:{})}}:{})});
       if(controller.signal.aborted)throw request.kind==='editorial'?new GenerationCancellationError(false):new HttpError(409,'AI generation was stopped before sending the request.');
+      beginUsageRequest();
       const pendingResponse=this.transport('https://api.openai.com/v1/responses',{
         method:'POST',redirect:'error',signal:controller.signal,
         headers:{'Content-Type':'application/json',Authorization:`Bearer ${credential.key}`},
@@ -615,10 +628,12 @@ export class Intelligence {
           const repairInstructions=`ORIGINAL AUTHORING CONSTRAINTS: retain their evidence, language, factual and safety rules. The original wire format is reconstructed locally; for this internal step use only the repair JSON envelope specified below.\n${prompt.instructions}\n\n${plan.instructions}`;
           promptBytes+=Buffer.byteLength(repairInstructions+plan.input,'utf8');
           observer=request.onRequest?.(promptBytes);
-          const repairTrace=redactedTrace(observer,credential.key);
+          const repairTrace=logicalTrace(redactedTrace(observer,credential.key));
           const repairPayload={model:selection.model,store:false,max_output_tokens:Math.min(4096,policy.maxOutputTokens),reasoning:{effort:selection.reasoningEffort},tools:[],tool_choice:'none',instructions:repairInstructions,input:plan.input,text:{format:{type:'json_schema',name:'persona_style_repair',strict:true,schema:{type:'object',additionalProperties:false,required:['texts'],properties:{texts:{type:'array',items:{type:'string'}}}}}}};
           repairTrace?.event('prompt',{template:'personaStyleRepair',version:1,persona:{id:policy.persona!.id,version:policy.persona!.version,expression:policy.persona!.expression}});
           repairTrace?.request('https://api.openai.com/v1/responses',repairPayload);
+          beginUsageRequest();
+          repairTrace?.response({status:'in_progress',usage:logicalUsage()});
           const repairResponse=await this.transport('https://api.openai.com/v1/responses',{method:'POST',redirect:'error',signal:repairController.signal,headers:{'Content-Type':'application/json',Authorization:`Bearer ${credential.key}`},body:JSON.stringify(repairPayload)});
           if(!repairResponse.ok){await repairResponse.body?.cancel();throw new Error('Stylistic repair provider unavailable.');}
           const repairResult=await readOpenAIResponse(repairResponse,repairTrace,undefined,undefined,recordUsage,{maxJsonBytes:128000});

@@ -98,3 +98,44 @@ test('source-page repair preserves NDJSON structure and emits only canonical fin
  assert.equal(calls,2);assert.equal(deltas.join(''),output);assert.deepEqual(previews,[],'Commentary preview never receives canonical NDJSON');assert.equal(resets,0);
  const final=output.trim().split('\n').map(row=>JSON.parse(row));assert.deepEqual(final,[rows[0],{...rows[1],text:repaired}]);
 });
+
+test('two-call repair debug recovery preserves aggregate usage and cost when optional cache-write usage is absent',async()=>{
+ const {openDatabase}=await import('../src/server/database.ts'),{Store}=await import('../src/server/store.ts'),{AIActivityLog}=await import('../src/server/modules/ai-activity.ts');
+ const db=openDatabase(':memory:'),store=new Store(db),log=new AIActivityLog(store);log.saveDebugSettings({enabled:true});
+ let calls=0;const ai=configured(async()=>{calls++;return withUsage(calls===1?original:{texts:[repaired]},{input_tokens:calls===1?10:20,output_tokens:calls===1?5:7,input_tokens_details:{cached_tokens:calls===1?2:3},output_tokens_details:{reasoning_tokens:0}});});
+ try{
+  const id=log.start('persona_preview',ai.selection());
+  assert.equal(await ai.generate(preview({onRequest:bytes=>log.request(id,bytes,null)})),repaired);log.finish(id,'completed',200);
+  const row=()=>store.get('SELECT input_tokens,output_tokens,cached_input_tokens,cache_write_tokens,reasoning_tokens,estimated_cost FROM ai_activity WHERE id=?',id);
+  const before=row();assert.equal(calls,2);assert.equal(before.input_tokens,30);assert.equal(before.output_tokens,12);assert.equal(before.cached_input_tokens,5);assert.equal(before.cache_write_tokens,null,'An omitted counter remains unknown');assert.ok(before.estimated_cost>0);
+  const debug=JSON.parse(store.get('SELECT response FROM ai_activity_debug WHERE activity_id=?',id).response);assert.equal(debug.usage.input_tokens,30);assert.equal(debug.usage.output_tokens,12);
+  new AIActivityLog(store);assert.deepEqual(row(),before,'Restart preserves logical operation accounting and its matching cost');
+ }finally{db.close();}
+});
+
+test('missing or interrupted repair usage cannot become first-request-only logical totals on restart',async()=>{
+ const {openDatabase}=await import('../src/server/database.ts'),{Store}=await import('../src/server/store.ts'),{AIActivityLog}=await import('../src/server/modules/ai-activity.ts');
+ for(const second of [()=>withUsage({texts:[repaired]},undefined),()=>{throw new TypeError('synthetic interrupted paid repair');}]){
+  const db=openDatabase(':memory:'),store=new Store(db),log=new AIActivityLog(store);log.saveDebugSettings({enabled:true});let calls=0;
+  const ai=configured(async()=>{calls++;return calls===1?withUsage(original,{input_tokens:10,output_tokens:5,input_tokens_details:{cached_tokens:0},output_tokens_details:{reasoning_tokens:0}}):second();});
+  try{
+   const id=log.start('persona_preview',ai.selection());await ai.generate(preview({onRequest:bytes=>log.request(id,bytes,null)}));log.finish(id,'completed',200);
+   const row=()=>store.get('SELECT input_tokens,output_tokens,cached_input_tokens,cache_write_tokens,reasoning_tokens,estimated_cost FROM ai_activity WHERE id=?',id);
+   const before=row();assert.equal(calls,2);for(const count of Object.values(before))assert.equal(count,null,'Unknown aggregate usage/cost is not zero or a partial count');
+   new AIActivityLog(store);assert.deepEqual(row(),before);
+  }finally{db.close();}
+ }
+});
+
+test('legacy one-call debug recovery fills missing counts without overwriting known operation totals',async()=>{
+ const {openDatabase}=await import('../src/server/database.ts'),{Store}=await import('../src/server/store.ts'),{AIActivityLog}=await import('../src/server/modules/ai-activity.ts');
+ const db=openDatabase(':memory:'),store=new Store(db),log=new AIActivityLog(store);log.saveDebugSettings({enabled:true});
+ try{
+  const id=log.start('persona_preview',modelSettings),trace=log.request(id,100,null);
+  trace.response({status:'completed',usage:{input_tokens:10,output_tokens:5,input_tokens_details:{cached_tokens:2,cache_write_tokens:0},output_tokens_details:{reasoning_tokens:0}}});
+  log.finish(id,'completed',200);new AIActivityLog(store);
+  let row=store.get('SELECT input_tokens,output_tokens,cached_input_tokens,cache_write_tokens,reasoning_tokens FROM ai_activity WHERE id=?',id);assert.deepEqual({...row},{input_tokens:10,output_tokens:5,cached_input_tokens:2,cache_write_tokens:0,reasoning_tokens:0});
+  store.run('UPDATE ai_activity SET input_tokens=30,output_tokens=12,cache_write_tokens=NULL WHERE id=?',id);new AIActivityLog(store);
+  row=store.get('SELECT input_tokens,output_tokens,cache_write_tokens FROM ai_activity WHERE id=?',id);assert.deepEqual({...row},{input_tokens:30,output_tokens:12,cache_write_tokens:0});
+ }finally{db.close();}
+});

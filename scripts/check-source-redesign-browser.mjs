@@ -7,6 +7,7 @@ import {join,resolve} from 'node:path';
 import {createServer} from 'vite';
 import {processedSourceDocument} from '../src/server/modules/source-document.ts';
 import {sourceDocumentEntries} from '../src/shared/source-document.ts';
+import {sourceReadingPresentation} from '../src/shared/source-reprocessing.ts';
 const {chromium}=await import(process.env.PLAYWRIGHT_MODULE??'playwright-core');
 const repo=resolve(import.meta.dirname,'..'),directory=await mkdtemp(join(tmpdir(),'noema-source-redesign-'));
 const artifacts=resolve(process.env.NOEMA_SCREENSHOTS??'/workspace/noema-source-redesign-evidence');await mkdir(artifacts,{recursive:true});
@@ -28,12 +29,14 @@ try{
  const page=await browser.newPage({viewport:{width,height:900},reducedMotion:'reduce'});page.setDefaultTimeout(10000);page.on('pageerror',error=>errors.push(error.message));
  await page.route('**/api/**',async route=>{
   const req=route.request(),path=new URL(req.url()).pathname,method=req.method();requests.push({path,method});let value;
-  if(path==='/api/entities/source')value={attachments:[file]};
+  if(path==='/api/source-files'){const {text,document,...compact}=file;value=[{...compact,contentVersion:'synthetic-content'}];}
+  else if(path==='/api/entities/source')value={attachments:[file]};
   else if(path==='/api/source-files/synthetic')value=file;
   else if(path.endsWith('/reading-locations'))value={resume:null,bookmarks:[]};
   else if(path.endsWith('/highlights')||path.endsWith('/reading-notes'))value=[];
   else if(path.endsWith('/reprocessing')){const {original,reprocessed,patches,nodeLinks,...summary}=revision;value=[{...summary,patchCount:patches.length,pendingCount:patches.filter(p=>p.decision==='pending').length}];}
   else if(path.endsWith('/review')){const body=req.postDataJSON();revision={...revision,updatedAt:new Date().toISOString(),patches:revision.patches.map(p=>{const d=body.decisions.find(d=>d.patchId===p.id);return d?{...p,decision:d.decision,...(d.replacement!==undefined?{userReplacement:d.replacement}:{})}:p;})};value=revision;}
+  else if(path.endsWith('/revision-1/reading'))value=sourceReadingPresentation(revision);
   else if(path.endsWith('/revision-1'))value=revision;
   else if(path.endsWith('/evidence'))value={originalAvailable:true,rawExtraction:{pageEvidence:[{page:1,method:'native',text:'Synthetic original PDF evidence.'}]}};
   else if(path.includes('/page-image/'))return route.fulfill({contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg" width="400" height="500"><rect width="400" height="500" fill="white"/><text x="20" y="40">Synthetic original page</text></svg>'});

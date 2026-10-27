@@ -1,3 +1,4 @@
+import {sourceMetadataBibliographicUpdates} from '../../shared/source-metadata.js';
 import {bibliographicLegacyConflicts,assertBibliographicReconciliation} from './bibliographic-property-projection.js';
 import {exportBibliographicBundle} from './bibliographic-export.js';
 import {createHash,randomUUID} from 'node:crypto';
@@ -68,6 +69,42 @@ export class Bibliography {
  if(matches.some(match=>match.reason!=='title'))throw new HttpError(409,'An identifier or citation key already exists. Review and merge explicitly.');
  id=randomUUID();this.store.run("INSERT INTO entities (id,vault_id,name,type,aliases,mention_case,referent_status,subtypes,description,updated_at) VALUES (?,?,?,'source','[]','canonical','actual','[]','',?)",id,vault,(entry.fields.title||entry.citationKey).slice(0,200),now());this.write(vault,id,entry.citationKey,entry.entryType,entry.fields,'bibtex',[parsed.rawBibtex]);result.created++;
  }else throw new HttpError(400,'Choose create, merge or skip');result.sourceIds.push(id);}return result;});
+ }
+ private scopedEntry(entry:BibliographicEntry,current:BibliographyRecord|null):BibliographicEntry {try{return {...entry,fields:sourceMetadataBibliographicUpdates(current?.fields??{},entry.fields)};}catch(error){throw new HttpError(400,error instanceof Error?error.message:'Conflicting publication aliases');}}
+ /** A scoped import updates the explicitly selected Source, never creates a match. */
+ sourceImportPreview(vault:string,id:string,raw:unknown) {
+ this.source(vault,id);const parsed=this.parse(raw);if(parsed.entries.length!==1)throw new HttpError(400,'Choose exactly one BibTeX entry for this Source');
+ const current=this.get(vault,id),entry=this.scopedEntry(parsed.entries[0]!,current);
+ return {sourceId:id,batchId:digest(parsed.rawBibtex),revision:current?.revision??0,entry:{citationKey:entry.citationKey,entryType:entry.entryType,fields:entry.fields},conflicts:this.conflicts(entry,current),propertyConflicts:bibliographicLegacyConflicts(this.store,vault,id,{...current?.fields,...entry.fields},current?.fields),warnings:parsed.warnings};
+ }
+ sourceImport(vault:string,id:string,body:Record<string,unknown>) {
+ this.source(vault,id);const parsed=this.parse(body.raw);if(parsed.entries.length!==1)throw new HttpError(400,'Choose exactly one BibTeX entry for this Source');
+ if(body.batchId!==digest(parsed.rawBibtex))throw new HttpError(409,'The import changed. Preview it again.');
+ return this.store.transaction(()=>{
+ const current=this.get(vault,id);if((current?.revision??0)!==body.revision)throw new HttpError(409,'The source changed. Review the import again.');
+ const entry=this.scopedEntry(parsed.entries[0]!,current),conflicts=this.conflicts(entry,current),choices=body.fields===undefined?{}:object(body.fields);
+ if(conflicts.some(conflict=>!['current','incoming'].includes(String(choices[conflict.field])))||Object.entries(choices).some(([field,choice])=>!conflicts.some(conflict=>conflict.field===field)||!['current','incoming'].includes(String(choice))))throw new HttpError(400,'Review each conflicting field and choose its current or imported value.');
+ const merged={...entry.fields,...current?.fields};for(const conflict of conflicts)if(choices[conflict.field]==='incoming')merged[conflict.field]=conflict.incoming;
+ const originals=[...current?.rawImports??[]];if(!originals.includes(parsed.rawBibtex))originals.push(parsed.rawBibtex);
+ if(current&&Object.keys(merged).length===Object.keys(current.fields).length&&Object.entries(merged).every(([field,value])=>current.fields[field]===value)&&originals.length===current.rawImports.length){assertBibliographicReconciliation(this.store,vault,id,merged,body.reviewedProperties,current.fields);return current;}
+ // Citation keys are stable identifiers: importing another key cannot rename one.
+ return this.write(vault,id,current?.citationKey??entry.citationKey,current?.entryType??entry.entryType,merged,'bibtex',originals,current??undefined,body.reviewedProperties);
+ });
+ }
+ sourceExport(vault:string,id:string) {
+ this.source(vault,id);const row=this.row(vault,id);if(!row)throw new HttpError(404,'This Source has no publication record');
+ // Do not list or serialize other Sources to obtain one publication's exports.
+ const record={...this.record({...row,raw_imports_json:'[]'}),rawImportIds:[] as string[]},omittedOriginalBatchIds:string[]=[];
+ const batches=(JSON.parse(row.raw_imports_json) as string[]).flatMap(batchId=>{
+ const stored=this.store.get<{id:string;raw:string}>('SELECT id,raw FROM bibliographic_import_batches WHERE vault_id=? AND id=?',vault,batchId),batch=stored??{id:digest(batchId),raw:batchId};
+ // A shared original batch can contain other Sources. Keep it in canonical
+ // storage/backups, but never expand a single-Source export to those entries.
+ try{if(parseBibliography(batch.raw).entries.length===1){record.rawImportIds.push(batch.id);return [batch];}}catch{/* Invalid historic evidence stays in the vault. */}
+ omittedOriginalBatchIds.push(batch.id);return [];
+ });
+ const result=exportBibliographicBundle(this.store,vault,[record],batches);
+ const sidecar=JSON.stringify({...JSON.parse(result.sidecar),omittedOriginalBatchIds,evidenceNote:'Original multi-entry import batches remain preserved in the vault, collection export and backups; single-Source exports include only single-entry original evidence.'},null,2);
+ return {...result,sidecar,annotated:result.annotatedBiblatex};
  }
  protected write(vault:string,id:string,key:string,type:string,value:Record<string,string>,origin:Origin,rawImports:string[],previous?:BibliographyRecord,reviewedProperties?:unknown) {
  try{exportBibliography([{citationKey:key,entryType:type,fields:value,creators:[],rawBibtex:''}]);}catch(error){throw new HttpError(400,error instanceof Error?error.message:'Invalid bibliographic fields');}

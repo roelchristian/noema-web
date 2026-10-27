@@ -1,3 +1,4 @@
+import {BibliographyImport} from './BibliographyImport';
 import {SourcePdfProcessing,initialPdfIngestionOptions} from './SourcePdfProcessing';
 import type {SourceIngestionOptions} from '../../shared/source-ingestion';
 import {ReferentStatusPicker} from './ReferentStatusPicker';
@@ -15,7 +16,7 @@ import { useEntitySchema } from './useEntitySchema';
 import { Modal, ModalHeader } from '../components/Modal';
 import { Icon } from '../components/Icon';
 import { AliasInput, parseAliases } from './AliasInput';
-export interface CreateEntityRequest {intent?: 'insert'; name?: string; source?: boolean; excludeSources?: boolean; onCreated?: (id: string) => void; onCancel?: () => void}
+export interface CreateEntityRequest {intent?: 'insert'; name?: string; source?: boolean; excludeSources?: boolean; onCreated?: (id: string) => void; onCancel?: () => void; onBibliographyCreated?:()=>Promise<void>}
 export function CreateEntityDialog({vaultId, initial, onSubmit, onClose}: {vaultId: string; initial: CreateEntityRequest; onSubmit: (input: EntityInput) => Promise<void>; onClose: () => void}) {
   const [name, setName] = useState(initial.name || ''), [type, setType] = useState<EntityType>(initial.source ? 'source' : 'person');
   const allowedTypes = entityTypes.filter(type => initial.source ? type === 'source' : !initial.excludeSources || type !== 'source');
@@ -31,7 +32,7 @@ export function CreateEntityDialog({vaultId, initial, onSubmit, onClose}: {vault
   const stagingKey=useRef(crypto.randomUUID());
   function changePdfOptions(options:SourceIngestionOptions){setPdfOptions(options);setStagedSource(null);stagingKey.current=crypto.randomUUID();}
   const [aliases, setAliases] = useState('');
-  const [sourceMethod,setSourceMethod]=useState<''|'file'|'url'|'text'>('');
+  const [sourceMethod,setSourceMethod]=useState<''|'file'|'url'|'text'|'bibtex'>('');
   const isPdf=sourceMethod==='file'&&!!sourceFile&&/\.pdf$/i.test(sourceFile.name)||sourceMethod==='url'&&fetchedSource?.format==='pdf';
   const [nameEdited,setNameEdited]=useState(!!initial.name);
   let suggestedName=sourceMethod==='text'?'Pasted text':sourceFile?.name.slice(0,200)??'';
@@ -88,13 +89,14 @@ export function CreateEntityDialog({vaultId, initial, onSubmit, onClose}: {vault
   }
   function cancel() { if(submitting.current||busy)return; onClose(); requestAnimationFrame(()=>initial.onCancel?.()); }
   const namePlaceholder: Partial<Record<EntityType,string>> = {person:'e.g. Ursula K. Le Guin',place:'e.g. Kyoto',organization:'e.g. The Royal Society',event:'e.g. World Expo 2025',creativework:'e.g. The Left Hand of Darkness',thing:'e.g. Grilled alumahan',organism:'e.g. Ginkgo biloba',culture:'e.g. Japanese',concept:'e.g. Systems thinking',source:'e.g. Interview with Ursula K. Le Guin'};
+  if(type==='source'&&sourceMethod==='bibtex')return <BibliographyImport vaultId={vaultId} single onClose={()=>setSourceMethod('')} onUpdated={async()=>{await initial.onBibliographyCreated?.();onClose();}}/>;
   return <Modal className="create-entity-dialog" onClose={cancel} initialFocus={initial.source ? undefined : 'input[name="entity-name"]'} titleId="create-dialog-title"><form onSubmit={submit} aria-busy={busy}>
     <ModalHeader titleId="create-dialog-title" leading={<Icon name={type} entity={{type,subtypes}}/>} closeDisabled={busy}>{initial.intent==='insert'?uiText("Create and insert"):initial.source ? uiText("New source") : uiText("New entity")}</ModalHeader><p className="modal-description">{initial.intent==='insert'?uiText("Add an entity and keep writing."):initial.source?uiText("Add a document to your Sources library."):uiText("Add to your knowledge library.")}</p>
     <div className="create-entity-fields">
       {!initial.source&&<label>{uiText("Entity type")}<Select aria-label={uiText("Entity type")} value={type} onChange={e => { setType(e.target.value as EntityType); setSubtypes([]); setDomainIds([]); setSourceFile(null); setSourceUrl(''); setStagedSource(null); setSourceMethod(''); setFetchedSource(null);setPdfOptions(options=>({...options,transmissionConsent:false}));setContainsMath(false); setError(''); }} disabled={busy}>{allowedTypes.map(t => <option key={t} value={t}>{uiText(entityLabels[t])}</option>)}</Select></label>}
       {type==='source'&&<SourcePdfProcessing vaultId={vaultId} value={pdfOptions} onChange={changePdfOptions} onReady={setPdfReady} onEnabled={setPdfCapabilitiesEnabled} disabled={busy}/>}
-      {type==='source'&&<label>{uiText("Add source from (required)")}<Select aria-label={uiText("Add source from")} required value={sourceMethod} onChange={event=>{setSourceMethod(event.target.value as 'file'|'url'|'text');setSourceFile(null);setSourceUrl('');setStagedSource(null);setFetchedSource(null);setPdfOptions(options=>({...options,transmissionConsent:false}));stagingKey.current=crypto.randomUUID();setError('');}} disabled={busy}><option value="" disabled>{uiText("Choose file, URL, or pasted text")}</option><option value="file">{uiText("File")}</option><option value="url">{uiText("URL")}</option><option value="text">{uiText("Paste text")}</option></Select></label>}
-      {type==='source'&&sourceMethod&&<section className="source-attachments">
+      {type==='source'&&<label>{uiText("Add source from (required)")}<Select aria-label={uiText("Add source from")} required value={sourceMethod} onChange={event=>{setSourceMethod(event.target.value as 'file'|'url'|'text'|'bibtex');setSourceFile(null);setSourceUrl('');setStagedSource(null);setFetchedSource(null);setPdfOptions(options=>({...options,transmissionConsent:false}));stagingKey.current=crypto.randomUUID();setError('');}} disabled={busy}><option value="" disabled>{uiText("Choose file, URL, or pasted text")}</option><option value="file">{uiText("File")}</option><option value="url">{uiText("URL")}</option><option value="text">{uiText("Paste text")}</option>{initial.intent!=='insert'&&<option value="bibtex">Import from BibTeX</option>}</Select></label>}
+      {type==='source'&&sourceMethod&&sourceMethod!=='bibtex'&&<section className="source-attachments">
         {sourceMethod==='file'
           ? <label key="file" className="source-upload">{uiText("Choose source file")}<input type="file" required accept=".txt,.md,.pdf" aria-label={uiText("Choose source file")} disabled={busy} onChange={event=>selectFile(event.target.files?.[0]??null)}/></label>
           : sourceMethod==='text'

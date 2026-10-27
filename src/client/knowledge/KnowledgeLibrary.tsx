@@ -1,7 +1,8 @@
 import {BibliographyImport,BibliographyExport} from './BibliographyImport';
 import {getLocale} from '../i18n';
 import {t as uiText} from '../i18n';
-import {useState} from 'react';
+import {useRef,useState} from 'react';
+import {Modal,ModalHeader} from '../components/Modal';
 import {SourceLifecycleDialog} from './SourceLifecycleDialog';
 import {useTextSearch} from '../search/useTextSearch';
 import {useSemanticSearch} from '../search/useSemanticSearch';
@@ -28,7 +29,9 @@ export function KnowledgeLibrary({vaultId, entities, onOpen, onOpenPassage, onCr
   const view = browser.grouping === 'all' ? 'all' : 'folders';
   const type: EntityType | '' = entityTypes.includes(browser.entityType as EntityType) ? browser.entityType as EntityType : '';
   const sourcesOnly = type === 'source';
-  const [bibliographyImport,setBibliographyImport]=useState(false);
+  const bibliographyMore=useRef<HTMLDetailsElement>(null);
+  function restoreMoreFocus(){requestAnimationFrame(()=>bibliographyMore.current?.querySelector('summary')?.focus());}
+  const [bibliographyImport,setBibliographyImport]=useState(false),[bibliographyExport,setBibliographyExport]=useState(false);
   const [archived,setArchived]=useState(false),[manageSource,setManageSource]=useState<Entity|null>(null);
   const destination = JSON.stringify(['knowledge', type]);
   const [viewState, setViewState] = useLibraryViewState(vaultId, destination);
@@ -66,7 +69,7 @@ export function KnowledgeLibrary({vaultId, entities, onOpen, onOpenPassage, onCr
     setBrowser({entityType: nextType});
   }
   return <section ref={libraryRef} className="organization-library organization-browser knowledge-library" data-layout="list" data-density={density} data-library-vault={vaultId} data-library-destination={destination}>
-    <div className="organization-heading pages-home-heading"><div className="library-heading-row"><h1 className="page-heading">{sourcesOnly?uiText("Sources"):uiText("Knowledge entities")}</h1></div><div className="pages-home-actions library-heading-actions">{sourcesOnly&&<><button type="button" className="button" onClick={()=>setBibliographyImport(true)}>Import bibliography</button><BibliographyExport vaultId={vaultId}/></>}<button className="button primary" onClick={onCreate}><Icon name="plus"/>{sourcesOnly?uiText("New source"):uiText("New entity")}</button></div></div>
+    <div className="organization-heading pages-home-heading"><div className="library-heading-row"><h1 className="page-heading">{sourcesOnly?uiText("Sources"):uiText("Knowledge entities")}</h1></div><div className="pages-home-actions library-heading-actions">{sourcesOnly&&<details ref={bibliographyMore} className="bibliography-library-more" onKeyDown={event=>{if(event.key==='Escape'){event.currentTarget.open=false;event.currentTarget.querySelector('summary')?.focus();}}}><summary>More</summary><div className="bibliography-actions" aria-label="Import and export options"><button type="button" className="button" onClick={event=>{event.currentTarget.closest('details')?.removeAttribute('open');setBibliographyImport(true);}}>Import bibliography…</button><button type="button" className="button" onClick={event=>{event.currentTarget.closest('details')?.removeAttribute('open');setBibliographyExport(true);}}>Export bibliography…</button><p className="section-hint">Import and export options for this collection</p></div></details>}<button className="button primary" onClick={onCreate}><Icon name="plus"/>{sourcesOnly?uiText("New source"):uiText("New entity")}</button></div></div>
     {error && <p role="alert">{error}</p>}{textSearch.error&&<p role="status">{uiText("Source text search unavailable. Name matches remain available.")}</p>}{(textSearch.loading||semantic.loading)&&<p role="status">{uiText("Searching source passages…")}</p>}
     <div className="organization-content">
       <LibraryToolbar sort={sort} onSort={setSort} density={density} onDensity={setDensity} filter={<div className="library-view-filter"><div className="library-view-filter-input"><Icon name="search"/><input type="search" placeholder={uiText("Filter this view…")} aria-label={uiText("Filter {value0} by name, alias, or source text",{value0: filterScope})} value={search} onChange={event => setSearch(event.target.value)} onKeyDown={event => {if (event.key === 'Escape' && search) {event.preventDefault(); setSearch('');}}}/>{search && <button type="button" aria-label={uiText("Clear entity filter")} onClick={() => setSearch('')}><Icon name="close"/></button>}</div></div>}>
@@ -104,7 +107,8 @@ export function KnowledgeLibrary({vaultId, entities, onOpen, onOpenPassage, onCr
         </div></article>)}
       </div> : <div className="organization-empty" role="status"><span className="destination-icon"><Icon name={query ? 'search' : 'folder'}/></span><h2>{query ? uiText("No matching entities") : sourcesOnly?(archived?uiText("No archived sources"):uiText("No sources here yet")):uiText("No entities here yet")}</h2><p>{query ? uiText("Try another name, phrase, or idea.") : sourcesOnly?(archived?uiText("Archived sources will appear here. Restore them whenever you need them."):uiText("Import a source to get started.")):uiText("Create an entity to get started.")}</p>{query ? <button className="button" onClick={() => setSearch('')}>{uiText("Clear filter")}</button> : <button className="button" onClick={onCreate}>{sourcesOnly?uiText("New source"):uiText("New entity")}</button>}</div>}
     </div>
-    {bibliographyImport&&<BibliographyImport key={vaultId} vaultId={vaultId} onClose={()=>setBibliographyImport(false)} onUpdated={onUpdated}/>}
+    {bibliographyImport&&<BibliographyImport key={vaultId} vaultId={vaultId} onClose={()=>{setBibliographyImport(false);restoreMoreFocus();}} onUpdated={onUpdated}/>}
+    {bibliographyExport&&<Modal className="bibliography-dialog" titleId="bibliography-export-title" onClose={()=>{setBibliographyExport(false);restoreMoreFocus();}}><ModalHeader titleId="bibliography-export-title">Export bibliography</ModalHeader><p>Export the collection in this vault.</p><BibliographyExport vaultId={vaultId}/></Modal>}
     {quickPreview}
     {manageSource&&<SourceLifecycleDialog key={manageSource.id} vaultId={vaultId} source={manageSource} onUpdated={onUpdated} onClose={()=>setManageSource(null)}/>}
   </section>;

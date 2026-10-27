@@ -1,6 +1,6 @@
 # Source metadata reconciliation
 
-The Source inspector and Source homepage embed the same `SourceMetadata` workspace. Overview links to it; Inbox property decisions and editorial processing summaries open that workspace with the saved proposal or extraction-run context. General entity connections remain owned by the entity workflow.
+The Source inspector and Source homepage embed the same `SourceMetadata` workspace. It is the sole editor for publication facts and DOI proposal review. Overview presents a compact publication summary and citation actions and links to Metadata; Inbox property decisions and editorial processing summaries open that workspace with the saved proposal or extraction-run context. General entity connections remain owned by the entity workflow. Works cited inside a document are reviewed under Connections → Cited works, separately from the Source's own publication identity.
 
 ## Owners and review
 
@@ -35,7 +35,7 @@ Metadata sidecars, decisions and policies participate in backups and vault-delet
 
 ## Scope and retained controls
 
-The extractor intentionally does not infer unlabeled, multilingual, or distant copyright/colophon facts. Such facts can still be entered manually. Ambiguous identities are not created or guessed. Advanced bibliography import/export, DOI lookup consent, citation-key/entry-type editing, multi-value typed property/reference editing and attachment lifecycle controls remain with their existing editors. Those controls have not been removed without equivalent coverage. A restored candidate involving legacy preserved property identities can conservatively require a fresh extraction rather than silently rebinding an uncertain target.
+The extractor intentionally does not infer unlabeled, multilingual, or distant copyright/colophon facts. Such facts can still be entered manually. Ambiguous identities are not created or guessed. Publication facts and entry type are edited in Metadata; DOI lookup retains explicit consent and selected-field review beside the relevant fields. Citation keys remain stable after creation. The citation surface exposes source-scoped import/export, original-data provenance, attachment matching and scholarly enrichment through advanced disclosure. Typed property/reference editing remains with its canonical metadata owner. A restored candidate involving legacy preserved property identities can conservatively require a fresh extraction rather than silently rebinding an uncertain target.
 
 ## Validation
 

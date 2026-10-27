@@ -52,6 +52,25 @@ test('pre-bibliography backups restore without invented records or network conse
  assert.equal(f.store.get('SELECT count(*) n FROM bibliographic_proposals WHERE vault_id=?',restored.id).n,0);
 });
 
+test('reviewed single-Source import survives backup with its stable identity and original evidence',async t=>{
+ const f=fixture(t),bibliography=new Bibliography(f.store);
+ const raw='% Original scoped evidence\n@book{DifferentIncomingKey,title={Reviewed replacement},publisher={Synthetic Press},custom={Still retained}}';
+ const preview=bibliography.sourceImportPreview(f.vault,f.source.id,raw);
+ const choices=Object.fromEntries(preview.conflicts.map(conflict=>[conflict.field,conflict.field==='title'?'incoming':'current']));
+ const updated=bibliography.sourceImport(f.vault,f.source.id,{raw,batchId:preview.batchId,revision:preview.revision,fields:choices});
+ assert.equal(updated.citationKey,'FixtureKey');assert.equal(updated.entryType,'unknown');
+ const archive=await f.backups.export(f.vault),restored=await f.backups.import(archive.bytes);
+ const source=f.store.get('SELECT id FROM entities WHERE vault_id=? AND name=?',restored.id,f.source.name);
+ const record=bibliography.get(restored.id,source.id);
+ assert.notEqual(record.sourceId,f.source.id);assert.equal(record.citationKey,'FixtureKey');
+ assert.equal(record.fields.title,'Reviewed replacement');assert.equal(record.fields.publisher,'Synthetic Press');
+ assert.deepEqual(record.rawImports,[f.raw,raw]);assert.deepEqual(record.provenance,updated.provenance);
+ const exported=JSON.parse(bibliography.sourceExport(restored.id,source.id).sidecar);
+ assert.equal(exported.records.length,1);assert.equal(exported.records[0].sourceId,source.id);
+ assert.deepEqual(new Set(exported.importBatches.map(batch=>batch.raw)),new Set([f.raw,raw]));
+ assert.equal(f.store.get('SELECT count(*) n FROM source_files WHERE entity_id=?',source.id).n,0);
+});
+
 test('invalid bibliographic references, provenance, values and revisions roll back entire restored vault',async t=>{
  const f=fixture(t),archive=await f.backups.export(f.vault),before=f.store.get('SELECT count(*) n FROM vaults').n;
  const corruptions=[

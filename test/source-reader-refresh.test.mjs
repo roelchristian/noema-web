@@ -2,6 +2,7 @@ import test from 'node:test';
 import {sourceReadingPresentation} from '../src/shared/source-reprocessing.ts';
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
+import {createReadingAnchor} from '../src/shared/reading-continuity.ts';
 import {sourceDocumentEntries} from '../src/shared/source-document.ts';
 import assert from 'node:assert/strict';
 import {registerHooks} from 'node:module';
@@ -40,7 +41,10 @@ test('delayed enrichment refreshes headings and navigation without reloading or 
  const revisedEntries=sourceDocumentEntries(revisedDocument).filter(entry=>entry.node.text!==undefined);
  const revision={...JSON.parse(readFileSync(new URL('./fixtures/dante-editorial-revision.json',import.meta.url),'utf8')),id:'revision',fileId:'file',baseHash:'snapshot-fingerprint-distinct-from-text-hash',stale:false,status:'completed',original:{text,document:canonicalDocument},reprocessed:{text:revisedText,document:revisedDocument},nodeLinks:originalEntries.map((entry,index)=>({originalNodeId:entry.node.id,reprocessedNodeIds:[revisedEntries[index].node.id]}))};
  revision.report.chunksCompleted=revision.report.chunksTotal;
+ const readerRequests=[],locationWrites=[];
  globalThis.fetch=async(url,options)=>{
+  readerRequests.push(String(url));
+  if(String(url).includes('/reading-locations/')&&options?.method==='PUT'){const body=JSON.parse(options.body);locationWrites.push(body);assert.equal(body.revisionId,'revision');assert.equal(body.revision,createHash('sha256').update(revisedText).digest('hex'));const anchor=createReadingAnchor(file.id,body.revision,revisedText,body.offset,revisedDocument);return Response.json({id:String(url).split('/').at(-1),label:body.label??'',anchor,resolution:{status:'resolved',offset:anchor.offset}});}
   if(url==='/api/source-files?compact=1&entity=source'){detailReads++;return Response.json([attachment()]);}
   if(url==='/api/source-files/file?fingerprint=1&context=1'){documentReads++;const current=attachment();return Response.json({...current,document:processedSourceDocument(current)});}
   if(url==='/api/source-files/file/reading-locations?revisionId=revision')return Response.json({resume:null,bookmarks:[]});
@@ -57,11 +61,11 @@ test('delayed enrichment refreshes headings and navigation without reloading or 
   if(url==='/api/source-files/file/reading-notes')return Response.json([{pageId:'note-1',title:'My annotation',text:'A connection to revisit.',sourceHash:file.textHash,startOffset:16,endOffset:text.length}]);
   throw new Error(`Unexpected request: ${url}`);
  };
- let infoToggles=0,openedNote='';
+ let infoToggles=0,openedNote='',addedReference;
  const errors=[],root=createRoot(document.querySelector('#mount'));
  const noop=()=>{};
  try{
-  await act(async()=>root.render(React.createElement(SourceReader,{vaultId:'default',source:{id:'source',name:'Article',subtypes:[],updated_at:'fixed'},entities:[],onToggleInspector:()=>infoToggles++,onOpenEntity:noop,onCreatePageFromSource:noop,onError:message=>errors.push(message),onAddPassage:noop,onAnnotate:noop,onReadingNoteCreated:noop,onOpenReadingNote:id=>{openedNote=id;},onRemoveReadingNote:noop})));
+  await act(async()=>root.render(React.createElement(SourceReader,{vaultId:'default',source:{id:'source',name:'Article',subtypes:[],updated_at:'fixed'},entities:[],onToggleInspector:()=>infoToggles++,onOpenEntity:noop,onCreatePageFromSource:noop,onError:message=>errors.push(message),onAddPassage:reference=>{addedReference=reference;},onAnnotate:noop,onReadingNoteCreated:noop,onOpenReadingNote:id=>{openedNote=id;},onRemoveReadingNote:noop})));
   assert.equal(documentReads,1);
   const activity=document.querySelector('.source-reader-toolbar button[aria-label="Reading activity"]');
   assert.ok(activity,'Sources toolbar exposes central reading activity');
@@ -163,6 +167,13 @@ test('delayed enrichment refreshes headings and navigation without reloading or 
   assert.ok(scrolls.some(value=>value.top===100),'semantic node links preserve the viewport position after presentation changes');
   await act(async()=>{await new Promise(resolve=>originalTimeout(resolve,30));});
   assert.ok(document.querySelector('.source-reading-continuity'),'reading activity stays available in reprocessed versions');
+  const editorialHash=createHash('sha256').update(revisedText).digest('hex');assert.equal(originalArticle.dataset.sourceCoordinateHash,editorialHash);
+  for(const endpoint of ['reading-locations','highlights','reading-notes'])assert.ok(readerRequests.includes('/api/source-files/file/'+endpoint+'?revisionId=revision'),endpoint+' uses the selected reading version');
+  await act(async()=>document.querySelector('.source-reader-toolbar button[aria-label="Reading activity"]').click());
+  await act(async()=>activityPanel().querySelector('.source-activity-add').dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true})));
+  await act(async()=>{window.dispatchEvent(new dom.window.WheelEvent('wheel'));window.dispatchEvent(new dom.window.Event('pagehide'));});
+  assert.ok(locationWrites.length>=2,'Editorial bookmark and resume each issue a scoped write');assert.ok(locationWrites.every(body=>body.revisionId==='revision'&&body.revision===editorialHash),'Editorial offsets never enter an unscoped canonical write');
+  await act(async()=>activityPanel().querySelector('.panel-top button').click());
   assert.ok(originalArticle.querySelector('[data-highlight-id="persisted-highlight"]'),'highlights use projected editorial offsets');
   assert.ok(originalArticle.querySelector('.source-reading-note-inline-text'),'annotations remain attached to the reprocessed passage');
   await act(async()=>originalArticle.querySelector('[data-highlight-id="persisted-highlight"]').dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Enter',bubbles:true})));
@@ -177,6 +188,7 @@ test('delayed enrichment refreshes headings and navigation without reloading or 
   const revisedBody=[...originalArticle.querySelectorAll('.source-reader-passage')].find(node=>node.textContent.includes('A revised paragraph'));
   await act(async()=>revisedBody.querySelector('button').click());
   assert.equal(document.querySelector('[aria-label="Selected passage"] blockquote')?.textContent,'A stable paragraph for citation.','editorial citation resolves the recorded original node and quotes canonical text');
+  await act(async()=>[...document.querySelectorAll('[aria-label="Selected passage"] button')].find(button=>button.textContent==='Add to page').click());assert.equal(addedReference.sourceHash,file.textHash,'Exported editorial citations keep the original source hash');assert.equal(text.slice(addedReference.startOffset,addedReference.endOffset),addedReference.excerpt,'Exported citation coordinates index the immutable original text');assert.equal(addedReference.excerpt,'A stable paragraph for citation.');
   await act(async()=>{versions.value='original';versions.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
   assert.equal(document.querySelector('.source-reader-document'),originalArticle);
   assert.match(originalArticle.textContent,/A stable paragraph for citation/);

@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {chatResearchTransport} from '../scripts/helpers/chat-research-transport.mjs';
 
-const chat={instructions:'You are Noema Knowledge Chat, a neutral read-only research interface.',input:'{}'};
+const chat={instructions:'You are Meno, Noema Knowledge Chat, a read-only research interface.',input:'{}'};
 const options=payload=>({body:JSON.stringify(payload)});
 for(const mode of ['answer','error','pending'])test(`non-Chat dispatch cannot consume the ${mode} mode or satisfy a Chat request count`,async()=>{
  let calls=0;

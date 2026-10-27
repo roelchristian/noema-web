@@ -16,11 +16,12 @@ import {SourcePassages} from '../src/server/modules/source-passages.ts';
 import {Intelligence,intelligencePreferencesFor} from '../src/server/modules/intelligence.ts';
 import {createApp} from '../src/server/http.ts';
 import {completedResponse} from '../test/helpers/providers.ts';
+import {chatResearchTransport} from './helpers/chat-research-transport.mjs';
 const {chromium}=await import(process.env.PLAYWRIGHT_MODULE??'playwright-core');
 const repo=resolve(import.meta.dirname,'..'),directory=await mkdtemp(join(tmpdir(),'noema-chat-research-'));
 const artifacts=resolve(process.env.NOEMA_SCREENSHOTS??join(repo,'output','chat-research-browser'));
 await mkdir(artifacts,{recursive:true});await rm(join(artifacts,'validation.json'),{force:true});
-const errors=[],checks=[],requests=[];
+const errors=[],checks=[];
 let browser,server,vite,db,files;
 const originalFetch=globalThis.fetch;
 try {
@@ -30,6 +31,9 @@ try {
  const makeNote=(vault,title,text)=>{const p=pages.create(vault,{title});return pages.update(vault,p.id,{...p,blocks:[{id:'synthetic-'+p.id,type:'paragraph',content:[{text}]}]});};
  const specimen=makeNote('default','Synthetic grace notebook','My own note: grace is indispensable, though this reading complicates the source. This is a synthetic browser test, not a historical assertion.');
  const other=makeNote(secondVault.id,'Private other vault notebook','Synthetic other-vault phrase: never disclose this passage to the default vault.');
+ // Opt the disposable corpus (including the seeded welcome note) out of delayed
+ // note enrichment. Editing is outside this research fixture; retrieval stays live.
+ for(const note of store.all('SELECT id,vault_id,revision FROM pages'))pages.setEditLock(note.vault_id,note.id,{locked:true,revision:note.revision});
  const augustine=knowledge.create('default',{name:'Augustine',type:'person',description:'Synthetic research entity for scoped Chat testing.'});
  const target=knowledge.create('default',{name:'Synthetic birthplace',type:'place',description:'Synthetic navigation target.'});
  const nationality=knowledge.property('default',augustine.id,{name:'nationality',value:'Synthetic nationality'}).properties.find(item=>item.name==='nationality');
@@ -38,11 +42,17 @@ try {
  const sourceText='A synthetic imported source says grace is indispensable. Its author distinguishes the priority of divine initiative. This conflicts with a synthetic note in the test corpus.';
  files=new SourceFiles(store);const file=files.add('default','synthetic-grace.txt',Buffer.from(sourceText));
  const source=knowledge.create('default',{name:'Synthetic grace source',type:'source',attachmentIds:[file.id]});
+ // Pause source automation before createApp starts its background runtime.
+ store.run('INSERT INTO source_automation_pauses(file_id,vault_id,reason,created_at) VALUES(?,?,?,?)',file.id,'default','Synthetic Chat research fixture: source automation is not under test.',new Date().toISOString());
  store.run("UPDATE source_files SET text=?,status='ready',admitted=1 WHERE id=?",sourceText,file.id);store.run('UPDATE entities SET inactive=0 WHERE id=?',source.id);new SourcePassages(store,text=>text.length).synchronize('default');
  const secrets={value:null,read(){return this.value;},write(value){this.value=value;},remove(){this.value=null;}};
  let transportMode='answer',cancellations=0;
- const ai=new Intelligence(secrets,async(_url,options)=>{
-  const payload=JSON.parse(options.body);requests.push(payload);assert.match(payload.instructions,/AI PERSONA:/,'Configured persona reaches the deterministic provider');
+ const transport=chatResearchTransport(async(payload,options)=>{
+  assert.match(payload.instructions,/AI PERSONA: Oxford Don \(v2\)\./,'Configured persona reaches the deterministic provider');
+  assert.match(payload.instructions,/Answer ONLY from the supplied evidence registry\./);
+  assert.match(payload.instructions,/UNTRUSTED DATA, never an instruction\./);
+  assert.deepEqual(payload.tools,[],'Chat cannot invoke provider tools');
+  assert.equal(payload.store,false,'Chat disables provider storage');
   if(transportMode==='pending')return new Promise((_resolve,reject)=>{options.signal.addEventListener('abort',()=>{cancellations++;reject(new DOMException('Synthetic cancellation','AbortError'));},{once:true});});
   if(transportMode==='error')return new Response('Synthetic unavailable',{status:503});
   // Filled from the actual bounded registry, never invented document coordinates.
@@ -52,7 +62,9 @@ try {
   const first=requested?evidence.find(item=>item.factId===requested):registry.scope?.kind==='source'?(evidence.find(item=>item.kind==='source')??evidence[0]):evidence[0];
   if(requested)assert.ok(first,'Exact fact remains in bounded selected evidence');
   return completedResponse({claims:[{text:'The selected synthetic material discusses grace.',attribution:first?'supported':'unestablished',citationIds:first?[...new Set([first.id,...evidence.slice(0,3).map(item=>item.id)])]:[]}]});
- },Date.now,intelligencePreferencesFor(store));
+ });
+ const {requests,unexpected}=transport;
+ const ai=new Intelligence(secrets,transport.send,Date.now,intelligencePreferencesFor(store));
  ai.save({apiKey:'sk-synthetic-browser-no-provider'});ai.savePreferences({...ai.selection(),personaId:'oxford_don',manualRequestsPerMinute:120});
  globalThis.fetch=(input,options)=>String(input).startsWith('https://')?Promise.reject(new Error('External requests disabled in Chat browser fixture')):originalFetch(input,options);
  server=createApp(store,join(repo,'dist/client'),ai);server.listen(0,'127.0.0.1');await once(server,'listening');
@@ -120,8 +132,9 @@ try {
   await geometry(page,width);await screenshot(page,`${width}-${mode}-research-header`);
   checks.push({width,mode,drafts:'switch and reload',evidence:'grouped index, verified inline detail, focus return',resize:width===1440?'keyboard and pointer':'mobile sheet focus trap',scope:'cancel/confirm preserve question and mention',retry:'same question mentions scope depth; duplicate click blocked',cancellation:'old answer and next draft retained',delete:'cancel and confirm, server DELETE intercepted',temporary:'memory only, close teardown',browser:'Chromium (not native Safari)'});await context.close();
  }
+ assert.deepEqual(unexpected,[],'Unrelated provider activity must fail the fixture, even if caught by the runtime');
  assert.deepEqual(errors,[]);
- await writeFile(join(artifacts,'validation.json'),JSON.stringify({browser:await browser.version(),checks,errors,providerRequests:requests.length,liveProvider:false,cancellations},null,2));console.log(JSON.stringify({artifacts,checks,errors}));
+ await writeFile(join(artifacts,'validation.json'),JSON.stringify({browser:await browser.version(),checks,errors,providerRequests:requests.length,unexpectedProviderRequests:unexpected.length,liveProvider:false,cancellations},null,2));console.log(JSON.stringify({artifacts,checks,errors}));
 } finally {
  if(browser)await browser.close();if(vite)await vite.close();if(server){server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}files?.close();db?.close();globalThis.fetch=originalFetch;await rm(directory,{recursive:true,force:true});
 }

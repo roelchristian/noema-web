@@ -144,3 +144,32 @@ test('editor footer announces identification, saving, saved and retry states', t
     assert.equal(footer.includes('Retry'),saveStatus==='error');
   }
 });
+
+test('editor recognition stays cached across progress and recomputes once for alias changes',async t=>{
+  const {setupEntityDOM}=await import('./helpers/entity-dom.mjs');
+  const {act}=await import('react');
+  const env=await setupEntityDOM(t);
+  t.mock.timers.enable({apis:['setTimeout']});
+  const page={id:'note',vault_id:'vault',title:'Notes',blocks:[],sourceIds:[],revision:1,updated_at:'',entityMatchCache:{revision:1,key:'cached',matches:[]}};
+  const person={id:'ada',vault_id:'vault',name:'Ada',type:'person',subtypes:[],description:''};
+  const source={...person,id:'pdf',type:'source',sourceStatus:'processing'};
+  let entities=[person,source],matches=0,identifications=0;
+  t.mock.method(api,'entityMatches',async()=>{matches++;return {revision:1,key:'fresh',matches:[]};});
+  const identify=async()=>{identifications++;};
+  const render=async()=>act(async()=>env.root.render(createElement(PageEditor,{page,entities,pages:[],saveStatus:'saved',onChange(){},onOpenPage(){},onOpenEntity(){},onCreateEntity(){},onSave(){},onIdentify:identify,onAddAlias:async()=>{}})));
+  try {
+    await render();await act(async()=>t.mock.timers.tick(2000));
+    const initialIdentifications=identifications;
+    for(let n=0;n<4;n++) {
+      entities=[person,{...source,sourceSize:n}];await render();
+      await act(async()=>t.mock.timers.tick(2000));
+    }
+    assert.equal(matches,0,'four progress renders reused hydrated matching cache');
+    assert.equal(identifications,initialIdentifications,'progress did not reschedule recognition');
+    entities=[{...person,aliases:['Augusta']},source];await render();
+    await act(async()=>t.mock.timers.tick(2000));
+    assert.equal(matches,1,'alias dictionary change refreshed matches once');
+    assert.equal(identifications,initialIdentifications+1);
+    console.log(JSON.stringify({entityMatching:{progressRenders:4,progressRecomputes:0,aliasRecomputes:matches}}));
+  } finally {await env.close();}
+});

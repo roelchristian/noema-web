@@ -6,6 +6,8 @@ import {once} from 'node:events';
 import {PDFDocument} from 'pdf-lib';
 import {lifecycleFixture} from '../test/helpers/entity-lifecycle-fixture.mjs';
 import {createApp} from '../src/server/http.ts';
+import {SourceDocuments} from '../src/server/modules/source-documents.ts';
+import {sourceReadingPresentation} from '../src/shared/source-reprocessing.ts';
 const {chromium}=await import(process.env.PLAYWRIGHT_MODULE??'/opt/codex/cua_node/lib/node_modules/playwright-core/index.mjs');
 const label=process.env.MEASUREMENT_LABEL??'after',out=resolve('output/navigation-loading',label);await mkdir(out,{recursive:true});
 const f=await lifecycleFixture(),other=f.pages.create('default',{title:'Synthetic second navigation note'});
@@ -14,7 +16,7 @@ const pdf=await PDFDocument.create();pdf.addPage().drawText('Synthetic backgroun
 const pending=f.files.add('default','background.pdf',Buffer.from(await pdf.save({useObjectStreams:false})));
 f.knowledge.create('default',{type:'source',name:'Synthetic background processing',attachmentIds:[pending.id]});
 const revision=JSON.parse(await readFile(new URL('../test/fixtures/dante-editorial-revision.json',import.meta.url),'utf8'));
-revision.fileId=f.file.id;revision.id='synthetic-reading-revision';revision.patches=revision.patches.slice(0,1);revision.status='completed';revision.reprocessed=structuredClone(revision.original);
+revision.fileId=f.file.id;revision.id='synthetic-reading-revision';revision.patches=revision.patches.slice(0,1);revision.status='completed';revision.original={text:f.original.text,document:new SourceDocuments(f.store).get(f.original)};revision.reprocessed=structuredClone(revision.original);revision.report.chunksCompleted=revision.report.chunksTotal=1;revision.stale=false;
 const locked=f.vaults.create({name:'Synthetic locked vault'});f.vaults.lock(locked.id,{passphrase:'synthetic-only'});
 const server=createApp(f.store,resolve(process.env.CLIENT_DIST??'dist/client'));server.listen(0,'127.0.0.1');await once(server,'listening');
 let browser;const errors=[],external=[],requests=[],responses=[],checks=[];
@@ -72,7 +74,25 @@ try{
   startupChecks={noteVisibleBeforeInventory,editorProtectedBeforeInventory,lockedStayedEmpty};
   assert.deepEqual(startupChecks,{noteVisibleBeforeInventory:true,editorProtectedBeforeInventory:true,lockedStayedEmpty:true});checks.push('slow startup renders note and protects edits','vault switch cancels pending inventory','locked vault on mobile','repeated startup');
  }
- const result={label,browser:await browser.version(),synthetic:true,devicePerformanceMeasured:false,startupChecks,startup:{vaultRequests:startup.filter(r=>r.path==='/api/vaults').length,requests:startup},cacheReturnFetches,cachedReturnVisible,preview:{detailStarted,visibleBeforeFullDetail:previewVisible},hiddenRevisionRequests,reviewLoaded,mobileOverflow,errors,external,checks,requests,responses};
+ let versionChecks=null;
+ if(label!=='before'){
+  await page.route(`**/api/source-files/${f.file.id}/reprocessing/${revision.id}/reading`,route=>route.fulfill({json:sourceReadingPresentation(revision)}));
+  await page.route(`**/api/source-files/${f.file.id}/highlights?revisionId=*`,route=>route.fulfill({json:[]}));
+  await page.route(`**/api/source-files/${f.file.id}/reading-notes?revisionId=*`,route=>route.fulfill({json:[]}));
+  await page.route(`**/api/source-files/${f.file.id}/reading-locations?revisionId=*`,route=>route.fulfill({json:{resume:null,bookmarks:[]}}));
+  await page.setViewportSize({width:1440,height:1000});await page.goto(`${base}/?vault=default&source=${f.source.id}`);
+  const chooser=page.locator('select[aria-label="Reading version"]');await chooser.locator(`option[value="${revision.id}"]`).waitFor({state:'attached'});
+  await chooser.selectOption(revision.id,{force:true});await page.locator('.source-reader-editorial-notice').waitFor();
+  const fullBeforeReload=requests.filter(r=>r.path===fullPath).length;
+  await page.reload();await page.locator('.source-reader-editorial-notice').waitFor();
+  const selectedVersionRestored=await chooser.inputValue()===revision.id;
+  const noComparisonFetchOnVersionRestore=requests.filter(r=>r.path===fullPath).length===fullBeforeReload;
+  const compactVersionFetched=requests.some(r=>r.path===fullPath+'/reading');
+  versionChecks={selectedVersionRestored,noComparisonFetchOnVersionRestore,compactVersionFetched};
+  assert.deepEqual(versionChecks,{selectedVersionRestored:true,noComparisonFetchOnVersionRestore:true,compactVersionFetched:true});
+  checks.push('selected editorial reading version restored without comparison fetch');
+ }
+ const result={label,browser:await browser.version(),synthetic:true,devicePerformanceMeasured:false,versionChecks,startupChecks,startup:{vaultRequests:startup.filter(r=>r.path==='/api/vaults').length,requests:startup},cacheReturnFetches,cachedReturnVisible,preview:{detailStarted,visibleBeforeFullDetail:previewVisible},hiddenRevisionRequests,reviewLoaded,mobileOverflow,errors,external,checks,requests,responses};
  await writeFile(join(out,'metrics.json'),JSON.stringify(result,null,2));console.log(JSON.stringify({...result,requests:requests.length,responses:responses.length}));
  assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
  if(label!=='before'){assert.equal(cachedReturnVisible,true);assert.equal(previewVisible,true);assert.equal(hiddenRevisionRequests,0);assert.equal(reviewLoaded,true);assert.equal(mobileOverflow,false);}

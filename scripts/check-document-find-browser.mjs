@@ -91,24 +91,36 @@ const {openDatabase}=await import('../dist/server/database.js');
 const {Store}=await import('../dist/server/store.js');
 const {Knowledge}=await import('../dist/server/modules/knowledge.js');
 const {Pages}=await import('../dist/server/modules/pages.js');
-const {createApp}=await import('../dist/server/http.js');
+const http=await import('node:http');
+const {createRuntime}=await import('../dist/server/runtime.js');
+const {createTransportHandler,trackConnections}=await import('../dist/server/transport.js');
+const {Intelligence}=await import('../dist/server/modules/intelligence.js');
+const {readNetworkConfig}=await import('../dist/server/network.js');
 const {once}=await import('node:events');
 const appDirectory=await mkdtemp(join(tmpdir(),'noema-find-app-'));
 const db=openDatabase(join(appDirectory,'fixture.sqlite')),store=new Store(db),knowledge=new Knowledge(store),pages=new Pages(store,knowledge);
 const presentationEntity=knowledge.create('default',{name:'Synthetic Rowan',type:'person',description:'Fictional presentation fixture'});
 let note=pages.create('default',{title:'Synthetic target title'});
 note=pages.update('default',note.id,{...note,blocks:[{id:'body',type:'paragraph',checked:false,content:[{text:'target ',bold:true},{text:'target',italic:true}]},{id:'table',type:'table',checked:false,content:[],rows:[[[{text:'target',href:'https://example.com'}],[{text:'untouched'}]]]},{id:'references',type:'paragraph',checked:false,content:[{text:'Notes about '},{entityId:presentationEntity.id,mentionText:'Synthetic Rowan'},{text:' and an unchanged association.'}]},{id:'sample-code',type:'code',checked:false,content:[{text:'const example = "'+ 'x'.repeat(180) +'";'}]}]});
+// SQLite assessment triggers also enqueue directly when the background index settles.
+// Clear only fixture AI-enrichment jobs after insertion without interrupting any index trigger.
+db.exec('CREATE TEMP TRIGGER find_fixture_enrichment AFTER INSERT ON page_enrichment_jobs BEGIN DELETE FROM page_enrichment_jobs WHERE page_id=NEW.page_id; END');
+store.run('DELETE FROM page_enrichment_jobs');
 const other=pages.create('default',{title:'Other target page'});
-let otherBefore;
-const app=createApp(store,join(repo,'dist/client'));app.listen(0,'127.0.0.1');await once(app,'listening');
+const otherBefore=JSON.stringify(pages.get('default',other.id));
+const ai=new Intelligence({read:()=>null,write(){},remove(){}},async()=>{throw new Error('Provider calls are forbidden in the DocumentFind fixture');});
+const runtime=createRuntime(store,ai,readNetworkConfig());
+// Find/presentation data fidelity is independent of automatic AI enrichment.
+// Disable only that disposable fixture scheduler; retain the real HTTP handlers and all equality assertions.
+runtime.enrichmentScheduler.dispose();
+const sockets=new Set(),app=http.createServer(createTransportHandler(runtime,join(repo,'dist/client'),sockets));
+trackConnections(app,runtime.networkAccess,sockets);app.on('listening',()=>runtime.start());app.on('close',()=>runtime.close());app.listen(0,'127.0.0.1');await once(app,'listening');
 let appBrowser;
 try{
  appBrowser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH??'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
  const page=await appBrowser.newPage({viewport:{width:1440,height:1000}}),errors=[];page.on('pageerror',e=>errors.push(e.message));page.setDefaultTimeout(10000);
  await page.goto(`http://127.0.0.1:${app.address().port}/?vault=default&page=${note.id}`);
- const body=page.locator('[data-block-id="body"] .block-content[contenteditable="true"]');await body.waitFor();await page.waitForLoadState('networkidle');
- // The unrelated startup enrichment queue must settle before exact data-fidelity baselines.
- await page.waitForFunction(async id=>{const response=await fetch('/api/pages/'+id,{headers:{'x-vault-id':'default'}});return !(await response.json()).enrichmentPending;},other.id,{timeout:30000});otherBefore=JSON.stringify(pages.get('default',other.id));await body.click();await page.keyboard.press('Control+h');
+ const body=page.locator('[data-block-id="body"] .block-content[contenteditable="true"]');await body.waitFor();await body.click();await page.keyboard.press('Control+h');
  await page.getByLabel('Find text',{exact:true}).fill('target');await page.getByLabel('Replace with',{exact:true}).fill('revised');
  await page.waitForFunction(()=>document.querySelector('.document-find output')?.textContent.includes('of 3'));
  await page.getByRole('button',{name:'Replace all',exact:true}).click();await page.waitForFunction(()=>document.querySelector('[data-block-id="body"] .block-content')?.textContent==='revised revised');

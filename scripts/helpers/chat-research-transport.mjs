@@ -7,7 +7,7 @@ export function chatResearchTransport(respond) {
  const requests=[],unexpected=[];
  return {requests,unexpected,async send(url,options) {
   const payload=JSON.parse(options.body);
-  if(typeof payload?.instructions!=='string'||!payload.instructions.startsWith('You are Noema Knowledge Chat, a neutral read-only research interface.')) {
+  if(typeof payload?.instructions!=='string'||!payload.instructions.startsWith('You are Meno, Noema Knowledge Chat, a read-only research interface.')) {
    unexpected.push(payload);
    assert.fail('Unexpected non-Chat provider dispatch in isolated research fixture');
   }

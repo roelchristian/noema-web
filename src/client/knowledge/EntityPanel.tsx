@@ -1,3 +1,4 @@
+import {BibliographyReferences} from './BibliographyReferences';
 import {DetailSidePanel} from '../components/DetailSidePanel';
 import {SourceMetadata} from '../sources/SourceMetadata';
 import {BibliographyEditor} from './BibliographyEditor';
@@ -130,7 +131,7 @@ export function EntityPanel(props: EntityPanelProps) {
       {!inspector && tabNavigation}
       <div id="entity-tabpanel-overview" className="entity-detail-tabpanel" role="tabpanel" aria-labelledby="entity-tab-overview" hidden={tab !== 'overview'} tabIndex={0}>
       {entity.type==='source'&&entity.overview?.content&&<section className="entity-detail-section" data-entity-overview tabIndex={-1}><h3>Entity overview</h3><MarkdownText text={entity.overview.content}/></section>}
-      {entity.type==='source'&&<BibliographyEditor key={vaultId+':'+id+':bibliography-overview'} vaultId={vaultId} entity={entity} compact={inspector} editable={inspector} onOpenSource={onOpen} onUpdated={inspector?async()=>{await mutate(()=>api.entity(vaultId,id));}:onUpdated}/>}
+      {entity.type==='source'&&tab==='overview'&&<BibliographyEditor key={vaultId+':'+id+':bibliography-overview'} vaultId={vaultId} entity={entity} compact onEditDetails={()=>switchTab('metadata')} onOpenSource={onOpen} onUpdated={inspector?async()=>{await mutate(()=>api.entity(vaultId,id));}:onUpdated}/>}
       {inspector&&<>
         <SourceInspectorStatus files={entity.attachments??[]} vaultId={vaultId} onError={onError} onChange={file=>{
           if(!isCurrent())return;
@@ -193,9 +194,10 @@ export function EntityPanel(props: EntityPanelProps) {
         </section>
       </details>}
       </div>
-      {entity.type==='source'&&<div id="entity-tabpanel-metadata" className="entity-detail-tabpanel" role="tabpanel" aria-labelledby="entity-tab-metadata" hidden={tab!=='metadata'} tabIndex={0}>{tab==='metadata'&&<SourceMetadata vaultId={vaultId} sourceId={id} density={inspector?'compact':'full'} proposalId={proposalId} runId={metadataRun} onUpdated={async()=>{await mutate(()=>api.entity(vaultId,id));}}/>}</div>}
+      {entity.type==='source'&&<div id="entity-tabpanel-metadata" className="entity-detail-tabpanel" role="tabpanel" aria-labelledby="entity-tab-metadata" hidden={tab!=='metadata'} tabIndex={0}>{tab==='metadata'&&<><BibliographyEditor key={vaultId+':'+id+':bibliography-metadata'} vaultId={vaultId} entity={entity} onUpdated={async()=>{await mutate(()=>api.entity(vaultId,id));}}/><SourceMetadata vaultId={vaultId} sourceId={id} density={inspector?'compact':'full'} proposalId={proposalId} runId={metadataRun} onUpdated={async()=>{await mutate(()=>api.entity(vaultId,id));}}/></>}</div>}
       <div id="entity-tabpanel-connections" className="entity-detail-tabpanel" role="tabpanel" aria-labelledby="entity-tab-connections" hidden={tab !== 'connections'} tabIndex={0}>
         {inspector&&mentionsSection}
+        {tab==='connections'&&entity.type==='source'&&<BibliographyReferences vaultId={vaultId} entity={entity} onOpenSource={onOpen} onUpdated={onUpdated}/>}
         <section className="entity-detail-section"><h3>{uiText("Connected entities")}<span>{connectionCount}</span></h3><EntityConnections items={connections} entities={entities} onOpen={onOpen} empty="No connected entities yet."/></section>
         <details className="entity-detail-section entity-context-details"><summary>{uiText("Edit relationships")}</summary><RelationshipEditor entity={entity} entities={entities} mention={mention} onSave={(input,relationId)=>mutate(()=>api.saveRelationship(vaultId,id,input,relationId))} onRemove={relationId=>mutate(()=>api.removeConnection(vaultId,id,'relationships',relationId))}/></details>
         {!!(references.length+incoming.length)&&<button type="button" className="entity-detail-more" onClick={()=>{switchTab('overview');const details=document.querySelector<HTMLDetailsElement>(inspector?'#entity-panel .source-property-options':'#entity-panel .entity-context-details');if(details)details.open=true;}}>{uiText("Edit property references")}<Icon name="chevron"/></button>}

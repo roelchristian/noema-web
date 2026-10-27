@@ -5065,3 +5065,10 @@ dialog.noema-modal.entity-review-modal { height: min(780px, calc(100dvh - 64px))
 .bibliography-consent input, .bibliography-proposal input { flex: 0 0 auto; margin-top: 4px; }
 .bibliography-candidate { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-block: 12px; }
 .bibliography-export { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+
+.bibliography-library-more { position: relative; }
+.bibliography-library-more > summary { cursor: pointer; padding: 8px 12px; border: 1px solid var(--line); border-radius: 6px; font-size: 13px; }
+.bibliography-library-more > .bibliography-actions { position: absolute; z-index: 10; inset-block-start: 100%; inset-inline-end: 0; width: min(280px, calc(100vw - 48px)); padding: 12px; background: var(--surface-popover); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow-menu); }
+.bibliography-library-more .button { width: 100%; text-align: start; }
+.bibliography-editor > details > summary, .bibliography-citation-tools > details > summary { cursor: pointer; margin-block: 12px; font-size: 13px; }
+.bibliography-editor { overflow-wrap: anywhere; }

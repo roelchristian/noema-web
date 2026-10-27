@@ -18,6 +18,9 @@ export async function bibliographyRoutes(service:BibliographicMetadata,{activity
  catch(error){if(activityId)activity.finish(activityId,controller.signal.aborted?'interrupted':'failed',error instanceof HttpError?error.status:502);if(controller.signal.aborted)return;throw error;}
  finally{res.removeListener('close',abort);}
  }
+ if(id&&action==='import-preview'&&method==='POST')return send(200,service.sourceImportPreview(vault,id,body.raw));
+ if(id&&action==='import'&&method==='POST')return send(200,service.sourceImport(vault,id,body));
+ if(id&&action==='export'&&method==='GET')return send(200,service.sourceExport(vault,id));
  if(id&&action==='reconcile-preview'&&method==='POST')return send(200,service.reconcilePreview(vault,id,body));
  if(id&&action==='accept-verification'&&method==='POST')return send(200,service.acceptVerification(vault,id,body));
  if(id&&action==='pdf-candidates'&&method==='GET')return send(200,service.pdfCandidates(vault,id));

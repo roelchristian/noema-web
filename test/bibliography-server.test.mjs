@@ -27,3 +27,61 @@ test('import conflicts require field decisions and retain prior authored facts i
   assert.equal(service.import('default',{raw,decisions:[{index:0,action:'merge',sourceId:id,revision:3}]}).skipped,1);assert.equal(store.get('SELECT count(*) n FROM bibliographic_import_batches').n,1);
  }finally{db.close();}
 });
+test('scoped import explicitly targets a Source, reviews conflicts and retains stable identity and evidence',()=>{
+ const {db,service,store}=fixture();try {
+  const id=imported(service),original=service.get('default',id);
+  service.save('default',id,{...original,fields:{...original.fields,title:'Authored publication'}});
+  const incoming='@book{DifferentKey,title={Imported publication},publisher={Synthetic Press}}';
+  const preview=service.sourceImportPreview('default',id,incoming);
+  assert.equal(preview.sourceId,id);assert.equal(preview.revision,2);assert.equal(preview.conflicts[0].currentOrigin,'manual');
+  assert.throws(()=>service.sourceImport('default',id,{raw:incoming,...preview}),/each conflicting field/);
+  assert.throws(()=>service.sourceImport('default',id,{raw:raw,...preview,fields:{title:'current'}}),/import changed/);
+  assert.equal(service.get('default',id).revision,2); // Cancel/failed review never writes.
+  const kept=service.sourceImport('default',id,{raw:incoming,...preview,fields:{title:'current'}});
+  assert.equal(kept.fields.title,'Authored publication');assert.equal(kept.fields.publisher,'Synthetic Press');
+  assert.equal(kept.citationKey,'Test');assert.equal(kept.entryType,'article');assert.deepEqual(kept.rawImports,[raw,incoming]);
+  assert.equal(store.get("SELECT count(*) n FROM entities WHERE type='source'").n,1);
+  assert.throws(()=>service.sourceImport('default',id,{raw:incoming,...preview,fields:{title:'incoming'}}),/source changed/);
+  const fresh=service.sourceImportPreview('default',id,incoming),accepted=service.sourceImport('default',id,{raw:incoming,...fresh,fields:{title:'incoming'}});
+  const repeated=service.sourceImport('default',id,{raw:incoming,...service.sourceImportPreview('default',id,incoming)});assert.equal(repeated.revision,accepted.revision);
+  assert.equal(accepted.fields.title,'Imported publication');assert.ok(accepted.provenance.title.history.some(fact=>fact.value==='Authored publication'&&fact.origin==='manual'));
+  assert.throws(()=>service.sourceImportPreview('default',id,raw+'\n'+incoming),/exactly one/);
+  assert.throws(()=>service.sourceImport('default',id,{raw:raw+'\n'+incoming,...fresh}),/exactly one/);
+ }finally{db.close();}
+});
+test('scoped import preserves legacy reconciliation, vault and archived Source protections',()=>{
+ const {db,service,store}=fixture();try {
+  store.run("INSERT INTO entities(id,vault_id,name,type,updated_at) VALUES('explicit','default','Selected source','source','2020-01-01')");
+  store.run("INSERT INTO properties(id,entity_id,name,value) VALUES('authored-title','explicit','title','Protected legacy title')");
+  const preview=service.sourceImportPreview('default','explicit',raw);assert.equal(preview.revision,0);assert.equal(preview.propertyConflicts.length,1);
+  assert.throws(()=>service.sourceImport('default','explicit',{raw,...preview}),/authored Source properties/);
+  assert.equal(service.get('default','explicit'),null);
+  const record=service.sourceImport('default','explicit',{raw,...preview,reviewedProperties:preview.propertyConflicts.map(conflict=>({propertyId:conflict.property.id,fingerprint:conflict.fingerprint}))});
+  assert.equal(record.sourceId,'explicit');assert.equal(store.get("SELECT value FROM properties WHERE id='authored-title'").value,'Protected legacy title');
+  assert.throws(()=>service.sourceImportPreview('missing','explicit',raw));assert.throws(()=>service.sourceExport('missing','explicit'));
+  store.run("UPDATE entities SET archived_at='2026-01-01' WHERE id='explicit'");assert.throws(()=>service.sourceImportPreview('default','explicit',raw),/not found/);assert.throws(()=>service.sourceExport('default','explicit'),/not found/);
+  store.run("UPDATE vaults SET locked=1 WHERE id='default'");assert.throws(()=>service.sourceImport('default','explicit',{raw,...preview}));
+ }finally{db.close();}
+});
+test('scoped export reads only selected publication and its original evidence, without listing the vault',()=>{
+ const {db,service,store}=fixture();try {
+  const id=imported(service);const other='@book{Other,title={Unrelated private publication}}';service.import('default',{raw:other,decisions:[{index:0,action:'create'}]});
+  service.list=()=>{throw new Error('Scoped export must never list the vault');};
+  const queries=[],all=store.all.bind(store);store.all=(sql,...args)=>{queries.push(sql);return all(sql,...args);};
+  const exported=service.sourceExport('default',id),sidecar=JSON.parse(exported.sidecar);
+  assert.ok(exported.bibtex.includes('Synthetic study'));assert.ok(!exported.bibtex.includes('Unrelated'));
+  assert.equal(sidecar.records.length,1);assert.equal(sidecar.records[0].sourceId,id);assert.deepEqual(sidecar.importBatches.map(batch=>batch.raw),[raw]);
+  assert.ok(!queries.some(sql=>sql.includes('FROM bibliographic_records')));
+ }finally{db.close();}
+});
+
+test('single-Source exports never disclose sibling entries in shared original import batches',()=>{
+ const {db,service}=fixture();try {
+  const batch='@book{Selected,title={Selected publication}}\n@book{Sibling,title={Private sibling publication}}';
+  const [id]=service.import('default',{raw:batch,decisions:[{index:0,action:'create'},{index:1,action:'create'}]}).sourceIds;
+  const exported=service.sourceExport('default',id),sidecar=JSON.parse(exported.sidecar);
+  assert.ok(!JSON.stringify(exported).includes('Private sibling'));assert.ok(!JSON.stringify(exported).includes('Sibling'));
+  assert.equal(sidecar.records.length,1);assert.equal(sidecar.importBatches.length,0);assert.deepEqual(sidecar.records[0].rawImportIds,[]);assert.equal(sidecar.omittedOriginalBatchIds.length,1);
+  assert.deepEqual(service.get('default',id).rawImports,[batch]);assert.equal(JSON.parse(service.export('default').sidecar).importBatches[0].raw,batch);
+ }finally{db.close();}
+});

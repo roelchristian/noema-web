@@ -24,6 +24,13 @@ test('bibliography HTTP guards disclosure, scopes writes and logs metadata reque
  const verified=await request(`bibliography/${id}/verify`,{consent:true});assert.equal(verified.status,200);const proposal=await verified.json();assert.equal(metadataCalls,1);
  const activity=store.get("SELECT action,status,object_id,prompt_bytes FROM ai_activity WHERE action='bibliographic_lookup'");assert.deepEqual({...activity},{action:'bibliographic_lookup',status:'completed',object_id:id,prompt_bytes:null});
  const accepted=await request(`bibliography/${id}/accept-verification`,{...proposal,fields:{publisher:proposal.fields.publisher}});assert.equal(accepted.status,200);assert.equal((await accepted.json()).fields.title,'Authored synthetic title');
+ const scopedRaw='@book{IgnoredImportKey,title={Scoped proposed title},year={2026}}';
+ const scopedPreviewResponse=await request(`bibliography/${id}/import-preview`,{raw:scopedRaw});assert.equal(scopedPreviewResponse.status,200);const scopedPreview=await scopedPreviewResponse.json();
+ assert.equal((await request(`bibliography/${id}/import`,{raw:scopedRaw,...scopedPreview})).status,400);
+ const scopedAccepted=await request(`bibliography/${id}/import`,{raw:scopedRaw,...scopedPreview,fields:{title:'current'}});assert.equal(scopedAccepted.status,200);assert.equal((await scopedAccepted.json()).citationKey,'HTTP');
+ assert.equal((await request(`bibliography/${id}/import`,{raw:scopedRaw,...scopedPreview,fields:{title:'incoming'}})).status,409);
+ const scopedExport=await nativeFetch(base+`bibliography/${id}/export`,{headers:{'x-vault-id':'default'}});assert.equal(scopedExport.status,200);assert.equal(JSON.parse((await scopedExport.json()).sidecar).records[0].sourceId,id);
+ assert.equal((await request(`bibliography/${id}/import-preview`,{raw:scopedRaw},{'x-vault-id':'missing'})).status,404);
  assert.equal((await request('bibliography/preview',{raw},{origin:'https://cross-origin.invalid'})).status,403);
  assert.equal((await request(`entities/${id}/scholarly`,{confirmRemote:true},{'x-noema-request':''})).status,403);
  assert.equal((await request(`entities/${id}/scholarly`,{confirmRemote:true})).status,409);

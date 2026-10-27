@@ -12,7 +12,7 @@ Overview shows publication details and everyday citation actions. More citation 
 
 These operations reuse canonical bibliography ownership, access checks, reconciliation and export formatting. There is no new database migration or second publication metadata store. DOI provider calls still require deliberate consent; local imports, exports and citation formatting perform no remote lookup.
 
-Conflict review follows the Metadata field owner, including publication aliases such as date/year, journal/journaltitle and issue/number. An imported alias must not bypass a manual value by appearing to be a separate empty field. DOI acceptance likewise updates the reviewed canonical field and records provider provenance and prior-value history.
+Conflict review follows the Metadata field owner, including publication aliases such as date/year, journal/journaltitle and issue/number. An imported alias must not bypass a manual value by appearing to be a separate empty field. Scoped imports conservatively reject different values for two aliases in the same entry, including a full date paired with a year; correct the entry to one publication value before importing. Bulk import behavior is unchanged. DOI acceptance likewise updates the reviewed canonical field and records provider provenance and prior-value history.
 
 ## Compatibility
 

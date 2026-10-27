@@ -4,7 +4,7 @@ import {lazyFeature} from './components/LazyFeature';
 import {revealEntityFact} from './chat/entity-evidence-navigation';
 import {readChatSession,clearChatSession,clearChatDrafts} from './chat/chat-session';
 import type {ChatScope,ChatEvidence} from '../shared/chat';
-import {resolveEntityIcon,entityIconName} from '../shared/entity-icons';
+import {createEntityIconDecorator,entityIconName} from '../shared/entity-icons';
 import {SubtypeIconContext} from './components/Icon';
 import {ReviewDestination,reviewDestinationAt} from './review/review-destination';
 import type {ReviewItem} from '../shared/review-centre';
@@ -132,7 +132,8 @@ function WorkspaceApp({workspace}:{workspace:Workspace}) {
   const state = useSyncExternalStore(workspace.subscribe, workspace.snapshot);
   const {vaults, vault, pages, entities:storedEntities, page, view, busy, loadingPageId, reviewing, saveStatus, organization, organizationContext, recent, trash, saveFailures, draftStorageFailures, draftRecoveries} = state;
   useLayoutEffect(()=>{resetSharedRequests();return resetSharedRequests;},[vault?.id,vault?.locked]);
-  const entities=useMemo(()=>storedEntities.map(entity=>({...entity,icon:resolveEntityIcon(entity,appearance.subtypeIcons)})),[storedEntities,appearance.subtypeIcons]);
+  const [decorateEntities]=useState(createEntityIconDecorator);
+  const entities=useMemo(()=>decorateEntities(storedEntities,appearance.subtypeIcons),[storedEntities,appearance.subtypeIcons,decorateEntities]);
   useEffect(()=>{
     reviewVault.current=null;setReviewDestination(null);setChatFactTarget(null);
     const resume=vault&&!vault.locked?readChatSession(vault.id):null;

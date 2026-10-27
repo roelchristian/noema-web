@@ -276,3 +276,11 @@ test('Thing and narrative taxonomy are additive; legacy identity and domains rem
   assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(),[]);
  } finally {db.close();}
 });
+
+test('decorated entity identities survive unrelated progress and update icon preferences',async()=>{
+ const {createEntityIconDecorator}=await import('../src/shared/entity-icons.ts');
+ const decorate=createEntityIconDecorator(),icons={},person={id:'person',type:'creativework',subtypes:['creativework:book']},source={id:'source',type:'source',subtypes:[],sourceStatus:'queued'};
+ const first=decorate([person,source],icons),second=decorate([person,{...source,sourceStatus:'processing'}],icons);
+ assert.equal(second[0],first[0]);assert.notEqual(second[1],first[1]);assert.equal(second[0].icon,'book');
+ const changed=decorate([person],{'creativework:book':'star'});assert.notEqual(changed[0],first[0]);assert.equal(changed[0].icon,'star');
+});

@@ -7,7 +7,7 @@ import {api} from '../src/client/api.ts';
 import {builtinProperties,builtinSubtypes} from '../src/shared/entity-schema.ts';
 import {setupDOM} from './helpers/dom.mjs';
 
-async function fixture(t,{upload,onSubmit=async()=>{}}={}) {
+async function fixture(t,{upload,onSubmit=async()=>{},initial={source:true}}={}) {
   const env=setupDOM(t),root=createRoot(document.querySelector('#mount')),requests=[],created=[];
   let closed=0;
   env.dom.window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};
@@ -18,7 +18,7 @@ async function fixture(t,{upload,onSubmit=async()=>{}}={}) {
     requests.push({route,options});
     return upload?upload(route,options):Response.json({id:'11111111-1111-4111-8111-111111111111.txt',name:new URL(route,'http://localhost').searchParams.get('name')??'URL.txt'});
   });
-  await act(async()=>root.render(createElement(CreateEntityDialog,{vaultId:'synthetic-vault',initial:{source:true},onClose(){closed++;},async onSubmit(input){created.push(input);await onSubmit(input);}})));
+  await act(async()=>root.render(createElement(CreateEntityDialog,{vaultId:'synthetic-vault',initial,onClose(){closed++;},async onSubmit(input){created.push(input);await onSubmit(input);}})));
   function props(element){return element[Object.keys(element).find(key=>key.startsWith('__reactProps'))];}
   const method=value=>act(async()=>{const element=document.querySelector('[aria-label="Add source from"]');props(element).onChange({target:{value}});});
   const enter=(element,value)=>act(async()=>props(element).onChange({target:{value}}));
@@ -136,4 +136,13 @@ test('URL content is identified as PDF before provider choice and consent, with 
  const stages=f.requests.filter(item=>item.route.endsWith('/ingestion'));assert.equal(stages.length,1);assert.equal(JSON.parse(stages[0].options.body).options.transmissionConsent,true);assert.equal(JSON.parse(stages[0].options.body).options.depth,'deep');
  failEntity=false;await f.submit();assert.equal(f.requests.filter(item=>item.route.endsWith('/ingestion')).length,1,'Entity retry reuses frozen stage');assert.equal(f.created.length,2);
  await f.enter(document.querySelector('input[type=url]'),'https://example.com/other');assert.equal(document.querySelector('[aria-label="PDF processing"]'),null,'Changing URL invalidates fetched content and consent');
+});
+
+
+test('New source offers single-entry BibTeX while create-and-insert keeps its existing creation contract',async t=>{
+ const f=await fixture(t);assert.ok([...document.querySelector('[aria-label="Add source from"]').options].some(option=>option.value==='bibtex'));await f.method('bibtex');assert.match(document.querySelector('dialog h2').textContent,/New source from BibTeX/);assert.equal(f.requests.length,0);
+});
+
+test('create-and-insert source creation keeps the original submission flow',async t=>{
+ await fixture(t,{initial:{source:true,intent:'insert',onCreated(){}}});assert.equal([...document.querySelector('[aria-label="Add source from"]').options].some(option=>option.value==='bibtex'),false);
 });

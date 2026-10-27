@@ -3,7 +3,7 @@ import {revealCitationTarget} from './citation-navigation';
 import {useEffect, useLayoutEffect, useRef, useState} from 'react';
 import type {Entity, SourceReference} from '../../shared/domain';
 import {Icon} from '../components/Icon';
-import {citationLabel} from './SourceViewer';
+import {citationLocation as citationLabel} from '../../shared/citations';
 
 /** Delegation covers citations in editable notes, and locked notes. */
 export function SourceReferencePreview({entities,onOpen}: {entities:Entity[];onOpen:(reference:SourceReference,trigger:HTMLElement)=>void}) {

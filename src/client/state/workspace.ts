@@ -1,3 +1,4 @@
+import {entityMatchingDictionary} from '../../shared/entity-matching-dictionary';
 import {isAIExplanation} from '../../shared/semantic-blocks';
 import {immutableBlocks,immutablePage} from '../../shared/immutable-blocks';
 import {citationSourceIds} from '../../shared/citations';
@@ -37,13 +38,14 @@ export interface WorkspaceState {
   entityPanelId: string | null;
   entityId: string | null;
   vaults: Vault[]; vault: Vault | null; trash: TrashedPage[]; pages: PageSummary[]; entities: Entity[];
+  entitiesReady: boolean;
   creationFocusPageId: string | null;
   initialEditingPageId: string | null;
   organization: Organization; organizationContext: OrganizationContext; recent: RecentItem[];
   sourceId: string | null; page: Page | null; view: 'review' | 'calendar' | 'entity' | 'source' | 'pages' | 'entities' | 'organization' | 'favourites' | 'recent' | 'trash' | 'archive' | 'inbox'; busy: boolean; loadingPageId: string | null; reviewing: boolean; error: string | null; saveStatus: SaveStatus;
 }
 export class Workspace {
-  private state: WorkspaceState = {inboxFacet:'overview',initialEditingPageId:null,creationFocusPageId:null,entityId:null,sourceId:null,domainSavingPageId:null,saveFailures: [], draftStorageFailures: [], draftRecoveries: [], entityPanelId: null, canGoBack: false, canGoForward: false, vaults: [], vault: null, trash: [], archive:[],archiveUndo:[],archiveUndoOccurrence:0,errorOccurrence:0,pages: [], entities: [], organization: {collections: [], folders: [], locations: [], memberships: [], favourites: []}, organizationContext: {collection: '', folder: ''}, recent: [], page: null, view: 'organization', busy: true, loadingPageId: null, reviewing: false, error: null, saveStatus: 'saved'};
+  private state: WorkspaceState = {entitiesReady:false,inboxFacet:'overview',initialEditingPageId:null,creationFocusPageId:null,entityId:null,sourceId:null,domainSavingPageId:null,saveFailures: [], draftStorageFailures: [], draftRecoveries: [], entityPanelId: null, canGoBack: false, canGoForward: false, vaults: [], vault: null, trash: [], archive:[],archiveUndo:[],archiveUndoOccurrence:0,errorOccurrence:0,pages: [], entities: [], organization: {collections: [], folders: [], locations: [], memberships: [], favourites: []}, organizationContext: {collection: '', folder: ''}, recent: [], page: null, view: 'organization', busy: true, loadingPageId: null, reviewing: false, error: null, saveStatus: 'saved'};
   private contextualSaveErrors=new WeakMap<Error,{vaultId:string;pageId:string}>();
   private browserAttached = false;
   private browserInitialized = false;
@@ -60,6 +62,9 @@ export class Workspace {
   private pageCache = new Map<string, Page>();
   private navigation = false;
   private loadSequence = 0;
+  private startupRequest: AbortController | null = null;
+  private inventoryRequest: AbortController | null = null;
+  private inventoryRetry: (() => Promise<void>) | null = null;
   private pageLoadSequence = 0;
   private pageLockPending = false;
   private pageRequest: AbortController | null = null;
@@ -102,7 +107,7 @@ export class Workspace {
     },
     async page => {
       await yieldForEntityMatching();
-      if (this.state.vault?.id !== page.vault_id || this.state.vault.locked || this.state.reviewing || !canIdentifyEntities()) return page;
+      if (this.state.vault?.id !== page.vault_id || this.state.vault.locked || !this.state.entitiesReady || this.state.reviewing || !canIdentifyEntities()) return page;
       const {blocks} = identifyEntityMentions(page.blocks, entitiesForPage(page,this.state.entities), page.vault_id);
       return blocks === page.blocks ? page : {...page, blocks};
     },
@@ -110,7 +115,7 @@ export class Workspace {
   );
   identifyEntities = async () => {
     const page = this.state.page;
-    if (!page || page.archived_at || page.editLocked || this.pageLockPending || this.state.view !== 'pages' || this.state.busy || this.state.loadingPageId !== null || this.state.reviewing || this.state.vault?.locked || this.saver.hasPending || !canIdentifyEntities()) return;
+    if (!this.state.entitiesReady || !page || page.archived_at || page.editLocked || this.pageLockPending || this.state.view !== 'pages' || this.state.busy || this.state.loadingPageId !== null || this.state.reviewing || this.state.vault?.locked || !this.state.entitiesReady || this.saver.hasPending || !canIdentifyEntities()) return;
     this.patch({saveStatus: 'identifying'});
     try {
       await yieldForEntityMatching();
@@ -307,7 +312,7 @@ export class Workspace {
   closeEntity() {
     if (this.state.entityPanelId) this.patch({entityPanelId: null});
   }
-  private async restoreAddress(requested?: WorkspaceAddress) {
+  private async restoreAddress(requested?: WorkspaceAddress, archiveReady=false) {
     const {vault, organization, pages} = this.state;
     if (!vault || vault.locked) return;
     let stored: Record<string, unknown>;
@@ -355,7 +360,7 @@ export class Workspace {
       if (typeof stored.entityId === 'string' && this.state.entities.some(entity => entity.id === stored.entityId)) this.patch({entityPanelId:stored.entityId});
       return;
     }
-    if(stored.view==='archive')this.patch({archive:await api.archivedPages(vault.id)});
+    if(stored.view==='archive'&&!archiveReady)this.patch({archive:await api.archivedPages(vault.id)});
     if (stored.view === 'trash') this.patch({trash: await api.trash(vault.id)});
     this.patch(stored.view==='review'?{view:'inbox',inboxFacet:'review'}:{view: stored.view as WorkspaceState['view'],inboxFacet:stored.view==='inbox'||stored.inboxFacet!==undefined?inboxFacet(stored.inboxFacet):this.state.inboxFacet});
     if (typeof stored.entityId === 'string' && this.state.entities.some(entity => entity.id === stored.entityId)) this.patch({entityPanelId:stored.entityId});
@@ -377,7 +382,7 @@ export class Workspace {
       const selected=vaults.find(v=>v.id===requested?.vaultId)??vaults.find(v=>v.id===remembered)??vaults[0];
       if (requested && !vaults.some(v=>v.id===requested.vaultId)) this.report(new Error('The linked vault is unavailable.'));
       if(!selected){this.patch({busy:false,view:'organization'});return;}
-      await this.selectVault(selected.id);
+      await this.selectResolvedVault(selected.id, undefined, vaults);
     } catch (error) { this.patch({busy: false}); this.report(error); }
   }
   private cancelPageLoad() {
@@ -397,27 +402,113 @@ export class Workspace {
     finally { this.navigation = false; this.patch({busy: false}); }
   }
   async selectVault(id: string, address?: WorkspaceAddress) {
-    await this.navigate(async () => {
-      const vaults = await api.vaults(), vault = vaults.find(v => v.id === id);
+    return this.selectResolvedVault(id,address);
+  }
+  // init already resolved access; explicit vault changes always revalidate it.
+  private async selectResolvedVault(id: string, address?: WorkspaceAddress, resolvedVaults?: Vault[]) {
+    if (this.navigation && !this.startupRequest) return;
+    this.startupRequest?.abort();this.inventoryRequest?.abort();this.inventoryRetry=null;
+    const controller=new AbortController(),sequence=++this.loadSequence;
+    this.startupRequest=controller;
+    const current=()=>!controller.signal.aborted&&sequence===this.loadSequence;
+    this.cancelPageLoad();this.navigation=true;this.patch({busy:true,creationFocusPageId:null});
+    try {
+      // A vault switch must never strand a draft in the old vault.
+      await this.saver.flush();if(!current())return;
+      const vaults = resolvedVaults ?? await api.vaults(controller.signal), vault = vaults.find(v => v.id === id);
+      if(!current())return;
       if (!vault) throw new Error('Vault not found');
       try {pageDraftJournal.pruneVaults(new Set(vaults.map(item=>item.id)));} catch (error) {this.report(error);}
       for (const item of vaults) if (item.locked) this.clearVaultDrafts(item.id);
-      ++this.loadSequence;
-      this.titler.dispose(); this.pageCache.clear(); this.patch({vaults, vault, trash: [], archive:[],archiveUndo:[],pages: [], entities: [], organization: {collections: [], folders: [], locations: [], memberships: [], favourites: []}, organizationContext: {collection: '', folder: ''}, recent: [], page: null, view: 'organization', error: null});
+      this.titler.dispose(); this.pageCache.clear(); this.patch({vaults, vault, entitiesReady:false, trash: [], archive:[],archiveUndo:[],pages: [], entities: [], organization: {collections: [], folders: [], locations: [], memberships: [], favourites: []}, organizationContext: {collection: '', folder: ''}, recent: [], page: null, view: 'organization', error: null});
       try { localStorage.setItem('noema-vault', id); } catch { /* The app can work without browser storage. */ }
       if (vault.locked) {this.clearVaultDrafts(id); return;}
-      const [pages, entities, organization, archive] = await Promise.all([api.pages(id), api.entities(id), api.organization(id),api.archivedPages(id)]);
       let recent: RecentItem[] = [];
       try {
         const stored: unknown = JSON.parse(localStorage.getItem('noema-recent/' + id) || '[]');
         if (Array.isArray(stored)) recent = stored.filter((item): item is RecentItem => !!item && typeof item === 'object' && (item.kind === 'page' || item.kind === 'entity') && typeof item.item_id === 'string' && typeof item.opened_at === 'string').slice(0, 50);
       } catch { /* Recent history is optional when storage is unavailable. */ }
-      try {pageDraftJournal.pruneVault(id,new Set([...pages,...archive].map(page=>page.id)));} catch (error) {this.report(error);}
-      pruneEntityDrafts(id,entities.map(entity=>entity.id));
-      this.patch({pages, entities, organization, recent,archive,archiveUndo:[]});
-      await this.restoreAddress(address);
-    });
+      this.patch({recent});
+      let destination: WorkspaceAddress | null=address??(this.browserAttached?readWorkspaceURL():null);
+      if(destination?.vaultId!==id) {
+        try {destination=JSON.parse(localStorage.getItem('noema-address/'+id)||'null');}catch{destination=null;}
+      }
+      if(destination)destination={...destination,vaultId:id};
+      // The authorized editor endpoint handles missing/trashed/archived notes.
+      // It need not wait for unrelated inventories to prove the page exists.
+      const priorityPage=destination?.view==='pages'&&typeof destination.pageId==='string'?destination.pageId:null;
+      if(priorityPage) {
+        try {
+          const server=await api.page(id,priorityPage,controller.signal);
+          if(server.id!==priorityPage||server.vault_id!==id)throw new ApiError(404,'Page unavailable');
+          if(!current()||this.state.vault?.locked)return;
+          const page=this.recoverPage(server);this.patch({page,view:'pages'});
+          if(!page.archived_at){this.titler.register(page);this.titler.observe(page,true);}
+        } catch(error) {
+          if(!current())return;
+          if(!(error instanceof ApiError)||error.status!==404)throw error;
+          if(address||(this.browserAttached&&readWorkspaceURL()?.vaultId===id))this.report(new Error('This page is unavailable. It may have been moved to Trash or deleted.'));
+        }
+      }
+      let destinationPending=!priorityPage;
+      const loadInventories=async():Promise<boolean>=>{
+        this.inventoryRequest?.abort();const inventory=new AbortController();this.inventoryRequest=inventory;
+        const valid=()=>!inventory.signal.aborted&&current()&&this.state.vault?.id===id&&!this.state.vault.locked;
+        const failed=(error:unknown)=>{
+          if(!valid())return;
+          this.inventoryRetry=async()=>{
+            const loaded=await loadInventories();
+            if(loaded&&destinationPending&&current()&&this.state.view==='organization'&&!this.state.page){
+              destinationPending=false;await this.restoreAddress(destination??address,destination?.view==='archive');
+            }
+          };
+          this.report(new Error('Workspace lists could not load. Retry loading workspace lists. '+(error instanceof Error?error.message:String(error))));
+        };
+        const before=this.state;
+        try {
+          const [pages,entities,organization]=await Promise.all([api.pages(id,inventory.signal),api.entities(id,inventory.signal),api.organization(id,inventory.signal)]);
+          if(!valid())return false;
+          // Mutations and source updates while the inventories were in flight
+          // must not be overwritten by the older responses. Fetch their latest
+          // server representation instead of guessing how to merge deletions.
+          if(before.pages!==this.state.pages||before.entities!==this.state.entities||before.organization!==this.state.organization)return loadInventories();
+          pruneEntityDrafts(id,entities.map(entity=>entity.id));
+          const displayed=this.state.page;
+          const summaries=displayed?.vault_id===id?pages.map(page=>page.id===displayed.id?{...page,title:displayed.title,icon:displayed.icon,updated_at:displayed.updated_at}:page):pages;
+          this.patch({pages:summaries,entities,organization,entitiesReady:true});this.inventoryRetry=null;
+          if(priorityPage&&this.state.view==='pages'&&this.state.page?.id===priorityPage){
+            const collection=organization.collections.some(item=>item.id===destination?.collection)?String(destination?.collection):'';
+            const folder=!collection&&organization.folders.some(item=>item.id===destination?.folder)?String(destination?.folder):'';
+            this.patch({organizationContext:{collection,folder}});
+          }
+          if(priorityPage&&this.state.view==='pages'&&this.state.page?.id===priorityPage&&typeof destination?.entityId==='string'&&entities.some(entity=>entity.id===destination.entityId))this.patch({entityPanelId:destination.entityId});
+          const loadArchive=async()=>{
+            try {
+              const archive=await api.archivedPages(id,inventory.signal);if(!valid())return;
+              this.patch({archive});
+              // Drafts can only be pruned once both active and archive ids exist.
+              try {pageDraftJournal.pruneVault(id,new Set([...pages,...archive].map(page=>page.id)));} catch (error) {this.report(error);}
+            }catch(error){failed(error);}
+          };
+          if(destination?.view==='archive')await loadArchive();else void loadArchive();
+          return true;
+        } catch(error) {failed(error);return false;}
+      };
+      if(priorityPage) {
+        // Publish the destination before starting noncritical inventories.
+        this.navigation=false;this.patch({busy:false});
+        void loadInventories();
+      } else {
+        // Library/source destinations require their inventory to validate ids.
+        const loaded=await loadInventories();if(!current()||!loaded)return;
+        destinationPending=false;await this.restoreAddress(destination??address,destination?.view==='archive');
+      }
+    } catch(error) {if(current())throw error;}
+    finally {
+      if(current()){this.startupRequest=null;this.navigation=false;this.patch({busy:false});}
+    }
   }
+  retryInventories = async () => {await this.inventoryRetry?.();};
   private recoverPage(server: Page): Page {
     const entries = pageDraftJournal.entries(server.vault_id,server.id);
     const candidates: PageDraftEntry[] = [], unresolved: PageDraftEntry[] = [];
@@ -955,11 +1046,57 @@ export class Workspace {
       this.patch({pages});this.setOrganization(organization);
     }
   };
+  /** Source content changed: only notes depending on it need a fresh body. */
+  invalidateSourceDependencies(sourceId:string) {
+    const vault=this.state.vault;
+    if(!vault||vault.locked)return;
+    for(const [id,page] of this.pageCache)if(page.vault_id===vault.id&&(page.sourceIds.includes(sourceId)||citationSourceIds(page.blocks).includes(sourceId))) {
+      // The current editor/saver owns any active draft; eviction never replaces it.
+      this.pageCache.delete(id);
+    }
+  }
+  private entityRefreshSequence=0;
+  private sourceStatusSequence=0;
   async refreshEntities(signal?:AbortSignal) {
+    const requestSequence=++this.entityRefreshSequence;
     const vault = this.state.vault, sequence = this.loadSequence;
     if(!vault||vault.locked||signal?.aborted)return;
     const entities = await api.entities(vault.id,signal);
-    if (!signal?.aborted&&sequence===this.loadSequence&&this.state.vault?.id===vault.id&&!this.state.vault.locked) {this.pageCache.clear();pruneEntityDrafts(vault.id,entities.map(entity=>entity.id));this.patch({entities});}
+    if (!signal?.aborted&&requestSequence===this.entityRefreshSequence&&sequence===this.loadSequence&&this.state.vault?.id===vault.id&&!this.state.vault.locked) {
+      const previous=new Map(this.state.entities.map(entity=>[entity.id,entity]));
+      const reconciled=entities.map(entity=>{const before=previous.get(entity.id);return before&&JSON.stringify(canonical(before))===JSON.stringify(canonical(entity))?before:entity;});
+      if(entityMatchingDictionary(this.state.entities)!==entityMatchingDictionary(reconciled))this.pageCache.clear();
+      pruneEntityDrafts(vault.id,entities.map(entity=>entity.id));
+      if(reconciled.length!==this.state.entities.length||reconciled.some((entity,index)=>entity!==this.state.entities[index]))this.patch({entities:reconciled});
+    }
+  }
+  async refreshSourceStatuses(signal?:AbortSignal) {
+    const requestSequence=++this.sourceStatusSequence;
+    const vault=this.state.vault,sequence=this.loadSequence;
+    if(!vault||vault.locked||signal?.aborted)return;
+    const statuses=await api.sourceStatuses(vault.id,signal);
+    if(signal?.aborted||requestSequence!==this.sourceStatusSequence||sequence!==this.loadSequence||this.state.vault?.id!==vault.id||this.state.vault.locked)return;
+    const byId=new Map(statuses.map(status=>[status.id,status]));
+    const completedIds=new Set<string>();
+    const pending=(entity:Pick<Entity,'sourceStatus'|'sourceEnrichmentStatus'>)=>entity.sourceStatus==='queued'||entity.sourceStatus==='processing'||entity.sourceEnrichmentStatus==='pending'||entity.sourceEnrichmentStatus==='running';
+    const entities=this.state.entities.map(entity=>{
+      const status=entity.type==='source'?byId.get(entity.id):undefined;
+      if(!status||Object.entries(status).every(([key,value])=>entity[key as keyof Entity]===value))return entity;
+      const next={...entity,...status};
+      if(pending(entity)&&!pending(next))completedIds.add(entity.id);
+      return next;
+    });
+    // Reconcile final generated names/authors before settling the polling state.
+    // If this fails, the pending records remain eligible for the next retry.
+    if(completedIds.size){
+      await this.refreshEntities(signal);
+      if(!signal?.aborted&&requestSequence===this.sourceStatusSequence&&sequence===this.loadSequence&&this.state.vault?.id===vault.id&&!this.state.vault.locked)for(const id of completedIds)this.invalidateSourceDependencies(id);
+      return;
+    }
+    if(entities.some((entity,index)=>entity!==this.state.entities[index])) {
+      if(entityMatchingDictionary(this.state.entities)!==entityMatchingDictionary(entities))this.pageCache.clear();
+      this.patch({entities});
+    }
   }
   async previewVaultDeletion(id:string) {
     if(this.state.vault?.id!==id)throw new Error('The selected vault changed.');

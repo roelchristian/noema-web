@@ -1,10 +1,11 @@
+import type {ComponentProps} from 'react';
+import {resetSharedRequests} from './state/scoped-request-cache';
+import {lazyFeature} from './components/LazyFeature';
 import {revealEntityFact} from './chat/entity-evidence-navigation';
 import {readChatSession,clearChatSession,clearChatDrafts} from './chat/chat-session';
-import {ChatWorkspace} from './chat/ChatWorkspace';
 import type {ChatScope,ChatEvidence} from '../shared/chat';
 import {resolveEntityIcon,entityIconName} from '../shared/entity-icons';
 import {SubtypeIconContext} from './components/Icon';
-import {ReviewCentre} from './review/ReviewCentre';
 import {ReviewDestination,reviewDestinationAt} from './review/review-destination';
 import type {ReviewItem} from '../shared/review-centre';
 import {useCalendarSettings} from './settings/calendar-settings';
@@ -12,7 +13,6 @@ import {noteDateItems} from '../shared/note-dates';
 import {DateNavigation} from './knowledge/date-navigation';
 import type {TemporalDate} from '../shared/temporal';
 import {NoteDatePanel,clearDateNoteDrafts} from './knowledge/NoteDatePanel';
-import {CalendarWorkspace} from './calendar/CalendarWorkspace';
 import {initialCalendarView,type CalendarView} from './calendar/calendar-model';
 import {validateTemporalReference} from './search/temporal-navigation';
 import {usePageSelection} from './state/use-page-selection';
@@ -20,8 +20,6 @@ import {presentationTraits} from './settings/appearance';
 import {PresentationSelector} from './settings/PresentationSelector';
 import {t as uiText} from './i18n';
 import {useInterfaceLanguage} from './i18n';
-import {SourceReader} from './sources/SourceReader';
-import {SourcePassageDialog} from './sources/SourcePassageDialog';
 import {randomUUID} from '../shared/uuid';
 import {TitleText} from './components/TitleText';
 import {highlightPagePassage} from './search/page-passage-highlight';
@@ -29,7 +27,6 @@ import {validateEntityMention} from './search/entity-mention-navigation';
 import type {EntityMentionReference} from '../shared/entity-mentions';
 import {projectPageText} from '../shared/page-text';
 import type {PageReference} from '../shared/embeddings';
-import {SourceViewer} from './sources/SourceViewer';
 import {SourceReferencePreview} from './sources/SourceReferencePreview';
 import type {SourceReference} from '../shared/domain';
 import {hasUnsavedEntityDrafts} from './knowledge/entity-drafts';
@@ -50,7 +47,6 @@ import {entityLabels, entityTypes, entityMentionName, type Entity, type EntityTy
 import { Select } from './components/Select';
 import { WorkspaceNavigation, useMobileViewport } from './components/WorkspaceNavigation';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { SettingsDialog } from './settings/SettingsDialog';
 import {useSettingsOpen} from './settings/settings-session';
 import { useAppearance } from './settings/useAppearance';
 import { RecentLibrary } from './organization/RecentLibrary';
@@ -77,6 +73,13 @@ import { CreateEntityDialog, type CreateEntityRequest } from './knowledge/Create
 import {DeleteVaultDialog} from './vaults/DeleteVaultDialog';
 import { VaultBackupDialog } from './vaults/VaultBackupDialog';
 import { VaultDialog, type VaultAction } from './vaults/VaultDialog';
+const ChatWorkspace=lazyFeature<ComponentProps<typeof import('./chat/ChatWorkspace').ChatWorkspace>>(()=>import('./chat/ChatWorkspace').then(module=>({default:module.ChatWorkspace})), 'chat');
+const ReviewCentre=lazyFeature<ComponentProps<typeof import('./review/ReviewCentre').ReviewCentre>>(()=>import('./review/ReviewCentre').then(module=>({default:module.ReviewCentre})), 'reviewcentre');
+const CalendarWorkspace=lazyFeature<ComponentProps<typeof import('./calendar/CalendarWorkspace').CalendarWorkspace>>(()=>import('./calendar/CalendarWorkspace').then(module=>({default:module.CalendarWorkspace})), 'calendar');
+const SourceReader=lazyFeature<ComponentProps<typeof import('./sources/SourceReader').SourceReader>>(()=>import('./sources/SourceReader').then(module=>({default:module.SourceReader})), 'sourcereader');
+const SourcePassageDialog=lazyFeature<ComponentProps<typeof import('./sources/SourcePassageDialog').SourcePassageDialog>>(()=>import('./sources/SourcePassageDialog').then(module=>({default:module.SourcePassageDialog})), 'sourcepassage');
+const SourceViewer=lazyFeature<ComponentProps<typeof import('./sources/SourceViewer').SourceViewer>>(()=>import('./sources/SourceViewer').then(module=>({default:module.SourceViewer})), 'sourceviewer');
+const SettingsDialog=lazyFeature<ComponentProps<typeof import('./settings/SettingsDialog').SettingsDialog>>(()=>import('./settings/SettingsDialog').then(module=>({default:module.SettingsDialog})), 'settings');
 export function App() {
   const [workspace]=useState(()=>new Workspace());
   return <ScopedNotifications workspace={workspace}><AIActivityProvider><WorkspaceApp workspace={workspace}/></AIActivityProvider></ScopedNotifications>;
@@ -128,6 +131,7 @@ function WorkspaceApp({workspace}:{workspace:Workspace}) {
   usePageSelection(workspace);
   const state = useSyncExternalStore(workspace.subscribe, workspace.snapshot);
   const {vaults, vault, pages, entities:storedEntities, page, view, busy, loadingPageId, reviewing, saveStatus, organization, organizationContext, recent, trash, saveFailures, draftStorageFailures, draftRecoveries} = state;
+  useLayoutEffect(()=>{resetSharedRequests();return resetSharedRequests;},[vault?.id,vault?.locked]);
   const entities=useMemo(()=>storedEntities.map(entity=>({...entity,icon:resolveEntityIcon(entity,appearance.subtypeIcons)})),[storedEntities,appearance.subtypeIcons]);
   useEffect(()=>{
     reviewVault.current=null;setReviewDestination(null);setChatFactTarget(null);
@@ -196,7 +200,7 @@ function WorkspaceApp({workspace}:{workspace:Workspace}) {
     const refresh=async()=>{
       if(controller.signal.aborted||document.visibilityState!=='visible'||refreshing)return;
       refreshing=true;
-      try{await workspace.refreshEntities(controller.signal);}
+      try{await workspace.refreshSourceStatuses(controller.signal);}
       catch{/* Transient failures retry on the next interval or window focus. */}
       finally{refreshing=false;}
     };
@@ -494,13 +498,13 @@ function WorkspaceApp({workspace}:{workspace:Workspace}) {
       const created=await api.createEntityPage(originVault,originEntity,{});
       workspace.registerGeneratedPage(created);
       return created;
-    }} key={vault.id+'/'+state.entityId} vaultId={vault.id} id={state.entityId} entities={entities} refreshKey={JSON.stringify([pages.map(item=>[item.id,item.title,item.updated_at]),activeEntity?.updated_at])} onOpen={openEntityHome} onOpenPage={id=>run(()=>workspace.openPage(id))} onUpdated={()=>workspace.refreshEntities()} onError={workspace.report}/> : vault && activeSource ? <SourceReader onReadingActivityOpen={readingActivityOpened} refreshKey={sourceRefresh} onActiveAttachmentChange={activeAttachmentChanged} inspectorOpen={!!panelId&&!focusWorkspace} onToggleInspector={()=>{if(panelId)closeInspector();else setSourceInspectorOpen(true);}} onRemoveReadingNote={note=>setDeleteTarget({id:note.pageId,title:note.title})} onOpenReadingNote={id=>run(()=>workspace.openPage(id))} onReadingNoteCreated={page=>workspace.registerGeneratedPage(page)} key={vault.id+'/'+activeSource.id} vaultId={vault.id} source={activeSource} entities={entities} onOpenEntity={openEntity} onCreatePageFromSource={beginSourcePage} onError={workspace.report} onAddPassage={reference=>setPassageAction({reference,annotate:false})} onAnnotate={reference=>setPassageAction({reference,annotate:true})}/> : vault && view === 'pages' && page ? <PageEditor hideTitle={state.initialEditingPageId===page.id} focusNewBody={state.creationFocusPageId===page.id} onCreationFocusConsumed={()=>workspace.consumeCreationFocus(page.id)} tocVisible={tocVisible} headings={headings} subjectsSaving={state.domainSavingPageId===page.id} citationStyle={appearance.citationStyle} pages={[...pages,...state.archive]} onOpenPage={id=>run(()=>workspace.openPage(id))} onAddAlias={workspace.addEntityAlias} saveStatus={pageStatus} onIdentify={workspace.identifyEntities} key={page.id} page={page} entities={entities} onChange={editingHistory.change} onOpenEntity={openEntity} onCreateEntity={setCreate} onSave={() => run(() => workspace.saver.flush())}/> : <section className="locked-state"><div className="vault-symbol"><Icon name="vault"/></div><h1 className="page-heading">{uiText("Your space to think")}</h1><button className="button primary" disabled={!vault} onClick={() => run(() => workspace.newPage())}>{uiText("Create your first page")}</button></section>}
+    }} key={vault.id+'/'+state.entityId} vaultId={vault.id} id={state.entityId} entities={entities} refreshKey={JSON.stringify([pages.map(item=>[item.id,item.title,item.updated_at]),activeEntity?.updated_at])} onOpen={openEntityHome} onOpenPage={id=>run(()=>workspace.openPage(id))} onUpdated={()=>workspace.refreshEntities()} onError={workspace.report}/> : vault && activeSource ? <SourceReader onReadingActivityOpen={readingActivityOpened} refreshKey={sourceRefresh} onActiveAttachmentChange={activeAttachmentChanged} inspectorOpen={!!panelId&&!focusWorkspace} onToggleInspector={()=>{if(panelId)closeInspector();else setSourceInspectorOpen(true);}} onRemoveReadingNote={note=>setDeleteTarget({id:note.pageId,title:note.title})} onOpenReadingNote={id=>run(()=>workspace.openPage(id))} onReadingNoteCreated={page=>workspace.registerGeneratedPage(page)} key={vault.id+'/'+activeSource.id} vaultId={vault.id} source={activeSource} entities={entities} onOpenEntity={openEntity} onCreatePageFromSource={beginSourcePage} onError={workspace.report} onAddPassage={reference=>setPassageAction({reference,annotate:false})} onAnnotate={reference=>setPassageAction({reference,annotate:true})}/> : vault && view === 'pages' && page ? <PageEditor entitiesReady={state.entitiesReady} hideTitle={state.initialEditingPageId===page.id} focusNewBody={state.creationFocusPageId===page.id} onCreationFocusConsumed={()=>workspace.consumeCreationFocus(page.id)} tocVisible={tocVisible} headings={headings} subjectsSaving={state.domainSavingPageId===page.id} citationStyle={appearance.citationStyle} pages={[...pages,...state.archive]} onOpenPage={id=>run(()=>workspace.openPage(id))} onAddAlias={workspace.addEntityAlias} saveStatus={pageStatus} onIdentify={workspace.identifyEntities} key={page.id} page={page} entities={entities} onChange={editingHistory.change} onOpenEntity={openEntity} onCreateEntity={setCreate} onSave={() => run(() => workspace.saver.flush())}/> : <section className="locked-state"><div className="vault-symbol"><Icon name="vault"/></div><h1 className="page-heading">{uiText("Your space to think")}</h1><button className="button primary" disabled={!vault} onClick={() => run(() => workspace.newPage())}>{uiText("Create your first page")}</button></section>}
       </div>
     </main>
     {knowledgeVisible && view==='pages' && page && vault && !vault.locked && !busy && <IntelligencePanel dirty={state.saveStatus!=='saved'} onReviewOpenChange={setEntityReviewOpen} onDomainsChange={(primary,secondary)=>workspace.setPageDomains(primary,secondary)} pages={[...pages,...state.archive]} onOpenPage={id=>run(()=>workspace.openPage(id))} inactive={loadingPageId !== null} onReview={(scanId,id,decision,edits)=>workspace.reviewEntity(scanId,id,decision,edits)} onSourcesChange={sourceIds => workspace.updatePage({sourceIds})} onCreateEntity={setCreate} entities={entities} onOpenEntity={openEntity} key={vault.id} page={page} onClose={()=>setAiOpen(false)} onSettings={()=>setSettingsOpen(true)} onFlush={async()=>{await workspace.saver.flush();return workspace.snapshot().page;}}/>}
     {!chatOpen && activeNoteDate && !searchOpen && !panelId && !sourceReference && view==='pages' && page && vault && !vault.locked && !busy && <NoteDatePanel onOpenCalendar={openDateInCalendar} onOpenMention={openTemporalMention} calendarSettings={calendarSettings} onOpenCalendarSettings={()=>{setSettingsInitialTab('calendar');setSettingsOpen(true);}} key={noteDateKey+'/'+activeNoteDate.id} item={activeNoteDate} page={page} onClose={closeNoteDate} onOpenPage={id=>{setNoteDateSelection(null);run(()=>workspace.openPage(id));}}/>}
     {searchOpen && vault && !vault.locked && !busy && <SearchPanel onOpenPassage={openSourceReference} key={vault.id} vaultId={vault.id} pages={pages} entities={entities} onOpenPage={(id,reference)=>run(()=>openIndexedPage(id,reference))} onOpenEntity={openEntityHome} onClose={()=>setSearchOpen(false)}/>}
-    {!chatOpen && panelId && !activeNoteDate && !searchOpen && !sourcePage && !sourceReference && vault && !vault.locked && !busy && <EntityPanel onOpenHome={openEntityHome} activeAttachmentId={activeAttachment?.key===sourceKey?activeAttachment.id:undefined} metadataRunId={metadataDestination?.sourceId===panelId?metadataDestination.runId:undefined} inspectorTab={inspectorTab} onInspectorTabChange={setInspectorTab} inspector={view==='source'&&panelId===activeSource?.id} onCreatePageFromSource={beginSourcePage} onOpenPage={id => run(() => workspace.openPage(id))} refreshKey={JSON.stringify([pages.map(page => [page.id, page.title, page.updated_at]),entities.filter(entity=>entity.id===panelId).map(entity=>[entity.updated_at,entity.sourceStatus,entity.sourceEnrichmentStatus])])} key={vault.id + '/' + panelId} vaultId={vault.id} id={panelId} entities={entities} onOpen={openEntityHome} onClose={closeInspector} onUpdated={async() => {setSourceRefresh(value=>value+1);await workspace.refreshEntities();}} onError={workspace.report}/>}
+    {!chatOpen && panelId && !activeNoteDate && !searchOpen && !sourcePage && !sourceReference && vault && !vault.locked && !busy && <EntityPanel onOpenHome={openEntityHome} activeAttachmentId={activeAttachment?.key===sourceKey?activeAttachment.id:undefined} metadataRunId={metadataDestination?.sourceId===panelId?metadataDestination.runId:undefined} inspectorTab={inspectorTab} onInspectorTabChange={setInspectorTab} inspector={view==='source'&&panelId===activeSource?.id} onCreatePageFromSource={beginSourcePage} onOpenPage={id => run(() => workspace.openPage(id))} refreshKey={JSON.stringify([pages.map(page => [page.id, page.title, page.updated_at]),entities.filter(entity=>entity.id===panelId).map(entity=>[entity.updated_at,entity.sourceStatus,entity.sourceEnrichmentStatus])])} key={vault.id + '/' + panelId} vaultId={vault.id} id={panelId} entities={entities} onOpen={openEntityHome} onClose={closeInspector} onUpdated={async() => {if(activeSource)workspace.invalidateSourceDependencies(activeSource.id);setSourceRefresh(value=>value+1);await workspace.refreshEntities();}} onError={workspace.report}/>}
     {sourceReference && vault && !vault.locked && !busy && <SourceViewer presentation={{value:appearance.presentationMode,onChange:presentationMode=>setAppearance(current=>({...current,presentationMode})),onExitFocus:exitFocus}} key={vault.id+'/'+sourceReference.id} vaultId={vault.id} reference={sourceReference} entities={entities} onClose={closeSourceReference} onOpenEntity={openEntityHome}/>}
     {vault && !vault.locked && !busy && !reviewing && !entityReviewOpen && !settingsOpen && !create && !sourcePage && !passageAction && <SourceReferencePreview key={[vault.id,view,page?.id].join('/')} entities={entities} onOpen={openSourceReference}/>}
     {vault && !vault.locked && !busy && !reviewing && !entityReviewOpen && !settingsOpen && !create && !sourcePage && !passageAction && <EntityPreview key={[vault.id, view, page?.id, state.entityId, panelId].join('/')} entities={entities} dates={noteDates} onOpenDate={openNoteDate} onOpen={openEntityHome}/>}

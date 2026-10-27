@@ -47,7 +47,8 @@
     "test/source-ingestion-security.test.mjs",
     "test/source-ingestion-options.test.mjs",
     "test/source-ingestion-targeted-repair.test.mjs",
-    "test/source-ingestion-relations.test.mjs"
+    "test/source-ingestion-relations.test.mjs",
+    "test/workspace-startup.test.mjs"
   ],
   "dom": [
     "test/trash-ui.test.mjs",
@@ -124,7 +125,8 @@
     "test/persona-comparison.test.mjs",
     "test/chat-research.test.mjs",
     "test/chat-evidence-panel.test.mjs",
-    "test/chat-reliability.test.mjs"
+    "test/chat-reliability.test.mjs",
+    "test/lazy-feature.test.mjs"
   ],
   "server": [
     "test/activity-page-titles.test.mjs",
@@ -280,6 +282,7 @@
     "test/source-ingestion-restore.test.mjs",
     "test/source-ingestion-scheduler.test.mjs",
     "test/source-ingestion-runtime.test.mjs",
-    "test/source-ingestion-activity.test.mjs"
+    "test/source-ingestion-activity.test.mjs",
+    "test/page-save-cost.test.mjs"
   ]
 }

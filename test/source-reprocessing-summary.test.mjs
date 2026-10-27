@@ -39,3 +39,13 @@ test('revision list loads at most 100 persisted summaries scoped to file and vau
   assert.ok(queries.every(sql=>!/SELECT\s+\*|\bpayload\b/i.test(sql)));assert.ok(queries.some(sql=>/summary_json/.test(sql)));assert.ok(JSON.stringify(list).length<100000);
  }finally{db.close();}
 });
+
+test('reading representation retains presentation/mappings while omitting comparison evidence and diagnostics',async()=>{
+ const {sourceReadingPresentation}=await import('../src/shared/source-reprocessing.ts');
+ const value=revision('reading');value.original.document={heavyEvidence:snapshot};value.patches=[{id:'accepted',nodeIds:['n'],decision:'accepted',original:snapshot,replacement:snapshot,reason:snapshot},{id:'pending',nodeIds:['n'],decision:'pending'}];
+ const reading=sourceReadingPresentation(value);
+ assert.equal(reading.original.text,value.original.text);assert.equal(reading.reprocessed,value.reprocessed);assert.equal(reading.nodeLinks,value.nodeLinks);
+ assert.deepEqual(reading.patches,[{id:'accepted',nodeIds:['n'],decision:'accepted'}]);assert.deepEqual(reading.report,{chunksCompleted:2,chunksTotal:2});
+ assert.equal(reading.original.document,undefined);assert.equal(reading.instructions,undefined);assert.equal(reading.report.diagnostics,undefined);
+ assert.ok(JSON.stringify(reading).length<JSON.stringify(value).length/2);
+});

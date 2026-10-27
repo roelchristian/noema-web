@@ -1,3 +1,4 @@
+import {sharedRequest} from '../state/scoped-request-cache';
 import {SourceLoadingProgress} from '../knowledge/SourceLoadingProgress';
 import {classifiedFurnitureNodes} from './source-furniture-presentation';
 import {useContext} from 'react';
@@ -11,7 +12,7 @@ import {SourceReadingNavigation} from './SourceReadingNavigation';
 import {SourceReadingTools} from './SourceReadingTools';
 import type {ReadingNoteAnchor,SourceHighlight} from '../../shared/source-reading';
 import {useEffect,useLayoutEffect,useMemo,useRef,useState,useCallback} from 'react';
-import {entityMentionName,type Entity,type EntityDetail,type Page,type SourceFile,type SourceReference} from '../../shared/domain';
+import {entityMentionName,type Entity,type Page,type SourceFile,type SourceReference} from '../../shared/domain';
 import {projectPageText} from '../../shared/page-text';
 import {citationLocation} from '../../shared/citations';
 import {sourceNodeLabel,sourceNodeLocator,type SourceDocument} from '../../shared/source-document';
@@ -20,7 +21,7 @@ import {request} from '../api';
 import {Icon} from '../components/Icon';
 import {SourceReaderInline} from './SourceReaderText';
 import {SourceDocumentView,sourceViewEntries,editorialSnapshotHasRawRanges,passageAnchor,type SourceViewEntry,type ReaderAnnotations} from './SourceDocumentView';
-import type {SourceReprocessingRevision} from '../../shared/source-reprocessing';
+import type {SourceReprocessingRevision,SourceReadingRevision} from '../../shared/source-reprocessing';
 
 type LoadedFile=SourceFile&{textHash:string;document?:SourceDocument};
 type Entry=SourceViewEntry;
@@ -32,6 +33,7 @@ function visibleReadingPosition(root:HTMLElement|null):ReaderPosition|null {
   return passage?{node:passage.dataset.canonicalNode,page:passage.dataset.sourcePage,top:passage.getBoundingClientRect().top}:null;
 }
 interface Props {
+  onRevisionChanged?:()=>void;
   vaultId:string;source:Entity;entities:Entity[];onOpenEntity:(id:string)=>void;inspectorOpen?:boolean;onToggleInspector?:()=>void;onReadingActivityOpen?:()=>void;refreshKey?:number;onActiveAttachmentChange?:(fileId:string)=>void;
   onCreatePageFromSource:(source:Entity)=>void;onError:(message:string)=>void;
   onAddPassage:(reference:SourceReference)=>void;onAnnotate:(reference:SourceReference)=>void;onReadingNoteCreated:(page:Page)=>void;onOpenReadingNote:(id:string)=>void;onRemoveReadingNote:(note:ReadingNoteAnchor)=>void;
@@ -51,7 +53,7 @@ function savedDisplay():ReaderDisplay {
  try {const value=JSON.parse(localStorage.getItem('noema:source-reader-display')??'{}');return {endnotes:value.endnotes===true,showFurniture:value.showFurniture!==false,annotations:['clean','contextual','always'].includes(value.annotations)?value.annotations:'contextual',structureLabels:value.structureLabels===true,editorialIndicators:value.editorialIndicators===true,typography:value.typography==='serif'?'serif':'sans',width:value.width==='wide'?'wide':'comfortable'};}catch{return defaultDisplay;}
 }
 /** Reading and citation state is deliberately separate from the editable page lifecycle. */
-export function SourceReader({vaultId,source,entities,inspectorOpen=false,onToggleInspector,onReadingActivityOpen,refreshKey,onActiveAttachmentChange,onCreatePageFromSource,onError,onAddPassage,onAnnotate,onReadingNoteCreated,onOpenReadingNote,onRemoveReadingNote}:Props) {
+export function SourceReader({onRevisionChanged,vaultId,source,entities,inspectorOpen=false,onToggleInspector,onReadingActivityOpen,refreshKey,onActiveAttachmentChange,onCreatePageFromSource,onError,onAddPassage,onAnnotate,onReadingNoteCreated,onOpenReadingNote,onRemoveReadingNote}:Props) {
   const destination=useContext(ReviewDestination);
   const [display,setDisplay]=useState<ReaderDisplay>(savedDisplay);
   const [reviewEvidence,setReviewEvidence]=useState(false),[reviewHost,setReviewHost]=useState<HTMLDivElement|null>(null),[reviewRevision,setReviewRevision]=useState<SourceReprocessingRevision|null>(null);
@@ -65,10 +67,10 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,onTogg
   const [selected,setSelected]=useState<string|null>(null),[copied,setCopied]=useState(false);
   const article=useRef<HTMLElement>(null),evidenceReturn=useRef<HTMLButtonElement>(null);
   const [reprocessed,setReprocessed]=useState(false),[comparisonPage,setComparisonPage]=useState<number|null>(null);
-  const [readingRevision,setReadingRevision]=useState<SourceReprocessingRevision|null>(null);
+  const [readingRevision,setReadingRevision]=useState<SourceReadingRevision|null>(null);
   useLayoutEffect(()=>{if(reviewEvidence&&evidenceReturn.current?.getClientRects().length)evidenceReturn.current.focus({preventScroll:true});},[reviewEvidence,comparisonPage]);
   const position=useRef<ReaderPosition|null>(null);
-  const evidenceContext=useRef<{position:ReaderPosition|null;revision:SourceReprocessingRevision|null}|null>(null);
+  const evidenceContext=useRef<{position:ReaderPosition|null;revision:SourceReadingRevision|null}|null>(null);
   function saveEvidencePosition(){
     if(!evidenceContext.current)evidenceContext.current={position:visibleReadingPosition(article.current)??position.current,revision:readingRevision};
   }
@@ -82,7 +84,7 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,onTogg
     setReviewPresentation(presentation);
     setReviewOpen(open);
   },[]);
-  const onReadingRevision=useCallback((revision:SourceReprocessingRevision|null)=>{
+  const onReadingRevision=useCallback((revision:SourceReadingRevision|null)=>{
     const saved=visibleReadingPosition(article.current);if(saved)position.current=saved;
     setReadingRevision(revision);
   },[]);
@@ -102,9 +104,8 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,onTogg
     const controller=new AbortController();let timer:ReturnType<typeof setTimeout>;
     async function refresh() {
       try {
-        const detail=await request<EntityDetail>('entities/'+encodeURIComponent(source.id),'GET',undefined,vaultId,controller.signal);
+        const attachments=await sharedRequest<(SourceFile&{contentVersion:string})[]>(vaultId,'source-files?compact=1&entity='+encodeURIComponent(source.id),source.updated_at,controller.signal);
         if(controller.signal.aborted)return;
-        const attachments=detail.attachments??[];
         setFiles(attachments);
         let remembered='';try{remembered=sessionStorage.getItem('noema-source-attachment/'+JSON.stringify([vaultId,source.id]))??'';}catch{/* Use the first available attachment. */}
         setFileId(current=>attachments.some(file=>file.id===current)?current:reviewFile&&attachments.some(file=>file.id===reviewFile)?reviewFile:attachments.some(file=>file.id===remembered)?remembered:(attachments.find(file=>file.status==='ready'&&file.admitted===1)??attachments[0])?.id??'');
@@ -119,12 +120,12 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,onTogg
     const controller=new AbortController();
     if(!attachment||attachment.status!=='ready'||attachment.admitted!==1){setLoaded(null);setSelected(null);setCopied(false);return()=>controller.abort();}
     setError('');
-    void request<LoadedFile>('source-files/'+encodeURIComponent(attachment.id)+'?fingerprint=1&context=1','GET',undefined,vaultId,controller.signal).then(file=>{
+    void sharedRequest<LoadedFile>(vaultId,'source-files/'+encodeURIComponent(attachment.id)+'?fingerprint=1&context=1',(attachment as SourceFile&{contentVersion?:string}).contentVersion??'',controller.signal).then(file=>{
       if(file.entity_id!==source.id)throw new Error('This attachment no longer belongs to the source.');
       if(!controller.signal.aborted)setLoaded(file);
     }).catch(cause=>{if(!controller.signal.aborted)setError(cause instanceof Error?cause.message:String(cause));});
     return()=>controller.abort();
-  },[vaultId,source.id,attachment?.id,attachment?.status,attachment?.admitted,attachment?.enrichment_status,attachment?.structural_nodes,attachment?.page_start_lines,attachment?.generated_name,attachment?.language,attachment?.text,retry]);
+  },[vaultId,source.id,attachment?.id,attachment?.status,attachment?.admitted,attachment?.enrichment_status,attachment?.structural_nodes,attachment?.page_start_lines,attachment?.generated_name,attachment?.language,attachment?.text,(attachment as (SourceFile&{contentVersion?:string})|undefined)?.contentVersion,retry]);
   // A metadata refresh preserves the selection; a text revision invalidates it.
   useEffect(()=>{setSelected(null);setCopied(false);},[loaded?.id,loaded?.textHash]);
   const entries=useMemo(()=>loaded?sourceViewEntries(loaded.text,loaded.document):[],[loaded]);
@@ -225,7 +226,7 @@ export function SourceReader({vaultId,source,entities,inspectorOpen=false,onTogg
     {attachment&&attachment.status!=='ready'&&<p className="source-reader-status" role="status">{attachment.status==='failed'?attachment.error||uiText("Source processing failed. Use the inspector to retry."):uiText("Preparing this source for reading… {value0}%",{value0: attachment.progress})}</p>}
     {attachment?.status==='ready'&&attachment.admitted!==1&&<p className="source-reader-status">{uiText("This attachment is unavailable for reading.")}</p>}
     {attachment?.status==='ready'&&attachment.admitted===1&&!loaded&&!error&&<p className="source-reader-status" role="status">{uiText("Loading document text…")}</p>}
-    {loaded&&<SourceReprocessing key={`${vaultId}:${loaded.id}`} sourceId={source.id} vaultId={vaultId} fileId={loaded.id} canonicalVersion={JSON.stringify([loaded.textHash,loaded.structural_nodes,loaded.page_start_lines,loaded.generated_name,loaded.language,loaded.name,loaded.enrichment_status])} onCompare={loaded.format==='pdf'?page=>{saveEvidencePosition();setComparisonPage(page);}:undefined} visible={reprocessed||destination?.category==='editorial'&&reviewFile===loaded.id} onShow={()=>setReprocessed(true)} onOriginal={showOriginal} onReadingRevision={onReadingRevision} reviewHost={reviewHost} onReviewRevision={setReviewRevision} onEvidenceSurfaceChange={setReviewEvidence} onReturnContext={returnToReadingContext} onReviewOpenChange={reviewChanged}/>}
+    {loaded&&<SourceReprocessing onRevisionChanged={onRevisionChanged} reviewOnDemand key={`${vaultId}:${loaded.id}`} sourceId={source.id} vaultId={vaultId} fileId={loaded.id} canonicalVersion={JSON.stringify([loaded.textHash,loaded.structural_nodes,loaded.page_start_lines,loaded.generated_name,loaded.language,loaded.name,loaded.enrichment_status])} onCompare={loaded.format==='pdf'?page=>{saveEvidencePosition();setComparisonPage(page);}:undefined} visible={reprocessed||destination?.category==='editorial'&&reviewFile===loaded.id} onShow={()=>setReprocessed(true)} onOriginal={showOriginal} onReadingRevision={onReadingRevision} reviewHost={reviewHost} onReviewRevision={setReviewRevision} onEvidenceSurfaceChange={setReviewEvidence} onReturnContext={returnToReadingContext} onReviewOpenChange={reviewChanged}/>}
     {loaded&&<div className="source-reader-layout">
       <div className="source-reader-content" hidden={reviewOpen&&reviewPresentation==='diff'&&!reviewEvidence} onKeyDown={event=>{if(event.key==='Escape'&&reviewOpen&&reviewEvidence){event.stopPropagation();window.dispatchEvent(new Event('noema:return-to-source-correction'));}}}>
         {reviewOpen&&reviewEvidence&&<button ref={evidenceReturn} type="button" className="button small source-reader-evidence-return" onClick={()=>window.dispatchEvent(new Event('noema:return-to-source-correction'))}>{uiText("Return to correction")}</button>}

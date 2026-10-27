@@ -1,3 +1,4 @@
+import {sharedRequest} from '../state/scoped-request-cache';
 import {DetailSidePanel} from '../components/DetailSidePanel';
 import {SourceMetadata} from '../sources/SourceMetadata';
 import {BibliographyEditor} from './BibliographyEditor';
@@ -58,10 +59,18 @@ export function EntityPanel(props: EntityPanelProps) {
   const sourceBusy=entity?.type==='source'&&entity.attachments?.some(file=>file.status==='queued'||file.status==='processing'||file.status==='ready'&&['pending','running'].includes(file.enrichment_status));
   useEffect(()=>{
     if(!sourceBusy||hasEntityDraft(vaultId,id))return;
-    let active=true;
-    const timer=setInterval(()=>{if(hasEntityDraft(vaultId,id))return;void api.entity(vaultId,id).then(value=>{if(active)setEntity(value);}).catch(()=>{});},2000);
-    return()=>{active=false;clearInterval(timer);};
-  },[vaultId,id,sourceBusy,tab]);
+    const controller=new AbortController();let refreshing=false;
+    const timer=setInterval(()=>{
+      if(hasEntityDraft(vaultId,id)||refreshing)return;
+      refreshing=true;
+      void sharedRequest<import('../../shared/domain').SourceFile[]>(vaultId,'source-files?compact=1&entity='+encodeURIComponent(id),entities.find(item=>item.id===id)?.updated_at??'',controller.signal).then(statuses=>{
+        if(controller.signal.aborted)return;
+        setEntity(current=>current?.id===id?{...current,attachments:statuses.map(status=>{const previous=current.attachments?.find(file=>file.id===status.id);return previous?{...previous,...status,text:previous.text,summary:previous.summary,structural_nodes:previous.structural_nodes,page_start_lines:previous.page_start_lines}:status;})}:current);
+        if(statuses.every(file=>file.status==='failed'||file.status==='ready'&&!['pending','running'].includes(file.enrichment_status)))void api.entity(vaultId,id).then(value=>{if(!controller.signal.aborted)setEntity(value);}).catch(()=>{});
+      }).catch(()=>{}).finally(()=>{refreshing=false;});
+    },2000);
+    return()=>{controller.abort();clearInterval(timer);};
+  },[vaultId,id,sourceBusy,tab,entities.find(item=>item.id===id)?.updated_at]);
   const {schema, error: schemaError} = useEntitySchema(vaultId);
   const mention = (entityId: string) => <Mention id={entityId} entities={entities} onOpen={onOpen}/>;
   async function mutate(work: () => Promise<EntityDetail>) {

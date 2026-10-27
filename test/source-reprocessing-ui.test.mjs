@@ -597,7 +597,7 @@ test('accepted view republishes the selected revision after evidence restores a 
  const storage=new Map([['noema:source-reading:v:f',preferred.id]]),descriptor=Object.getOwnPropertyDescriptor(globalThis,'localStorage');
  Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)}});
  t.after(()=>{if(descriptor)Object.defineProperty(globalThis,'localStorage',descriptor);else delete globalThis.localStorage;});
- const readings=[],env=await mount(t,{initial:preferred,history:[selected,preferred],legacyDetails:false,get:entry=>entry.url.endsWith('/selected')?selected:preferred,onReadingRevision:value=>readings.push(value),onReturnContext:()=>readings.push(preferred)});
+ const readings=[],env=await mount(t,{initial:preferred,history:[selected,preferred],legacyDetails:false,get:entry=>/\/selected(?:\/reading)?$/.test(entry.url)?selected:preferred,onReadingRevision:value=>readings.push(value),onReturnContext:()=>readings.push(preferred)});
  const picker=document.querySelector('[aria-label="Reading version"]');
  await act(async()=>{picker.value=selected.id;picker.dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});
  assert.equal(readings.at(-1).id,selected.id);

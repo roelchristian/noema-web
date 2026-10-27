@@ -12,6 +12,8 @@ Overview shows publication details and everyday citation actions. More citation 
 
 These operations reuse canonical bibliography ownership, access checks, reconciliation and export formatting. There is no new database migration or second publication metadata store. DOI provider calls still require deliberate consent; local imports, exports and citation formatting perform no remote lookup.
 
+Conflict review follows the Metadata field owner, including publication aliases such as date/year, journal/journaltitle and issue/number. An imported alias must not bypass a manual value by appearing to be a separate empty field. DOI acceptance likewise updates the reviewed canonical field and records provider provenance and prior-value history.
+
 ## Compatibility
 
 File-free `/cite`, bundled APA 7 and IEEE formatting, metadata-only Sources, stable citation keys, unknown imported fields, DOI proposals, authored-value history, scholarly review and backup identity remapping remain supported. Source switching aborts preview reads and rejects stale responses. Writes retain revision protection and must be refreshed after an uncertain result.

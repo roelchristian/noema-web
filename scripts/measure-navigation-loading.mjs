@@ -84,7 +84,7 @@ try{
   const chooser=page.locator('select[aria-label="Reading version"]');await chooser.locator(`option[value="${revision.id}"]`).waitFor({state:'attached'});
   await chooser.selectOption(revision.id,{force:true});await page.locator('.source-reader-editorial-notice').waitFor();
   const fullBeforeReload=requests.filter(r=>r.path===fullPath).length;
-  await page.reload();await page.locator('.source-reader-editorial-notice').waitFor();
+  await page.reload();await page.locator('.source-reader-editorial-notice').waitFor();await chooser.locator(`option[value="${revision.id}"]`).waitFor({state:'attached'});
   const selectedVersionRestored=await chooser.inputValue()===revision.id;
   const noComparisonFetchOnVersionRestore=requests.filter(r=>r.path===fullPath).length===fullBeforeReload;
   const compactVersionFetched=requests.some(r=>r.path===fullPath+'/reading');

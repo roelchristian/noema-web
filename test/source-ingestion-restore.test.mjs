@@ -274,3 +274,122 @@ test('backup preserves each attempt exact transmitted hash independently from la
   assert.notEqual(first,f.rows.source_ingestion_windows[0].transmitted_hash);assert.notEqual(later,f.rows.source_ingestion_windows[0].transmitted_hash);
  }finally{f.cleanup();}
 });
+
+test('untrusted completed response candidate survives archive restore without becoming published output',async()=>{
+ const f=fixture();try{
+  f.rows.source_ingestion_documents=[];f.rows.source_ingestion_runs[0].published_document_id=null;
+  Object.assign(f.rows.source_ingestion_windows[0],{state:'failed',result_json:null});
+  const raw={...structuredClone(f.doc),untrustedExtra:'Retain for revalidation; never treat this response as authoritative.'};
+  Object.assign(f.rows.source_ingestion_attempts[0],{state:'invalid',kind:'extraction',candidate_json:JSON.stringify(raw),prompt_version:'pdf-transcription-retained-v1'});
+  f.store.run("UPDATE source_files SET text='',status='failed',enrichment_status='pending' WHERE id=?",f.file.id);
+  f.store.transaction(()=>restoreIngestionBackup(f.store,'default',new Map([['old-file',f.file.id]]),f.rows));
+  assert.equal(f.store.get('SELECT state FROM source_ingestion_runs').state,'paused');
+  assert.equal(f.store.get('SELECT result_json FROM source_ingestion_windows').result_json,null);
+  assert.deepEqual(JSON.parse(f.store.get('SELECT candidate_json FROM source_ingestion_attempts').candidate_json),raw);
+  const backups=new VaultBackups(f.store),archive=await backups.export('default'),restored=await backups.import(archive.bytes,'Retained raw candidate');
+  const file=f.store.get('SELECT * FROM source_files WHERE vault_id=?',restored.id);
+  assert.equal(file.text,'');assert.equal(f.store.get('SELECT count(*) n FROM source_ingestion_documents WHERE file_id=?',file.id).n,0);
+  const attempt=f.store.get('SELECT a.candidate_json,a.state,a.request_id,a.response_hash,a.prompt_version FROM source_ingestion_attempts a JOIN source_ingestion_windows w ON w.id=a.window_id JOIN source_ingestion_runs r ON r.id=w.run_id WHERE r.file_id=?',file.id);
+  assert.deepEqual(JSON.parse(attempt.candidate_json),raw);assert.equal(attempt.state,'invalid');assert.equal(attempt.request_id,null);assert.equal(attempt.response_hash,f.rows.source_ingestion_attempts[0].response_hash);assert.equal(attempt.prompt_version,'pdf-transcription-retained-v1');
+ }finally{f.cleanup();}
+});
+
+test('restore rejects uncertain, unbounded and unsupported raw response candidates atomically',()=>{
+ for(const mutate of [
+  attempt=>{attempt.state='submitted';},attempt=>{attempt.state='unknown';},attempt=>{attempt.state='failed';},
+  attempt=>{attempt.prompt_version='x'.repeat(257);},attempt=>{attempt.prompt_version='';},attempt=>{attempt.response_hash=null;},attempt=>{attempt.response_hash='invalid';},attempt=>{attempt.kind='repair';},
+  attempt=>{attempt.candidate_json='[]';},attempt=>{attempt.candidate_json='null';},attempt=>{attempt.candidate_json='{broken';},
+  attempt=>{attempt.candidate_json=JSON.stringify({text:'é'.repeat(13*1024*1024)});}
+ ]){
+  const f=fixture();try{
+   const attempt=f.rows.source_ingestion_attempts[0];Object.assign(attempt,{kind:'extraction',candidate_json:JSON.stringify(f.doc)});mutate(attempt);
+   assert.throws(()=>f.store.transaction(()=>restoreIngestionBackup(f.store,'default',new Map([['old-file',f.file.id]]),f.rows)),/Invalid PDF/);
+   assert.equal(f.store.get('SELECT count(*) n FROM source_ingestion_attempts').n,0);assert.equal(f.store.get('SELECT count(*) n FROM source_ingestion_documents').n,0);
+  }finally{f.cleanup();}
+ }
+});
+
+test('restored paid extraction candidate revalidates locally without another provider request',async()=>{
+ const {SourceIngestion}=await import('../src/server/modules/source-ingestion.ts');const f=fixture();let service;
+ try{
+  f.rows.source_ingestion_documents=[];f.rows.source_ingestion_runs[0].published_document_id=null;
+  Object.assign(f.rows.source_ingestion_windows[0],{state:'failed',result_json:null});
+  Object.assign(f.rows.source_ingestion_attempts[0],{state:'invalid',kind:'extraction',candidate_json:JSON.stringify(f.doc),transmitted_hash:sha('transmitted')});
+  f.store.run("UPDATE source_files SET text='',status='failed',enrichment_status='pending' WHERE id=?",f.file.id);
+  f.store.transaction(()=>restoreIngestionBackup(f.store,'default',new Map([['old-file',f.file.id]]),f.rows));
+  const backups=new VaultBackups(f.store),archive=await backups.export('default'),restored=await backups.import(archive.bytes,'Retained candidate local retry');
+  const file=f.store.get('SELECT * FROM source_files WHERE vault_id=?',restored.id),run=f.store.get('SELECT original_hash,admitted_hash FROM source_ingestion_runs WHERE file_id=?',file.id);
+  let providerCalls=0;const forbidden=async()=>{providerCalls++;throw new Error('Retained paid extraction must not be submitted again');};
+  service=new SourceIngestion(f.store,{prepare:async()=>({bytes:Buffer.from('verified original'),originalHash:run.original_hash,admittedHash:run.admitted_hash,pageCount:1}),split:forbidden,extract:forbidden});
+  service.resume(restored.id,file.id);await service.tick();
+  assert.equal(service.view(restored.id,file.id).state,'completed',service.view(restored.id,file.id).error);assert.equal(providerCalls,0);
+  assert.equal(f.store.get('SELECT count(*) n FROM source_ingestion_attempts a JOIN source_ingestion_windows w ON w.id=a.window_id JOIN source_ingestion_runs r ON r.id=w.run_id WHERE r.file_id=?',file.id).n,1);
+  assert.match(f.files.require(restored.id,file.id).text,/A 😀 table/);assert.equal(f.store.get('SELECT count(*) n FROM source_ingestion_documents WHERE file_id=?',file.id).n,1);
+ }finally{service?.close();f.cleanup();}
+});
+
+test('existing ingestion databases gain nullable raw candidate storage idempotently',async()=>{
+ const {setupSourceIngestionSchema}=await import('../src/server/source-ingestion-schema.ts');const f=fixture();try{
+  f.db.exec('ALTER TABLE source_ingestion_attempts DROP COLUMN candidate_json');f.db.exec('ALTER TABLE source_ingestion_attempts DROP COLUMN prompt_version');
+  setupSourceIngestionSchema(f.db);setupSourceIngestionSchema(f.db);
+  for(const field of ['candidate_json','prompt_version'])assert.equal(f.db.prepare('PRAGMA table_info(source_ingestion_attempts)').all().filter(column=>column.name===field).length,1);
+ }finally{f.cleanup();}
+});
+
+test('enriched window and retained response restore with metadata and stable canonical identity while pending work stays paused',async()=>{
+ const {SourceIngestion}=await import('../src/server/modules/source-ingestion.ts');const f=fixture();let service;
+ try{
+  const enriched=structuredClone(f.doc);enriched.metadata.candidates=[{field:'title',value:'A normalized title',page:1,blockId:'table',quote:'A 😀 table\ncell',reason:'Synthetic exact source quotation retaining normalized interpretation.'}];
+  f.rows.source_ingestion_windows.push({...f.rows.source_ingestion_windows[0],id:'enriched',ordinal:1,kind:'enrichment',plan_json:JSON.stringify({index:1,ownedPages:[1],contextPages:[],estimatedOutputTokens:5000}),state:'failed',result_json:null,repair_state:'skipped'});
+  f.rows.source_ingestion_attempts.push({...f.rows.source_ingestion_attempts[0],window_id:'enriched',kind:'enrichment',state:'invalid',candidate_json:JSON.stringify(enriched),prompt_version:'pdf-enrichment-1'});
+  f.store.transaction(()=>restoreIngestionBackup(f.store,'default',new Map([['old-file',f.file.id]]),f.rows));
+  assert.equal(f.store.get('SELECT state FROM source_ingestion_runs').state,'paused','Published source with unfinished enrichment must remain paused');
+  const backups=new VaultBackups(f.store),archive=await backups.export('default'),restored=await backups.import(archive.bytes,'Enrichment candidate retained');
+  const file=f.store.get('SELECT * FROM source_files WHERE vault_id=?',restored.id),document=new SourceDocuments(f.store).get(file);
+  assert.equal(file.text,f.assembly.text);assert.deepEqual(document.semantic.children.map(node=>[node.id,node.range]),f.assembly.semanticNodes.map(node=>[node.id,node.range]));
+  const window=f.store.get("SELECT w.id,w.state,w.result_json FROM source_ingestion_windows w JOIN source_ingestion_runs r ON r.id=w.run_id WHERE r.file_id=? AND w.kind='enrichment'",file.id);
+  assert.equal(window.state,'failed');assert.equal(window.result_json,null);
+  const attempt=f.store.get('SELECT candidate_json,prompt_version,state,request_id FROM source_ingestion_attempts WHERE window_id=?',window.id);
+  assert.deepEqual(JSON.parse(attempt.candidate_json),enriched);assert.equal(attempt.prompt_version,'pdf-enrichment-1');assert.equal(attempt.state,'invalid');assert.equal(attempt.request_id,null);
+  let calls=0;const forbidden=async()=>{calls++;throw new Error('Restored enrichment cannot run automatically');};service=new SourceIngestion(f.store,{prepare:forbidden,split:forbidden,extract:forbidden,enrich:forbidden});await service.tick();assert.equal(calls,0);assert.equal(service.view(restored.id,file.id).state,'paused');
+ }finally{service?.close();f.cleanup();}
+});
+
+test('completed enrichment IR roundtrip retains optional metadata evidence without counting duplicate page ownership',async()=>{
+ const f=fixture();try{
+  const enriched=structuredClone(f.doc);enriched.metadata.candidates=[{field:'date',value:'2026-10-23',page:1,blockId:'table',quote:'A 😀 table\ncell',reason:'Synthetic date interpretation pending human review.'}];
+  f.rows.source_ingestion_windows.push({...f.rows.source_ingestion_windows[0],id:'enriched',ordinal:1,kind:'enrichment',plan_json:JSON.stringify({index:1,ownedPages:[1],contextPages:[],estimatedOutputTokens:5000}),state:'completed',result_json:JSON.stringify(enriched),repair_state:'skipped'});
+  f.rows.source_ingestion_attempts.push({...f.rows.source_ingestion_attempts[0],window_id:'enriched',kind:'enrichment',state:'completed',candidate_json:JSON.stringify(enriched),prompt_version:'pdf-enrichment-1'});
+  f.store.transaction(()=>restoreIngestionBackup(f.store,'default',new Map([['old-file',f.file.id]]),f.rows));
+  const backups=new VaultBackups(f.store),archive=await backups.export('default'),restored=await backups.import(archive.bytes,'Completed enrichment retained');
+  const window=f.store.get("SELECT w.result_json FROM source_ingestion_windows w JOIN source_ingestion_runs r ON r.id=w.run_id WHERE r.vault_id=? AND w.kind='enrichment'",restored.id);
+  assert.deepEqual(JSON.parse(window.result_json),enriched);assert.equal(f.store.get('SELECT text FROM source_files WHERE vault_id=?',restored.id).text,f.assembly.text);
+ }finally{f.cleanup();}
+});
+
+test('visual repair evidence manifest and exact transmitted hash survive vault backup restore',async()=>{
+ const f=fixture();try{
+  const evidence={version:1,algorithm:'pdfjs-context-crop-v1',pageMap:[1],ownedPages:[1],crops:[{physicalPage:1,blockId:'table',rect:{x:.1,y:.2,width:.3,height:.1},accuracy:'approximate'}],fallback:'none'};
+  Object.assign(f.rows.source_ingestion_attempts[0],{kind:'repair',transmitted_hash:sha('final-cropped-pdf'),evidence_json:JSON.stringify(evidence)});
+  f.store.transaction(()=>restoreIngestionBackup(f.store,'default',new Map([['old-file',f.file.id]]),f.rows));
+  const backups=new VaultBackups(f.store),archive=await backups.export('default'),restored=await backups.import(archive.bytes,'Restored crop audit');
+  const row=f.store.get('SELECT a.evidence_json,a.transmitted_hash FROM source_ingestion_attempts a JOIN source_ingestion_windows w ON w.id=a.window_id JOIN source_ingestion_runs r ON r.id=w.run_id WHERE r.vault_id=?',restored.id);
+  assert.deepEqual(JSON.parse(row.evidence_json),evidence);assert.equal(row.transmitted_hash,sha('final-cropped-pdf'));
+ }finally{f.cleanup();}
+});
+test('visual repair backup rejects out-of-scope geometry, blocks, pages and wrong attempt kinds atomically',()=>{
+ for(const change of [a=>a.kind='extraction',a=>a.transmitted_hash=null,a=>{const e=JSON.parse(a.evidence_json);e.crops[0].rect.width=2;a.evidence_json=JSON.stringify(e);},a=>{const e=JSON.parse(a.evidence_json);e.pageMap=[2];e.ownedPages=[2];e.crops[0].physicalPage=2;a.evidence_json=JSON.stringify(e);},a=>{const e=JSON.parse(a.evidence_json);e.crops[0].blockId='missing';a.evidence_json=JSON.stringify(e);}]){
+  const f=fixture();try{
+   const attempt=f.rows.source_ingestion_attempts[0];Object.assign(attempt,{kind:'repair',transmitted_hash:sha('final'),evidence_json:JSON.stringify({version:1,algorithm:'pdfjs-context-crop-v1',pageMap:[1],ownedPages:[1],crops:[{physicalPage:1,blockId:'table',rect:{x:.1,y:.2,width:.3,height:.1},accuracy:'approximate'}],fallback:'none'})});change(attempt);
+   assert.throws(()=>f.store.transaction(()=>restoreIngestionBackup(f.store,'default',new Map([['old-file',f.file.id]]),f.rows)),/Invalid PDF/);assert.equal(f.store.get('SELECT count(*) n FROM source_ingestion_attempts').n,0);
+  }finally{f.cleanup();}
+ }
+});
+test('input-budget visual fallback and quotation protocol version survive restore without crop claims',()=>{
+ const f=fixture();try{
+  const evidence={version:1,algorithm:'pdfjs-context-crop-v1',pageMap:[1],ownedPages:[1],crops:[],fallback:'input-budget'};
+  Object.assign(f.rows.source_ingestion_attempts[0],{kind:'repair',transmitted_hash:sha('original-window'),evidence_json:JSON.stringify(evidence),prompt_version:'pdf-repair-2'});
+  f.store.transaction(()=>restoreIngestionBackup(f.store,'default',new Map([['old-file',f.file.id]]),f.rows));
+  const row=f.store.get('SELECT evidence_json,prompt_version FROM source_ingestion_attempts');assert.deepEqual(JSON.parse(row.evidence_json),evidence);assert.equal(row.prompt_version,'pdf-repair-2');
+ }finally{f.cleanup();}
+});

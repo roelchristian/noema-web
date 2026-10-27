@@ -4,6 +4,12 @@ import type {SourceDocument} from '../../shared/source-document';
 import {sourceDocumentEntries} from '../../shared/source-document';
 import {Icon} from '../components/Icon';
 
+/** Collapsed furniture has no viewport position; its zero bounds must not
+ * masquerade as a physical-page stop above the current reading position. */
+export function visibleSourceNavigationLeaves(root:HTMLElement){
+ return Array.from(root.querySelectorAll<HTMLElement>('[data-source-start][data-source-end]')).filter(leaf=>!leaf.closest('[hidden]')&&!leaf.closest('details:not([open])')&&leaf.getClientRects().length>0).sort((a,b)=>Number(a.dataset.sourceStart)-Number(b.dataset.sourceStart));
+}
+
 interface Stop {offset:number;number:number}
 interface Props {article:RefObject<HTMLElement|null>;text:string;document?:SourceDocument;activityAvailable?:boolean}
 /** Use recorded physical pages when available; other documents navigate sections. */
@@ -27,7 +33,7 @@ export function SourceReadingNavigation({article,text,document:sourceDocument,ac
     const element=article.current;if(!element)return;const root=element;
     let frame=0,leaves:HTMLElement[]=[];
     // Endnotes keep raw offsets even though their DOM order changes.
-    const refresh=()=>{leaves=Array.from(root.querySelectorAll<HTMLElement>('[data-source-start][data-source-end]')).sort((a,b)=>Number(a.dataset.sourceStart)-Number(b.dataset.sourceStart));};
+    const refresh=()=>{leaves=visibleSourceNavigationLeaves(root);};
     function position(stop:Stop) {
       let low=0,high=leaves.length;
       while(low<high){const mid=(low+high)>>>1;if(Number(leaves[mid]!.dataset.sourceEnd)<=stop.offset)low=mid+1;else high=mid;}
@@ -55,8 +61,8 @@ export function SourceReadingNavigation({article,text,document:sourceDocument,ac
       window.dispatchEvent(new Event('noema:before-reading-jump'));
       window.scrollBy({top:position(target)-cutoff(),behavior:'instant'});setCurrent(index);
     };
-    const observer=new MutationObserver(()=>{refresh();schedule();});observer.observe(root,{childList:true,subtree:true,attributes:true,attributeFilter:['data-source-start','data-source-end']});
-    const resize=new ResizeObserver(schedule);resize.observe(root);const main=root.closest('main');if(main)resize.observe(main);
+    const observer=new MutationObserver(()=>{refresh();schedule();});observer.observe(root,{childList:true,subtree:true,attributes:true,attributeFilter:['data-source-start','data-source-end','hidden','open']});
+    const resize=new ResizeObserver(()=>{refresh();schedule();});resize.observe(root);const main=root.closest('main');if(main)resize.observe(main);
     window.addEventListener('scroll',schedule,{passive:true});window.addEventListener('resize',schedule);
     return()=>{cancelAnimationFrame(frame);observer.disconnect();resize.disconnect();window.removeEventListener('scroll',schedule);window.removeEventListener('resize',schedule);jump.current=()=>{};};
   },[article,navigation]);

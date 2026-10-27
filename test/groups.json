@@ -45,10 +45,17 @@
     "test/domain-shortlist-multilingual.test.mjs",
     "test/page-block-evidence.test.mjs",
     "test/source-ingestion-contracts.test.mjs",
+    "test/source-ingestion-enrichment.test.mjs",
     "test/source-ingestion-security.test.mjs",
     "test/source-ingestion-options.test.mjs",
     "test/source-ingestion-targeted-repair.test.mjs",
+    "test/source-ingestion-visual-evidence.test.mjs",
     "test/source-ingestion-relations.test.mjs",
+    "test/source-math-annotations.test.mjs",
+    "test/source-ingestion-geometry.test.mjs",
+    "test/source-ingestion-diagram.test.mjs",
+    "test/source-ingestion-layout-evidence.test.mjs",
+    "test/document-provider-diagnostics.test.mjs",
     "test/workspace-startup.test.mjs",
     "test/scoped-request-cache.test.mjs"
   ],
@@ -128,6 +135,7 @@
     "test/chat-research.test.mjs",
     "test/chat-evidence-panel.test.mjs",
     "test/chat-reliability.test.mjs",
+    "test/source-reader-math.test.mjs",
     "test/lazy-feature.test.mjs"
   ],
   "server": [
@@ -280,11 +288,14 @@
     "test/page-read-overhead.test.mjs",
     "test/page-assessment-lifecycle.test.mjs",
     "test/document-providers.test.mjs",
+    "test/document-provider-repairs.test.mjs",
     "test/source-ingestion-corrections.test.mjs",
     "test/source-ingestion-restore.test.mjs",
     "test/source-ingestion-scheduler.test.mjs",
     "test/source-ingestion-runtime.test.mjs",
     "test/source-ingestion-activity.test.mjs",
+    "test/persona-style-repair.test.mjs",
+    "test/persona-repair-generation.test.mjs",
     "test/page-save-cost.test.mjs"
   ]
 }

@@ -225,7 +225,7 @@ export function SourceReprocessing({onRevisionChanged,reviewOnDemand=false,sourc
     }finally{finishAction();}
   }
   async function start(){if(summaries.length>=sourceEditorialRevisionLimit){openSetup();return;}if(!configuration||!evidenceCapabilities&&!evidenceError||evidenceOptions.originalPages&&!evidenceOptions.allowExternalTransmission||!beginAction())return;try{const value=await request<SourceReprocessingRevision>(route,'POST',{instructions,pipelineVersion:2,configuration:{depth,substantialMath,reviewPolicy,evidence:evidenceOptions}},vaultId);if(!mounted.current)return;setRevisionId(value.id);setRevision(value);setPrompt(false);setReviewStyle('diff');setFilter('all');setTab('review');onRevisionChanged?.();setReload(n=>n+1);onShow();}catch(cause){if(mounted.current){const message=cause instanceof Error?cause.message:String(cause);setError(message);if(/Revision limit reached/i.test(message)){setPrompt(false);setCreatingAfterManage(true);setManaging(true);onRevisionChanged?.();setReload(n=>n+1);}}}finally{finishAction();}}
-  const patchDraftKey=(patch:SourceEditorialPatch)=>JSON.stringify([vaultId,fileId,revision?.id,patch.id]);
+  const patchDraftKey=(patch:SourceEditorialPatch,revisionIdentity=revision?.id)=>JSON.stringify([vaultId,fileId,revisionIdentity,patch.id]);
   async function decide(patch:SourceEditorialPatch,decision:'accepted'|'rejected'|'pending',replacement?:string){
     if(!revision||!beginAction())return;
     const group=revision.patches.filter(item=>item.id===patch.id||!!patch.patchGroupId&&item.patchGroupId===patch.patchGroupId);
@@ -247,27 +247,47 @@ export function SourceReprocessing({onRevisionChanged,reviewOnDemand=false,sourc
     try{const value=await request<SourceReprocessingRevision>(`${route}/${encodeURIComponent(revision.id)}/${action}`,'POST',{},vaultId);if(!mounted.current)return;if(latestRevisionId.current===value.id)setRevision(value);onRevisionChanged?.();setReload(n=>n+1);}
     catch(cause){if(mounted.current)setError(cause instanceof Error?cause.message:String(cause));}finally{finishAction();}
   }
-  async function decideMany(patches:SourceEditorialPatch[],decision:'accepted'|'rejected'){
-    if(!revision||!patches.length||!beginAction())return;
+  async function decideMany(patches:SourceEditorialPatch[],decision:'accepted'|'rejected',baseRevision=revision,guarded=false){
+    if(!baseRevision||!patches.length||!guarded&&!beginAction())return;
     const ids=new Set(patches.map(patch=>patch.id)),groups=new Set(patches.map(patch=>patch.patchGroupId).filter(Boolean));
-    const targets=revision.patches.filter(patch=>ids.has(patch.id)||!!patch.patchGroupId&&groups.has(patch.patchGroupId));
+    const targets=baseRevision.patches.filter(patch=>ids.has(patch.id)||!!patch.patchGroupId&&groups.has(patch.patchGroupId));
     const decisions=targets.map(patch=>{
-      const replacement=editorialDraft(patchDraftKey(patch),patchBaseline(patch));
+      const replacement=editorialDraft(patchDraftKey(patch,baseRevision.id),patchBaseline(patch));
       return {patchId:patch.id,decision,...(decision==='accepted'&&replacement!==undefined?{replacement}:{})};
     });
     try{
-      const value=await request<SourceReprocessingRevision>(`${route}/${encodeURIComponent(revision.id)}/review`,'POST',{updatedAt:revision.updatedAt,decisions},vaultId);
+      const value=await request<SourceReprocessingRevision>(`${route}/${encodeURIComponent(baseRevision.id)}/review`,'POST',{updatedAt:baseRevision.updatedAt,decisions},vaultId);
       if(!mounted.current)return;
-      targets.forEach(patch=>clearEditorialDraft(patchDraftKey(patch)));
+      targets.forEach(patch=>clearEditorialDraft(patchDraftKey(patch,baseRevision.id)));
       if(latestRevisionId.current===value.id)setRevision(value);
       setSelected(current=>current.filter(id=>!targets.some(patch=>patch.id===id)));onRevisionChanged?.();setReload(n=>n+1);
       if(value.origin?.kind==='ingestion')window.dispatchEvent(new CustomEvent('noema:source-ingestion-updated',{detail:{vaultId,fileId}}));
-    }catch(cause){if(mounted.current)setError(cause instanceof Error?cause.message:String(cause));}finally{finishAction();}
+      return value;
+    }catch(cause){if(mounted.current)setError(cause instanceof Error?cause.message:String(cause));}finally{if(!guarded)finishAction();}
   }
   async function decideSelected(decision:'accepted'|'rejected'){
     await decideMany(revision?.patches.filter(patch=>selected.includes(patch.id))??[],decision);
   }
   function acceptAllPending(){return decideMany(revision?.patches.filter(patch=>patch.decision==='pending')??[],'accepted');}
+  const acceptReadRequest=useRef<AbortController|null>(null),acceptReadScope=useRef('');
+  acceptReadScope.current=JSON.stringify([vaultId,fileId]);
+  useEffect(()=>()=>acceptReadRequest.current?.abort(),[vaultId,fileId]);
+  async function acceptAndRead(){
+    if(!revisionId||!beginAction())return;
+    const selectedId=revisionId,selectedScope=acceptReadScope.current,controller=new AbortController();acceptReadRequest.current=controller;
+    try {
+      // This explicit editorial action may load decision evidence; ordinary reading never does.
+      const base=revision?.id===selectedId?revision:await request<SourceReprocessingRevision>(`${route}/${encodeURIComponent(selectedId)}`,'GET',undefined,vaultId,controller.signal);
+      if(!mounted.current||controller.signal.aborted||acceptReadScope.current!==selectedScope||latestRevisionId.current!==selectedId)return;
+      if(base.id!==selectedId||base.fileId!==fileId||base.stale||active(base.status))throw new Error('This revision changed or is still processing. Reopen review before accepting it.');
+      const pendingPatches=base.patches.filter(patch=>patch.decision==='pending');
+      const value=pendingPatches.length?await decideMany(pendingPatches,'accepted',base,true):base;
+      if(!value||!mounted.current||acceptReadScope.current!==selectedScope||latestRevisionId.current!==value.id)return;
+      setRevision(value);
+      contextReading.current=null;setEvidenceSurface('reading');onReturnContext?.();++readingRequest.current;publishReading(value);setReadingChoice(value.id);setTab('read');
+    }catch(cause){if(mounted.current&&!controller.signal.aborted)setError(cause instanceof Error?cause.message:String(cause));}
+    finally {if(acceptReadRequest.current===controller)acceptReadRequest.current=null;finishAction();}
+  }
   const automaticallyApplied=(patch:SourceEditorialPatch)=>patch.decision==='accepted'&&(patch.decisionHistory?.at(-1)?.actor??(patch.autoAcceptance?'automatic':'user'))==='automatic';
   const matches=(patch:SourceEditorialPatch,value:typeof filter)=>value==='all'||(value==='automatic'?automaticallyApplied(patch):value==='accepted'?patch.decision==='accepted'&&!automaticallyApplied(patch):patch.decision===value);
   const shownPatches=revision?.patches.filter(patch=>matches(patch,filter)&&(!passagePatchIds.length||passagePatchIds.includes(patch.id)))??[];
@@ -300,7 +320,9 @@ export function SourceReprocessing({onRevisionChanged,reviewOnDemand=false,sourc
       </Select></label>
       <button type="button" className="reprocessing-quiet-action" aria-label={uiText("Set as preferred reading version")} title={uiText("Set as preferred reading version")} disabled={requestedReadingId===currentReadingId} onClick={preferReading}>{requestedReadingId===currentReadingId?uiText("Preferred"):uiText("Set preferred")}</button>
       <button ref={reviewTrigger} type="button" disabled={!revisionId} className="reprocessing-quiet-action" aria-expanded={visible&&tab==='review'} aria-controls={`source-review-${fileId}`} onClick={()=>{reviewInvoker.current=reviewTrigger.current;setPassagePatchIds([]);setFilter('all');setReviewStyle('diff');setTab('review');onShow();}}>{uiText("Review changes (")}{pending})</button>
+      {!!pending&&revisionId&&<button type="button" className="button primary small" disabled={busy||!!(revision?.id===revisionId?revision.stale:summaries.find(item=>item.id===revisionId)?.stale)||active((revision?.id===revisionId?revision:summaries.find(item=>item.id===revisionId))?.status??'')} onClick={()=>void acceptAndRead()}>{uiText('Accept and read ({value0})',{value0:pending})}</button>}
       <button type="button" className="button small reprocessing-loading-button" aria-busy={running} disabled={busy} onClick={()=>{setError('');if(running){if(activeRun)setRevisionId(activeRun.id);setTab('review');onShow();}else openSetup();}}>{running&&<span className="scan-spinner" aria-hidden="true"/>}{running?uiText("Processing status"):uiText("Refine text")}</button>
+
     </div>
     {visible&&tab==='review'&&(!revision||revision.id!==revisionId)&&<p role="status">{uiText("Loading review…")}</p>}
     <div className="reprocessing-view-controls">
@@ -328,7 +350,7 @@ export function SourceReprocessing({onRevisionChanged,reviewOnDemand=false,sourc
         {brokenFootnotes.length>0&&<InlineNotice tone="warning" title={uiText("This revision has broken footnote links")} description={<>{uiText("Some note definitions are missing or ambiguous. Compare the original source and repair the affected changes before relying on this reading version.")}<ul>{brokenFootnotes.slice(0,5).map((message,index)=><li key={index}>{message}</li>)}</ul></>}/>}
         {tab==='read'?null:renderReview(reviewStyle==='diff'?<aside ref={reviewPane} tabIndex={-1} id={`source-review-${fileId}`} className="reprocessing-reviews reprocessing-diff-review" aria-label={uiText('Revision diff')} onKeyDown={event=>{if(event.key==='Escape'){event.stopPropagation();closeReview();}}}>
           <div className="reprocessing-diff-heading"><strong>{uiText('Changes')}</strong><span>{revision.patches.filter(patch=>patch.decision==='accepted').length} {uiText('accepted')} · {pending} {uiText('pending')}</span><button type="button" className="reprocessing-quiet-action" disabled={!pending||busy||!!stale||active(revision.status)} onClick={()=>void acceptAllPending()}>{uiText('Apply all pending ({value0})',{value0:pending})}</button><button type="button" className="reprocessing-quiet-action" onClick={()=>{setReviewStyle('drawer');setFilter(pending>0?'pending':'all');}}>{uiText('Detailed review')}</button></div>
-          <SourceRevisionDiff revision={revision} onDecisions={decideMany} disabled={busy||!!stale||active(revision.status)} onDecision={decide} onEdit={patch=>{setReviewStyle('drawer');setPassagePatchIds([]);setFilter('all');setActivePatchId(patch.id);}} onLocate={showPatchSource} onCompare={onCompare?page=>{if(contextReading.current===null)contextReading.current=readingChoice;setEvidenceSurface('pdf');onCompare(page);}:undefined}/>
+          <SourceRevisionDiff revision={revision} onDecisions={async(patches,decision)=>{await decideMany(patches,decision);}} disabled={busy||!!stale||active(revision.status)} onDecision={decide} onEdit={patch=>{setReviewStyle('drawer');setPassagePatchIds([]);setFilter('all');setActivePatchId(patch.id);}} onLocate={showPatchSource} onCompare={onCompare?page=>{if(contextReading.current===null)contextReading.current=readingChoice;setEvidenceSurface('pdf');onCompare(page);}:undefined}/>
         </aside>:<aside ref={reviewPane} tabIndex={-1} id={`source-review-${fileId}`} className="reprocessing-reviews" aria-label={uiText("Review corrections")} onKeyDown={event=>{if(event.key==='Escape'){event.stopPropagation();closeReview();}}}>
           <div className="reprocessing-review-heading"><h2>{uiText("Review corrections")}</h2><button type="button" className="button small" onClick={closeReview}>{uiText("Close corrections")}</button></div>
       {revisionOptions.length>0&&<label className="reprocessing-revision-picker">{uiText("Examining revision") + " "}<Select aria-label={uiText("Examining revision")} disabled={busy} value={revisionId} onChange={e=>{returnToCorrection();setPassagePatchIds([]);setActivePatchId('');setRevisionId(e.target.value);}}>{revisionOptions.map(item=><option key={item.id} value={item.id}>{versionLabels.get(item.id)} · {new Date(item.createdAt).toLocaleString(getLocale())} · {uiText(partial(item)?"Partial revision":item.status)}</option>)}</Select></label>}

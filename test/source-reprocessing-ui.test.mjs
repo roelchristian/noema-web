@@ -42,7 +42,8 @@ async function mount(t,{initial=null,history,remove,post,onReadingRevision,get,o
  const button=text=>[...document.querySelectorAll('button')].find(el=>el.textContent===text||el.getAttribute('aria-label')===text);
  const click=async el=>{assert.ok(el,'Expected control exists');await act(async()=>el.click());if(legacyDetails&&/^Review changes \(/.test(el.textContent)){const details=button('Detailed review');if(details)await act(async()=>details.click());}};
  const remount=async()=>act(async()=>root.render(React.createElement(component,{...props,key:Math.random()})));
- return {button,click,requests,dom,switchFile,remount};
+ const switchScope=async(vaultId,fileId)=>act(async()=>root.render(React.createElement(component,{...props,vaultId,fileId,key:'f'})));
+ return {button,click,requests,dom,switchFile,switchScope,remount};
 }
 test('failed initial reprocessing render still closes its DOM and restores global descriptors',{timeout:5000},async t=>{
  const keys=['window','document','Node','NodeFilter','Element','HTMLElement','HTMLAnchorElement','HTMLInputElement','HTMLSelectElement','HTMLTextAreaElement','Range','DOMParser','InputEvent','MouseEvent','Event','CustomEvent','MutationObserver','getComputedStyle','getSelection','requestAnimationFrame','cancelAnimationFrame','innerWidth','innerHeight','IS_REACT_ACT_ENVIRONMENT'];
@@ -675,4 +676,57 @@ test('ordinary reading restores its selected version after remount without loadi
  assert.equal(env.requests.filter(entry=>/\/reprocessing\/[^/]+$/.test(entry.url)).length,0);
  assert.equal(env.requests.filter(entry=>entry.url.endsWith('/reading')).length,2);
  assert.equal(storage.has('noema:source-reading:v:f'),false,'restoring the current version does not change the preferred version');
+});
+
+test('accept and read applies all pending suggestions directly from the reader bar',async t=>{
+ const r=fixture();r.fileId='f';r.status='completed';r.report.chunksCompleted=r.report.chunksTotal;const readings=[];
+ const env=await mount(t,{initial:r,onReadingRevision:value=>readings.push(value),post:async(entry,current)=>{assert.ok(entry.url.endsWith('/review'));return {...current,updatedAt:'2026-10-27T01:00:00Z',patches:current.patches.map(patch=>({...patch,decision:entry.body.decisions.find(item=>item.patchId===patch.id)?.decision??patch.decision}))};}});
+ assert.equal(document.querySelector('.reprocessing-reviews'),null);await env.click(env.button('Accept and read (2)'));
+ const posts=env.requests.filter(entry=>entry.method==='POST');assert.equal(posts.length,1);assert.equal(posts[0].body.updatedAt,r.updatedAt);assert.equal(posts[0].body.decisions.length,2);assert.ok(posts[0].body.decisions.every(item=>item.decision==='accepted'));assert.equal(readings.at(-1).id,r.id);assert.ok(readings.at(-1).patches.every(patch=>patch.decision==='accepted'));assert.equal(document.querySelector('.reprocessing-reviews'),null);
+
+});
+
+
+test('summary-only accept and read loads detail once and submits linked pending decisions with its exact version',async t=>{
+ const r={...fixture(),fileId:'f',status:'completed'};r.report.chunksCompleted=r.report.chunksTotal;
+ r.patches=r.patches.map(patch=>({...patch,patchGroupId:'atomic'}));r.patches.push({...r.patches[0],id:'settled',patchGroupId:undefined,decision:'rejected'});
+ let release;const readings=[],env=await mount(t,{initial:r,history:[{...r,patchCount:3,pendingCount:2}],visible:false,reviewOnDemand:true,onReadingRevision:value=>readings.push(value),get:(entry,current)=>{if(entry.url.endsWith('/reading'))return current;assert.ok(entry.url.endsWith('/'+r.id));return new Promise(resolve=>{release=resolve;});},post:async(entry,current)=>({...current,patches:current.patches.map(patch=>({...patch,decision:entry.body.decisions.find(item=>item.patchId===patch.id)?.decision??patch.decision}))})});
+ assert.equal(env.requests.filter(entry=>entry.url.endsWith('/'+r.id)).length,0);
+ const accept=env.button('Accept and read (2)');assert.ok(accept);assert.equal(accept.disabled,false);
+ await act(async()=>{accept.click();accept.click();});
+ assert.equal(env.requests.filter(entry=>entry.url.endsWith('/'+r.id)).length,1);assert.equal(env.requests.filter(entry=>entry.method==='POST').length,0);
+ await act(async()=>release(r));
+ const posts=env.requests.filter(entry=>entry.method==='POST');assert.equal(posts.length,1);assert.equal(posts[0].body.updatedAt,r.updatedAt);assert.deepEqual(posts[0].body.decisions,r.patches.slice(0,2).map(patch=>({patchId:patch.id,decision:'accepted'})));
+ assert.equal(readings.at(-1).id,r.id);assert.equal(readings.at(-1).patches.find(patch=>patch.id==='settled').decision,'rejected');assert.equal(document.querySelector('.reprocessing-reviews'),null);
+});
+
+test('summary-only accept and read rejects stale fetched detail without submitting decisions',async t=>{
+ const r={...fixture(),fileId:'f',status:'completed'};r.report.chunksCompleted=r.report.chunksTotal;
+ const env=await mount(t,{initial:r,visible:false,reviewOnDemand:true,get:()=>({...r,stale:true})});
+ await env.click(env.button('Accept and read (2)'));
+ assert.equal(env.requests.filter(entry=>entry.method==='POST').length,0);assert.match(document.body.textContent,/revision changed or is still processing/);
+});
+
+test('switching source cancels a pending summary-only acceptance before any mutation',async t=>{
+ const r={...fixture(),fileId:'f',status:'completed'};r.report.chunksCompleted=r.report.chunksTotal;
+ let release;const env=await mount(t,{initial:r,visible:false,reviewOnDemand:true,get:()=>new Promise(resolve=>{release=resolve;})});
+ await env.click(env.button('Accept and read (2)'));assert.equal(typeof release,'function');
+ await env.switchFile('another-file');await act(async()=>release(r));
+ assert.equal(env.requests.filter(entry=>entry.method==='POST').length,0);
+});
+
+
+test('reusing a reader instance in another vault cancels its prior acceptance detail request',async t=>{
+ const r={...fixture(),fileId:'f',status:'completed'};r.report.chunksCompleted=r.report.chunksTotal;
+ let release;const env=await mount(t,{initial:r,visible:false,reviewOnDemand:true,get:()=>new Promise(resolve=>{release=resolve;})});
+ await env.click(env.button('Accept and read (2)'));await env.switchScope('another-vault','f');await act(async()=>release(r));
+ assert.equal(env.requests.filter(entry=>entry.method==='POST').length,0);
+});
+
+test('accept and read opens an already-settled fetched revision without posting an empty decision',async t=>{
+ const r={...fixture(),fileId:'f',status:'completed'};r.report.chunksCompleted=r.report.chunksTotal;
+ const settled={...r,patches:r.patches.map(patch=>({...patch,decision:'accepted'}))},readings=[];
+ const env=await mount(t,{initial:r,visible:false,reviewOnDemand:true,onReadingRevision:value=>readings.push(value),get:()=>settled});
+ await env.click(env.button('Accept and read (2)'));
+ assert.equal(env.requests.filter(entry=>entry.method==='POST').length,0);assert.equal(readings.at(-1).id,r.id);assert.equal(env.button('Accept and read (2)'),undefined);
 });

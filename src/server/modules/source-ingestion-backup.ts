@@ -1,3 +1,4 @@
+import {validateSourceIngestionVisualEvidence} from './source-ingestion-visual-evidence.js';
 import {randomUUID,createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {SourceFiles} from './source-files.js';
@@ -75,7 +76,7 @@ export function restoreIngestionBackup(store:Store,vault:string,files:Map<string
  const candidateWindows=new Map<string,string>(),windowKinds=new Map<string,string>(),relationResults:{id:string;run:string;value:unknown;plan:SourceIngestionWindowPlan}[]=[],ownedByRun=new Map<string,Set<number>>();
  for(const row of rows.source_ingestion_windows??[]){
   const run=runs.get(text(row,'run_id',128));if(!run||!Number.isSafeInteger(row.ordinal)||(row.ordinal as number)<0)throw invalid();
-  const id=randomUUID();unique(windows,row,id);const kind=row.kind===undefined?'extraction':text(row,'kind',20);if(!['extraction','relations','page-recovery'].includes(kind))throw invalid();windowKinds.set(id,kind);const windowPlan=plan(parsed(row,'plan_json'),runDetails.get(run)!.pageCount);if(windowPlan.index!==row.ordinal)throw invalid();
+  const id=randomUUID();unique(windows,row,id);const kind=row.kind===undefined?'extraction':text(row,'kind',20);if(!['extraction','relations','page-recovery','enrichment'].includes(kind))throw invalid();windowKinds.set(id,kind);const windowPlan=plan(parsed(row,'plan_json'),runDetails.get(run)!.pageCount);if(windowPlan.index!==row.ordinal)throw invalid();
   const owned=ownedByRun.get(run)??new Set<number>();if(kind==='extraction'&&row.state!=='superseded')for(const page of windowPlan.ownedPages){if(owned.has(page))throw invalid();owned.add(page);}ownedByRun.set(run,owned);
   let result:string|null=null;if(row.result_json!=null){try{const value=parsed(row,'result_json');if(kind==='relations'){relationResults.push({id,run,value,plan:windowPlan});result=JSON.stringify(value);}else result=JSON.stringify(validateSourceIngestionDocument(value,{ownedPages:windowPlan.ownedPages,pageCount:runDetails.get(run)!.pageCount}));}catch{throw invalid();}}
   if(kind==='page-recovery'&&(windowPlan.ownedPages.length!==1||!runDetails.get(run)!.published)||kind==='relations'&&(windowPlan.ownedPages.length!==2||windowPlan.ownedPages[1]!==windowPlan.ownedPages[0]!+1))throw invalid();
@@ -90,10 +91,34 @@ export function restoreIngestionBackup(store:Store,vault:string,files:Map<string
  for(const row of rows.source_ingestion_attempts??[]){
   const window=windows.get(text(row,'window_id',128));if(!window)throw invalid();
   const state=['completed','failed','invalid','not-submitted'].includes(String(row.state))?String(row.state):row.state==='prepared'?'not-submitted':'unknown';
-  const kind=row.kind===undefined?'extraction':text(row,'kind',20);if(!['extraction','repair','relations','page-recovery'].includes(kind)||(windowKinds.get(window)==='extraction'?!['extraction','repair'].includes(kind):windowKinds.get(window)!==kind))throw invalid();
+  const kind=row.kind===undefined?'extraction':text(row,'kind',20);if(!['extraction','repair','relations','page-recovery','enrichment'].includes(kind)||(windowKinds.get(window)==='extraction'?!['extraction','repair'].includes(kind):windowKinds.get(window)!==kind))throw invalid();
   const returned=row.returned_model==null?null:text(row,'returned_model',256);
+  const promptVersion=row.prompt_version==null?null:text(row,'prompt_version',256);
+  if(promptVersion!==null&&!promptVersion.trim())throw invalid();
   if(row.usage_json!=null){const usage=object(parsed(row,'usage_json'));if(Object.entries(usage).some(([key,value])=>!['inputTokens','outputTokens','thinkingTokens','cachedInputTokens','cacheWriteTokens'].includes(key)||!Number.isSafeInteger(value)||(value as number)<0))throw invalid();}
-  store.run('INSERT INTO source_ingestion_attempts(id,window_id,state,kind,transmitted_hash,request_id,usage_json,response_hash,returned_model,error,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',randomUUID(),window,state,kind,row.transmitted_hash==null?null:hash(row,'transmitted_hash'),null,row.usage_json==null?null:text(row,'usage_json',100_000),row.response_hash==null?null:hash(row,'response_hash'),returned,row.error==null?null:text(row,'error',20_000),date(row,'created_at'),date(row,'updated_at'));
+  // A retained provider response is evidence for local revalidation only. It is
+  // never a trusted window result and cannot resolve an unknown paid outcome.
+  let candidate:string|null=null;
+  if(row.candidate_json!=null){
+   if(!['extraction','enrichment'].includes(kind)||!['completed','invalid'].includes(state)||row.response_hash==null)throw invalid();
+   hash(row,'response_hash');candidate=text(row,'candidate_json',24*1024*1024);
+   if(Buffer.byteLength(candidate,'utf8')>24*1024*1024)throw invalid();
+   try{object(JSON.parse(candidate));}catch{throw invalid();}
+  }
+  let visualEvidence:string|null=null;
+  if(row.evidence_json!=null){
+   try{
+    if(kind!=='repair'||row.transmitted_hash==null)throw invalid();
+    const evidence=validateSourceIngestionVisualEvidence(JSON.parse(text(row,'evidence_json',16_000)));
+    const scope=store.get<{plan_json:string;result_json:string|null;page_count:number}>('SELECT w.plan_json,w.result_json,r.page_count FROM source_ingestion_windows w JOIN source_ingestion_runs r ON r.id=w.run_id WHERE w.id=?',window)!;
+    const windowPlan=JSON.parse(scope.plan_json) as SourceIngestionWindowPlan;
+    if(JSON.stringify(evidence.pageMap)!==JSON.stringify([...windowPlan.contextPages,...windowPlan.ownedPages])||JSON.stringify(evidence.ownedPages)!==JSON.stringify(windowPlan.ownedPages)||evidence.pageMap.some(page=>page>scope.page_count)||!scope.result_json)throw invalid();
+    const document=JSON.parse(scope.result_json) as SourceIngestionDocument;
+    if(evidence.crops.some(crop=>!document.blocks.some(block=>block.id===crop.blockId&&block.page===crop.physicalPage)))throw invalid();
+    visualEvidence=JSON.stringify(evidence);
+   }catch{throw invalid();}
+  }
+  store.run('INSERT INTO source_ingestion_attempts(id,window_id,state,kind,transmitted_hash,request_id,usage_json,response_hash,returned_model,candidate_json,prompt_version,evidence_json,error,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',randomUUID(),window,state,kind,row.transmitted_hash==null?null:hash(row,'transmitted_hash'),null,row.usage_json==null?null:text(row,'usage_json',100_000),row.response_hash==null?null:hash(row,'response_hash'),returned,candidate,promptVersion,visualEvidence,row.error==null?null:text(row,'error',20_000),date(row,'created_at'),date(row,'updated_at'));
  }
  const mergedByRun=new Map<string,SourceIngestionDocument>();
  for(const relation of relationResults.sort((a,b)=>a.plan.index-b.plan.index)){

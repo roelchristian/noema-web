@@ -18,7 +18,7 @@ export function setupSourceIngestionSchema(db:DatabaseSync) {
  kind TEXT NOT NULL DEFAULT 'extraction',state TEXT NOT NULL DEFAULT 'pending',repair_state TEXT NOT NULL DEFAULT 'pending',pending_review INTEGER NOT NULL DEFAULT 0,result_json TEXT,transmitted_hash TEXT,error TEXT,UNIQUE(run_id,ordinal));
  CREATE TABLE IF NOT EXISTS source_ingestion_attempts (
  id TEXT PRIMARY KEY,window_id TEXT NOT NULL REFERENCES source_ingestion_windows(id) ON DELETE CASCADE,state TEXT NOT NULL,kind TEXT NOT NULL DEFAULT 'extraction',
- request_id TEXT,usage_json TEXT,response_hash TEXT,transmitted_hash TEXT,returned_model TEXT,error TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
+ request_id TEXT,usage_json TEXT,response_hash TEXT,transmitted_hash TEXT,returned_model TEXT,candidate_json TEXT,prompt_version TEXT,error TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS source_ingestion_documents (
  id TEXT PRIMARY KEY,file_id TEXT NOT NULL UNIQUE REFERENCES source_files(id) ON DELETE CASCADE,vault_id TEXT NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,
  schema_version INTEGER NOT NULL,assembly_version INTEGER NOT NULL,content_hash TEXT NOT NULL,document_json TEXT NOT NULL,
@@ -33,4 +33,7 @@ export function setupSourceIngestionSchema(db:DatabaseSync) {
  if(!attempts.some(c=>c.name==='transmitted_hash'))db.exec('ALTER TABLE source_ingestion_attempts ADD COLUMN transmitted_hash TEXT');
  if(!attempts.some(c=>c.name==='kind'))db.exec("ALTER TABLE source_ingestion_attempts ADD COLUMN kind TEXT NOT NULL DEFAULT 'extraction'");
  if(!attempts.some(c=>c.name==='returned_model'))db.exec('ALTER TABLE source_ingestion_attempts ADD COLUMN returned_model TEXT');
+ if(!attempts.some(c=>c.name==='candidate_json'))db.exec('ALTER TABLE source_ingestion_attempts ADD COLUMN candidate_json TEXT');
+ if(!attempts.some(c=>c.name==='evidence_json'))db.exec('ALTER TABLE source_ingestion_attempts ADD COLUMN evidence_json TEXT');
+ if(!attempts.some(c=>c.name==='prompt_version'))db.exec('ALTER TABLE source_ingestion_attempts ADD COLUMN prompt_version TEXT');
 }

@@ -1844,3 +1844,80 @@ main[data-entity-review-open=true] *::after { animation: none !important; transi
   .focus-controls { gap: var(--space-1); right: var(--space-2); max-width: calc(100vw - var(--space-4)); }
   :root[data-focus-workspace=true] #content > .page { padding-inline: max(24px, env(safe-area-inset-left)) max(24px, env(safe-area-inset-right)); }
 }
+
+/* Sidebar hierarchy: persistent actions, destinations, then the vault tree. */
+.sidebar-primary-actions {
+  display: grid;
+  gap: 6px;
+  flex-shrink: 0;
+  margin-bottom: 10px;
+}
+.sidebar .sidebar-primary-actions .sidebar-new-note {
+  order: 0;
+  width: 100%;
+  min-height: 34px;
+  height: auto;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 7px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--ui-text-md);
+  font-weight: 550;
+  line-height: 19px;
+}
+.sidebar .sidebar-primary-actions .sidebar-new-note:hover {
+  background: var(--surface-hover);
+  border-color: var(--control-border);
+}
+.sidebar .sidebar-primary-actions .sidebar-new-note .icon {
+  width: 15px;
+  height: 15px;
+}
+.sidebar .sidebar-primary-actions .sidebar-new-note > span {
+  display: inline;
+}
+.sidebar .nav:not(.container-link) > span[data-icon] {
+  flex: 0 0 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.sidebar .nav:not(.container-link) > span:nth-child(2) {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sidebar .sidebar-group + .sidebar-group {
+  margin-top: 16px;
+}
+.sidebar .workspace-label {
+  display: flex;
+  align-items: center;
+  min-height: 24px;
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .3px;
+}
+.sidebar .nav .count {
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  font-weight: 400;
+  opacity: .65;
+}
+.sidebar .nav.active .count {
+  opacity: .85;
+}
+.sidebar .sidebar-primary-actions .nav {
+  margin: 0;
+}
+@media (max-width: 750px), (pointer: coarse) {
+  .sidebar .sidebar-primary-actions :is(.nav, .sidebar-new-note) {
+    min-height: var(--touch-target-size);
+  }
+}

@@ -1,3 +1,4 @@
+import {validSourceIngestionVisualRect,type SourceIngestionVisualRect} from './source-ingestion-visual-evidence.js';
 /** Private worker protocol: receives bytes on stdin, never file paths or secrets. */
 import {PDFDocument} from 'pdf-lib';
 import {createCanvas} from '@napi-rs/canvas';
@@ -6,7 +7,7 @@ import {scanSourcePDF} from './source-import.js';
 const limit=50*1024*1024;
 let input=Buffer.alloc(0);
 for await(const chunk of process.stdin){input=Buffer.concat([input,chunk]);if(input.length>limit*1.4)throw new Error('PDF worker input exceeds budget');}
-const request=JSON.parse(input.toString('utf8')) as {operation:string;bytes:string;pages?:number[];page?:number};
+const request=JSON.parse(input.toString('utf8')) as {operation:string;bytes:string;pages?:number[];page?:number;regions?:{page:number;rect:SourceIngestionVisualRect}[]};
 const bytes=Buffer.from(request.bytes,'base64');if(bytes.length>limit)throw new Error('PDF exceeds budget');
 if(request.operation!=='sanitize')scanSourcePDF(bytes);
 const open=()=>getDocument({data:new Uint8Array(bytes),useSystemFonts:false,disableFontFace:true,stopAtErrors:true,maxImageSize:16_000_000,useWorkerFetch:false});
@@ -54,6 +55,41 @@ if(request.operation==='count'){
  }finally{await task.destroy();}
 }else if(request.operation==='text'){
  const task=open(),document=await task.promise;try{const page=await document.getPage(request.page!);const content=await page.getTextContent();result={text:content.items.map(item=>'str' in item?item.str:'').join(' ')};}finally{await task.destroy();}
+}else if(request.operation==='repair-evidence'){
+ const regions=request.regions;
+ if(!Array.isArray(regions)||regions.length<1||regions.length>4||new Set(regions.map(region=>region.page)).size!==regions.length||regions.some(region=>!Number.isSafeInteger(region.page)||region.page<1||!validSourceIngestionVisualRect(region.rect)))throw new Error('Invalid bounded visual repair regions');
+ const task=open(),document=await task.promise;
+ try{
+  if(document.numPages>32||regions.some(region=>region.page>document.numPages))throw new Error('Visual repair page scope exceeds budget');
+  const original=await PDFDocument.load(bytes,{updateMetadata:false}),out=await PDFDocument.create();
+  const byPage=new Map(regions.map(region=>[region.page,region.rect]));
+  for(let number=1;number<=document.numPages;number++){
+   const rect=byPage.get(number);
+   if(!rect){const [copied]=await out.copyPages(original,[number-1]);out.addPage(copied!);continue;}
+   const page=await document.getPage(number),natural=page.getViewport({scale:1});
+   const draw=async(scale:number,crop?:SourceIngestionVisualRect)=>{
+    const viewport=page.getViewport({scale});
+    const width=Math.ceil(viewport.width*(crop?.width??1)),height=Math.ceil(viewport.height*(crop?.height??1));
+    if(width<1||height<1||width*height>4_000_000||width>2400||height>2400)throw new Error('Visual repair pixel budget exceeded');
+    const canvas=createCanvas(width,height),context=canvas.getContext('2d');
+    await page.render({canvasContext:context as any,canvas:canvas as any,viewport,...(crop?{transform:[1,0,0,1,-crop.x*viewport.width,-crop.y*viewport.height]}:{})}).promise;
+    return canvas.toBuffer('image/png');
+   };
+   try{
+    const full=await draw(Math.min(1.5,1800/Math.max(natural.width,natural.height)));
+    const crop=await draw(Math.min(4,2000/Math.max(natural.width*rect.width,natural.height*rect.height)),rect);
+    const fullImage=await out.embedPng(full),cropImage=await out.embedPng(crop);
+    const gutter=20,target=out.addPage([natural.width*2+gutter,natural.height]);
+    target.drawImage(fullImage,{x:0,y:0,width:natural.width,height:natural.height});
+    const fit=Math.min(natural.width/cropImage.width,natural.height/cropImage.height);
+    const width=cropImage.width*fit,height=cropImage.height*fit;
+    target.drawImage(cropImage,{x:natural.width+gutter+(natural.width-width)/2,y:(natural.height-height)/2,width,height});
+   }finally{page.cleanup();}
+  }
+  const output=Buffer.from(await out.save({useObjectStreams:false,addDefaultPage:false}));
+  if(output.length>12*1024*1024)throw new Error('Visual repair PDF exceeds byte budget');
+  scanSourcePDF(output);result={bytes:output.toString('base64')};
+ }finally{await task.destroy();}
 }else if(request.operation==='render'||request.operation==='sanitize'){
  const task=open(),document=await task.promise;try{
   if(document.numPages>1000)throw new Error('PDF page count exceeds raster budget');

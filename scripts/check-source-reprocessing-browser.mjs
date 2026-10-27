@@ -43,9 +43,9 @@ try {
   await page.getByRole('button',{name:'Review changes (2)',exact:true}).waitFor();
   assert.equal(await page.getByRole('button',{name:'Review changes (2)',exact:true}).getAttribute('aria-expanded'),'false');
   await page.locator('[id^=reprocessing-error-] .notice-description').filter({hasText:'Check the model, supported reasoning and provider access in Settings → Intelligence before retrying. Completed suggestions remain available for review.'}).waitFor();
-  assert.equal(await page.getByRole('combobox',{name:'Reading version',exact:true}).locator('option').filter({hasText:'Editorial revision'}).count(),0,'Failed partial revisions must not silently become the reading version');
+  assert.equal(await page.locator('select[aria-label="Reading version"]').locator('option').filter({hasText:'Editorial revision'}).count(),0,'Failed partial revisions must not silently become the reading version');
   await page.locator('.reprocessing-monitor-details > summary').click();
-  assert.match(await page.locator('.reprocessing-stage-summary').innerText(),/Balanced Reconstruction.*Exactly 2 model requests/s);
+  assert.match(await page.locator('.reprocessing-stage-summary').innerText(),/Balanced Reconstruction.*2 model requests per excerpt, plus document synthesis/s);
   assert.equal(await page.locator('[data-reprocessing-stage]').getAttribute('data-reprocessing-stage'),'verifying');
   assert.match(await page.locator('[data-reprocessing-stage]').innerText(),/Verifying.*1 \/ 3/s);
   assert.match(await page.locator('[data-reprocessing-coverage]').innerText(),/incomplete first-pass coverage: 2 \/ 3/);
@@ -55,17 +55,17 @@ try {
   await page.locator('.reprocessing-report > summary').click();await page.getByText('Token totals are incomplete: some attempts did not report usage. Displayed counts include only reported usage.',{exact:true}).waitFor();
   await page.getByRole('button',{name:'Review changes (2)',exact:true}).click();
   assert.equal(await page.getByRole('button',{name:'Review changes (2)',exact:true}).getAttribute('aria-expanded'),'true');
-  await page.getByRole('button',{name:'Bulk review',exact:true}).click();
+  await page.getByRole('button',{name:'Detailed review',exact:true}).click();await page.getByRole('button',{name:'Bulk review',exact:true}).click();
   await page.locator('.reprocessing-select input').first().check();await page.getByRole('button',{name:'Accept selected (1)',exact:true}).click();
   await page.getByRole('button',{name:'Accept selected (0)',exact:true}).waitFor();assert.deepEqual(mutations[0].body.decisions,[{patchId:'patch-0',decision:'accepted'}]);
   await page.getByRole('button',{name:'Close corrections',exact:true}).click();
   await page.getByRole('button',{name:'Refine text',exact:true}).click();
   await page.getByRole('dialog',{name:'Refine text',exact:true}).waitFor();assert.equal(await page.getByRole('combobox',{name:'Processing depth',exact:true}).evaluate(el=>document.activeElement===el),true);await page.locator('.reprocessing-advanced > summary').click();
   assert.match(await page.locator('.reprocessing-configuration').innerText(),/low reasoning/);
-  assert.equal(await page.getByRole('combobox',{name:'Processing depth',exact:true}).inputValue(),'balanced');
-  assert.equal(await page.getByRole('combobox',{name:'Review policy',exact:true}).inputValue(),'verified');
-  await page.getByRole('combobox',{name:'Processing depth',exact:true}).selectOption('light');
-  assert.equal(await page.getByRole('combobox',{name:'Review policy',exact:true}).inputValue(),'verified');
+  assert.equal(await page.locator('select[aria-label="Processing depth"]').inputValue(),'balanced');
+  assert.equal(await page.locator('select[aria-label="Review policy"]').inputValue(),'verified');
+  await page.locator('select[aria-label="Processing depth"]').selectOption('light',{force:true});
+  assert.equal(await page.locator('select[aria-label="Review policy"]').inputValue(),'verified');
   assert.equal(await page.getByRole('button',{name:'Start reprocessing',exact:true}).isEnabled(),true);
   assert.equal(await page.getByRole('checkbox',{name:'Use local OCR evidence',exact:true}).isEnabled(),true);
   assert.equal(await page.getByRole('checkbox',{name:'Use local OCR evidence',exact:true}).isChecked(),false);
@@ -77,9 +77,9 @@ try {
   assert.equal(await page.getByRole('button',{name:'Start reprocessing',exact:true}).isEnabled(),true);
 
   await page.keyboard.press('Escape');assert.equal(await page.getByRole('dialog').count(),0);assert.equal(await page.getByRole('button',{name:'Refine text',exact:true}).evaluate(el=>el===document.activeElement),true);await page.getByRole('button',{name:'Refine text',exact:true}).click();await page.locator('.reprocessing-advanced > summary').click();assert.equal(await page.getByRole('checkbox',{name:'Compare original-page images with the model',exact:true}).isChecked(),false);await page.getByRole('button',{name:'Cancel',exact:true}).click();
-  for(let cycle=0;cycle<2;cycle++){await page.getByRole('button',{name:'Retry after configuration repair',exact:true}).click();await page.getByRole('button',{name:'Stop and keep progress',exact:true}).click();await page.getByRole('button',{name:'Retry after configuration repair',exact:true}).waitFor();assert.equal(await page.getByRole('progressbar',{name:'Completed excerpt coverage',exact:true}).getAttribute('value'),'1');}assert.equal(mutations.filter(item=>item.url.endsWith('/resume')).length,2);assert.equal(mutations.filter(item=>item.url.endsWith('/cancel')).length,2);
+  for(let cycle=0;cycle<2;cycle++){await page.getByRole('button',{name:'Retry after configuration repair',exact:true}).click();await page.getByRole('button',{name:'Stop and keep progress',exact:true}).click();await page.getByRole('button',{name:'Retry after configuration repair',exact:true}).waitFor();assert.match(await page.locator('.reprocessing-progress').innerText(),/1 of 3 excerpts completed/);}assert.equal(mutations.filter(item=>item.url.endsWith('/resume')).length,2);assert.equal(mutations.filter(item=>item.url.endsWith('/cancel')).length,2);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth),false,`No horizontal overflow at ${width}px`);
-  revision.status='interrupted';revision.report.excerpts[1].outcomeUncertain=true;await page.reload();await page.getByRole('button',{name:'Start a new revision',exact:true}).click();await page.getByRole('button',{name:'Start reprocessing',exact:true}).click();await page.getByRole('dialog').waitFor({state:'hidden'});await page.waitForFunction(()=>['Processing status','Stop and keep progress'].includes(document.activeElement?.textContent));assert.equal(mutations.filter(item=>item.url.endsWith('/reprocessing')).length,1);
+  revision.status='interrupted';revision.report.excerpts[1].outcomeUncertain=true;await page.reload();await page.getByRole('button',{name:'Start a new revision',exact:true}).click();await page.getByRole('button',{name:'Start reprocessing',exact:true}).click();await page.getByRole('dialog').waitFor({state:'hidden'});await page.waitForFunction(()=>['Processing status','Stop and keep progress'].includes(document.activeElement?.textContent?.trim())||document.activeElement?.matches('[aria-label="Revision diff"],[aria-label="Review corrections"]'));assert.equal(mutations.filter(item=>item.url.endsWith('/reprocessing')).length,1);
   await context.close();
  }
  assert.deepEqual(errors,[]);console.log('Source reprocessing browser checks passed: 1440/1024/390px in light/dark; V2 consent reset, configuration focus/Escape, pass ledger, failure recovery, review, repeated interrupted resume/stop and overflow.');

@@ -1,3 +1,4 @@
+import {validSourceIngestionVisualRect,type SourceIngestionVisualRect} from './source-ingestion-visual-evidence.js';
 import {spawn,spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {existsSync} from 'node:fs';
@@ -20,7 +21,9 @@ export class PdfPlatform {
   if(bytes.length>maxBytes)return Promise.reject(new HttpError(413,'PDF exceeds the application byte limit.'));
   if(operation==='sanitize'&&!this.sandboxAvailable())return Promise.reject(new HttpError(503,'This PDF requires passive reconstruction, but the isolated portable PDF sandbox is unavailable.'));
   if(signal?.aborted)return Promise.reject(new HttpError(409,'PDF processing was stopped.'));
-  const script=fileURLToPath(new URL('./pdf-platform-worker.js',import.meta.url));
+  // tsx development runs the parent from src; the isolated worker still runs
+  // compiled JavaScript with Node, just as it does in production.
+  const script=fileURLToPath(new URL(import.meta.url.endsWith('.ts')?'../../../dist/server/modules/pdf-platform-worker.js':'./pdf-platform-worker.js',import.meta.url));
   if(!existsSync(script))return Promise.reject(new HttpError(503,'Build the portable PDF worker before using PDF operations.'));
   const workerArgs=['--max-old-space-size=384',script];
   // Sanitization cannot access vaults, credentials, the network or writable host paths.
@@ -55,6 +58,13 @@ export class PdfPlatform {
   return result;
  }
  async render(bytes:Uint8Array,page:number,signal?:AbortSignal):Promise<Buffer>{const result=await this.worker('render',bytes,{page},signal),output=Buffer.from(result.bytes,'base64');if(!output.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])))throw new HttpError(502,'The portable PDF renderer returned an invalid PNG.');return output;}
+ /** Same-page full context plus a bounded enlarged region; physical page mapping is unchanged. */
+ async renderRepairEvidence(bytes:Uint8Array,regions:{page:number;rect:SourceIngestionVisualRect}[],signal?:AbortSignal):Promise<Buffer>{
+  if(!regions.length||regions.length>4||new Set(regions.map(region=>region.page)).size!==regions.length||regions.some(region=>!Number.isSafeInteger(region.page)||region.page<1||!validSourceIngestionVisualRect(region.rect)))throw new HttpError(400,'Invalid bounded visual repair regions');
+  const result=await this.worker('repair-evidence',bytes,{regions},signal),output=Buffer.from(result.bytes,'base64');
+  if(!output.length||output.length>12*1024*1024)throw new HttpError(502,'Visual repair PDF exceeds the byte budget');
+  scanSourcePDF(output);return output;
+ }
  async admit(bytes:Uint8Array,signal?:AbortSignal):Promise<{bytes:Buffer;pages:number;flattened:boolean;method:string}>{
   const original=Buffer.from(bytes);try{scanSourcePDF(original);}catch{const result=await this.worker('sanitize',bytes,{},signal);const output=Buffer.from(result.bytes,'base64');scanSourcePDF(output);return {bytes:output,pages:result.pages,flattened:true,method:'portable-raster-pdfjs-6.4.299'};}
   return {bytes:original,pages:await this.count(original,signal),flattened:false,method:'screened-original'};

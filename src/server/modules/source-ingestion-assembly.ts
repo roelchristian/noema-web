@@ -61,8 +61,27 @@ export function mergeSourceIngestionWindows(windows:{index:number;document:Sourc
   blocks.push(...doc.blocks.map(b=>({...b,id:id(b.id),continues:b.continues===null?null:id(b.continues)})));
   relations.push(...doc.relations.map(r=>({...r,from:id(r.from),to:id(r.to)})));
   repairs.push(...doc.repairs.map(r=>({...r,blockId:id(r.blockId)})));
-  metadata={title:metadata.title??doc.metadata.title,language:metadata.language??doc.metadata.language,synopsis:metadata.synopsis??doc.metadata.synopsis,contributors:[...metadata.contributors,...doc.metadata.contributors.map(c=>({...c,blockId:c.blockId===null?null:id(c.blockId)}))],bibliographic:[...metadata.bibliographic,...doc.metadata.bibliographic.map(c=>({...c,blockId:c.blockId===null?null:id(c.blockId)}))]};
+  metadata={title:metadata.title??doc.metadata.title,language:metadata.language??doc.metadata.language,synopsis:metadata.synopsis??doc.metadata.synopsis,contributors:[...metadata.contributors,...doc.metadata.contributors.map(c=>({...c,blockId:c.blockId===null?null:id(c.blockId)}))],bibliographic:[...metadata.bibliographic,...doc.metadata.bibliographic.map(c=>({...c,blockId:c.blockId===null?null:id(c.blockId)}))],...(metadata.candidates||doc.metadata.candidates?{candidates:[...(metadata.candidates??[]),...(doc.metadata.candidates??[]).map(candidate=>({...candidate,blockId:id(candidate.blockId)}))]}:{})};
  }
+ const summaries=[...windows].sort((a,b)=>Math.min(...a.document.pages.filter(p=>p.role==='owned').map(p=>p.number))-Math.min(...b.document.pages.filter(p=>p.role==='owned').map(p=>p.number))).filter(window=>window.document.metadata.synopsis?.trim());
+ if(summaries.length>1)metadata.synopsis=summaries.map(window=>{const pages=window.document.pages.filter(page=>page.role==='owned').map(page=>page.number);return `Pages ${Math.min(...pages)}–${Math.max(...pages)}: ${window.document.metadata.synopsis}`;}).join('\n\n');
  if(seen.size!==pageCount)throw new Error('Missing required page window');
  return validateSourceIngestionDocument({schemaVersion:1,metadata,pages,blocks,relations,repairs},{ownedPages:Array.from({length:pageCount},(_,i)=>i+1),pageCount});
+}
+
+/** Reading projection only: keep immutable text leaves and citation coordinates,
+ * adding section containers for semantic context without changing stored assembly. */
+export function sourceIngestionSemanticTree(leaves:SourceDocumentNode[],relations:{kind:string;from:string;to:string;uncertain:boolean}[]):SourceDocumentNode[] {
+ const roots:SourceDocumentNode[]=[],stack:{headingId:string;level:number;node:SourceDocumentNode}[]=[];
+ const parents=new Map(relations.filter(relation=>relation.kind==='heading-parent'&&!relation.uncertain).map(relation=>[relation.from,relation.to]));
+ for(const leaf of structuredClone(leaves)){
+  if(leaf.kind==='heading'&&leaf.level){
+   const parent=parents.get(leaf.id),explicit=parent?stack.findIndex(entry=>entry.headingId===parent):-1;
+   if(explicit>=0)stack.splice(explicit+1);else while(stack.length&&stack.at(-1)!.level>=leaf.level)stack.pop();
+   const section:SourceDocumentNode={id:leaf.id+'-section',kind:'section',title:leaf.text??leaf.title,level:leaf.level,range:{...leaf.range},children:[leaf]};
+   (stack.at(-1)?.node.children??roots).push(section);stack.push({headingId:leaf.id,level:leaf.level,node:section});
+  }else (stack.at(-1)?.node.children??roots).push(leaf);
+  for(const entry of stack)entry.node.range={...entry.node.range,endOffset:leaf.range.endOffset,endLine:leaf.range.endLine,endPage:leaf.range.endPage};
+ }
+ return roots;
 }

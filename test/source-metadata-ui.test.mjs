@@ -37,3 +37,22 @@ test('uncertain writes require read-before-retry and late responses cannot repla
  await click('Reload metadata');assert.equal(button('Accept').disabled,false);
  let finish;t.mock.method(sourceMetadataAPI,'review',()=>new Promise(resolve=>{finish=resolve;}));await click('Accept');await act(async()=>root.render(createElement(SourceMetadata,{...props,sourceId:'second-source'})));await act(async()=>root.render(createElement(SourceMetadata,props)));assert.match(document.querySelector('[role=status]').textContent,/Loading metadata/);await act(async()=>finish({...snapshot(),fields:[]}));assert.match(document.querySelector('dl').textContent,/Published title/);assert.equal(document.querySelector('[role=status]'),null);
 });
+
+test('one explicit bulk review accepts evidence-backed empty fields with fresh fingerprints and leaves conflicts alone',async t=>{
+ let state=snapshot('quick-review-source'),reads=0;state.fields[2].proposals[0].compatible=false;state.fields[2].proposals[0].evidence=[{...evidence,validated:false}];
+ const date={...state.fields[2].proposals[0],id:'decision-date',fieldKey:'bibliography:date',value:'2026-10-23',fingerprint:'date-before',evidence:[{...evidence,excerpt:'Done on 23 October 2026',validated:false}]};
+ state.fields.push({key:'bibliography:date',label:'Document date',owner:'bibliography',value:null,editable:true,fingerprint:'date-field',proposals:[date],history:[]});
+ state.fields[1].proposals=[{...date,id:'conflicting-title',fieldKey:'bibliography:title',value:'AI proposed title',fingerprint:'conflict'}];
+ const calls=[];let finishFirst;
+ t.mock.method(sourceMetadataAPI,'snapshot',async()=>{reads++;return structuredClone(state);});
+ t.mock.method(sourceMetadataAPI,'review',async(_vault,_id,body)=>{calls.push(body);if(calls.length===1)await new Promise(resolve=>{finishFirst=resolve;});const field=state.fields.find(field=>field.proposals.some(item=>item.id===body.proposalId));field.value=field.proposals[0].value;field.proposals=[];state.fields.find(field=>field.key==='bibliography:date').proposals.forEach(item=>item.fingerprint='date-after-publisher');return structuredClone(state);});
+ await mount(t,{sourceId:'quick-review-source'});assert.match(document.querySelector('[aria-label="Suggestions to accept together"]').textContent,/Publisher: Synthetic Press.*Document date: 2026-10-23/);assert.equal(calls.length,0);await click('Accept non-conflicting suggestions (2)');assert.equal(button('Accept non-conflicting suggestions (2)').disabled,true);
+ await act(async()=>button('Accept non-conflicting suggestions (2)').click());assert.equal(calls.length,1);
+ await act(async()=>finishFirst());assert.deepEqual(calls,[{proposalId:'suggestion',fingerprint:'fresh-proposal',action:'accept'},{proposalId:'decision-date',fingerprint:'date-after-publisher',action:'accept'}]);
+ assert.match(document.querySelector('[role=status]').textContent,/2 suggestions accepted/);assert.match(document.body.textContent,/AI proposed title/);assert.equal(state.fields[1].value,'Published title');assert.equal(reads,1);
+});
+
+test('quick metadata review excludes stale, competing and preserved authored values',async t=>{
+ t.mock.method(sourceMetadataAPI,'snapshot',async()=>{const value=snapshot('protected-review-source');value.fields[2].proposals[0].compatible=false;value.fields[2].preservedValues=[{id:'authored',name:'publisher',value:'Authored Press',target_id:null}];const candidate={...value.fields[2].proposals[0],id:'stale',stale:true,fieldKey:'bibliography:date'};value.fields.push({key:'bibliography:date',label:'Date',value:null,editable:true,fingerprint:'date-field',proposals:[candidate],history:[]},{key:'bibliography:edition',label:'Edition',value:null,editable:true,fingerprint:'edition-field',proposals:[{...candidate,id:'edition-a',stale:false,value:'First edition'},{...candidate,id:'edition-b',stale:false,value:'Second edition'}],history:[]});return value;});
+ let writes=0;t.mock.method(sourceMetadataAPI,'review',async()=>{writes++;throw Error('No review expected');});await mount(t,{sourceId:'protected-review-source'});assert.equal([...document.querySelectorAll('button')].some(item=>item.textContent.startsWith('Accept non-conflicting suggestions')),false);assert.equal(writes,0);
+});

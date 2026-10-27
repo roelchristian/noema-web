@@ -657,3 +657,10 @@ test('numbered bibliography citations jump to exact entries without becoming foo
  await act(async()=>root.render(React.createElement(SourceReaderText,{text:'Ordinary [1], math $[1]$, and code `[1]` have no bibliography.'})));
  assert.equal(document.querySelector('a[data-bibliographic-reference]'),null);
 });
+
+test('accept and read applies all pending suggestions directly from the reader bar',async t=>{
+ const r=fixture();r.fileId='f';r.status='completed';r.report.chunksCompleted=r.report.chunksTotal;const readings=[];
+ const env=await mount(t,{initial:r,onReadingRevision:value=>readings.push(value),post:async(entry,current)=>{assert.ok(entry.url.endsWith('/review'));return {...current,updatedAt:'2026-10-27T01:00:00Z',patches:current.patches.map(patch=>({...patch,decision:entry.body.decisions.find(item=>item.patchId===patch.id)?.decision??patch.decision}))};}});
+ assert.equal(document.querySelector('.reprocessing-reviews'),null);await env.click(env.button('Accept and read (2)'));
+ const posts=env.requests.filter(entry=>entry.method==='POST');assert.equal(posts.length,1);assert.equal(posts[0].body.updatedAt,r.updatedAt);assert.equal(posts[0].body.decisions.length,2);assert.ok(posts[0].body.decisions.every(item=>item.decision==='accepted'));assert.equal(readings.at(-1).id,r.id);assert.ok(readings.at(-1).patches.every(patch=>patch.decision==='accepted'));assert.equal(document.querySelector('.reprocessing-reviews'),null);
+});

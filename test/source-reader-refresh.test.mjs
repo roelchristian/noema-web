@@ -274,3 +274,43 @@ test('selected accepted page recovery labels recovered reading without rewriting
  assert.match(document.querySelector('[aria-label="PDF transcription issues"]').textContent,/Recovered reading; original transcription unavailable/);assert.match(document.querySelector('.source-reader-document').textContent,/Recovered second page/);
  assert.equal(file.text,text);assert.equal(original.document.ingestion.pages[1].state,'unreadable');assert.equal(localStorage.getItem('noema:source-reading:default:file'),null,'Recovery is viewed only by explicit selection and never silently preferred');
 });
+
+test('failed provider source shows checkpoints before document text is available without retrying',async t=>{
+ const {setupDOM}=await import('./helpers/dom.mjs');const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
+ const file={id:'failed.pdf',vault_id:'default',entity_id:'source',name:'Failed PDF',format:'pdf',status:'failed',admitted:1,text:'',progress:0,pages:15,ingestion_origin:'openai',enrichment_status:'pending',error:'Invalid response'};
+ const calls=[];t.mock.method(globalThis,'fetch',async(route,options)=>{calls.push({route,options});if(route==='/api/entities/source')return Response.json({attachments:[file]});if(route.endsWith('/ingestion'))return Response.json({id:'r',fileId:file.id,mode:'ingestion',state:'failed',stage:'extraction',provider:'openai',model:'fixture',pageCount:15,completedPages:0,completedWindows:0,totalWindows:3,activePages:[],pendingReview:0,startedAt:'2026-10-26T00:00:00Z',updatedAt:'2026-10-26T00:01:00Z',error:file.error,unknownOutcome:false,canResume:true});throw new Error('Unexpected route '+route);});
+ const noop=()=>{};await act(async()=>root.render(React.createElement(SourceReader,{vaultId:'default',source:{id:'source',name:'Failed PDF'},entities:[],onOpenEntity:noop,onCreatePageFromSource:noop,onError:noop,onAddPassage:noop,onAnnotate:noop,onReadingNoteCreated:noop,onOpenReadingNote:noop,onRemoveReadingNote:noop})));
+ assert.ok(document.querySelector('[aria-label="PDF processing checkpoints"]'));assert.match(document.body.textContent,/PDF processing failed/);assert.equal(document.querySelector('.source-reader-document'),null);assert.ok(calls.every(call=>call.options.method==='GET'));
+});
+
+test('ready provider reader offers enriched JSON download without generating another request',async t=>{
+ const {setupDOM}=await import('./helpers/dom.mjs'),env=setupDOM(t),{dom}=env;
+ for(const [key,value] of Object.entries({localStorage:dom.window.localStorage,ResizeObserver:class{observe(){}disconnect(){}}})){
+  const previous=Object.getOwnPropertyDescriptor(globalThis,key);Object.defineProperty(globalThis,key,{configurable:true,writable:true,value});env.defer(()=>{if(previous)Object.defineProperty(globalThis,key,previous);else delete globalThis[key];});
+ }
+ Object.defineProperty(document,'fonts',{value:{ready:Promise.resolve()}});dom.window.Range.prototype.getClientRects=()=>[];
+ const text='Readable source.',file={id:'provider.pdf',vault_id:'default',entity_id:'source',name:'article.pdf',format:'pdf',status:'ready',admitted:1,text,textHash:'canonical',pages:1,page_start_lines:'[1]',structural_nodes:'[]',enrichment_status:'completed',ingestion_origin:'openai',generated_name:null,language:null,source_url:null},calls=[];
+ t.mock.method(globalThis,'fetch',async(url,options)=>{
+  calls.push({url,method:options.method});if(url==='/api/entities/source')return Response.json({attachments:[file]});
+  if(url.startsWith('/api/source-files/provider.pdf?'))return Response.json({...file,document:processedSourceDocument(file)});
+  if(url.endsWith('/ingestion'))return Response.json({id:'r',fileId:file.id,state:'completed',stage:'publication',provider:'openai',model:'fixture',pageCount:1,completedPages:1,completedWindows:1,totalWindows:1,activePages:[],pendingReview:0,startedAt:'2026-10-26T00:00:00Z',updatedAt:'2026-10-26T00:01:00Z',unknownOutcome:false,canResume:false});
+  if(url.includes('/reading-locations'))return Response.json({resume:null,bookmarks:[]});return Response.json([]);
+ });
+ const root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));const noop=()=>{};
+ await act(async()=>root.render(React.createElement(SourceReader,{vaultId:'default',source:{id:'source',name:'Article'},entities:[],onOpenEntity:noop,onCreatePageFromSource:noop,onError:noop,onAddPassage:noop,onAnnotate:noop,onReadingNoteCreated:noop,onOpenReadingNote:noop,onRemoveReadingNote:noop})));
+ const link=document.querySelector('a[aria-label="Download enriched JSON"]');assert.ok(link);assert.equal(link.textContent,'Enriched JSON');assert.equal(link.getAttribute('href'),'/api/source-files/provider.pdf/enriched-json?vault=default');assert.ok(link.hasAttribute('download'));assert.ok(calls.every(call=>call.method==='GET'));
+});
+
+test('physical page navigation ignores collapsed running headers with zero viewport bounds',async t=>{
+ const {setupDOM}=await import('./helpers/dom.mjs'),env=setupDOM(t,{html:'<main><article id="source"></article><div id="mount"></div></main>'});const {SourceReadingNavigation,visibleSourceNavigationLeaves}=await import('../src/client/sources/SourceReadingNavigation.tsx');
+ const previous=Object.getOwnPropertyDescriptor(globalThis,'ResizeObserver');Object.defineProperty(globalThis,'ResizeObserver',{configurable:true,writable:true,value:class{observe(){}disconnect(){}}});env.defer(()=>{if(previous)Object.defineProperty(globalThis,'ResizeObserver',previous);else delete globalThis.ResizeObserver;});
+ const text=Array.from({length:5},(_,index)=>'page '+(index+1)+'\n').join(''),article=document.querySelector('#source');article.innerHTML=Array.from({length:5},(_,index)=>{const start=index*7;return '<details><summary>Running page text</summary><span data-source-start="'+start+'" data-source-end="'+(start+1)+'" data-source-atomic="true" data-top="0">Header</span></details><span data-source-start="'+(start+1)+'" data-source-end="'+(start+6)+'" data-source-atomic="true" data-top="'+((index-2)*500)+'">Body</span>';}).join('');
+ env.dom.window.HTMLElement.prototype.getClientRects=function(){return this.closest('details:not([open])')||this.closest('[hidden]')?[]:[{height:20}];};
+ env.dom.window.HTMLElement.prototype.getBoundingClientRect=function(){const top=Number(this.dataset.top??0);return {left:0,right:1000,top,bottom:top+20,width:1000,height:20};};
+ const scrolls=[];env.dom.window.scrollBy=options=>scrolls.push(options);
+ const articleRef=React.createRef();articleRef.current=article;const root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
+ await act(async()=>root.render(React.createElement(SourceReadingNavigation,{article:articleRef,text,document:{physical:{pages:Array.from({length:5},(_,index)=>({number:index+1,range:{startLine:index+1}}))}}})));
+ assert.equal(visibleSourceNavigationLeaves(article).length,5);assert.match(document.querySelector('.source-reading-navigation').textContent,/Page 3\s*\/ 5/);
+ await act(async()=>document.querySelector('[aria-label="Next page"]').click());assert.equal(scrolls.at(-1).top,476,'Next page uses visible body position, not the collapsed header at zero');
+ const first=article.querySelector('details');first.open=true;assert.equal(visibleSourceNavigationLeaves(article).length,6,'Opening furniture makes its source leaf eligible again');
+});

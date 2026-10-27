@@ -1,3 +1,6 @@
+import {sourceIngestionBlockNotes} from '../shared/source-evidence.js';
+import type {SourceIngestionPageEvidence} from '../shared/source-evidence.js';
+import {sourceIngestionEnabled,saveSourceIngestionSettings} from './modules/source-ingestion-settings.js';
 import {fetchSource} from './modules/source-import.js';
 import {parseSourceIngestionOptions} from './modules/source-ingestion-options.js';
 import {chatRoutes} from './routes/chat.js';
@@ -25,7 +28,7 @@ import {SourceLifecycleService} from './modules/source-lifecycle.js';
 import {readingNoteMaxWords,readingNoteWordCount} from '../shared/source-reading.js';
 import {sourceProgress} from './modules/source-progress.js';
 import {mathSource} from './modules/source-math-text.js';
-import {resolveSourceDocument} from './modules/source-ingestion-document.js';
+import {resolveSourceDocument,resolveSourceIngestionAssembly} from './modules/source-ingestion-document.js';
 import {EntityScanStream} from './modules/entity-scan-stream.js';
 import {DOMAINS,TAXONOMY_VERSION} from '../shared/domains.js';
 import {Domains} from './modules/domains.js';
@@ -92,10 +95,22 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
           const offset=Number(url.searchParams.get('offset')??0);if(!Number.isSafeInteger(offset)||offset<0||offset>100000)throw new HttpError(400,'Invalid review position');
           return send(200,centre.list(vault,offset));
         }
+        if(url.pathname==='/api/source-ingestion/settings') {
+          if(req.headers['x-noema-request']!=='1')throw new HttpError(403,'PDF processing settings require the Noema client');
+          const header=req.headers['x-vault-id'];if(Array.isArray(header))throw new HttpError(400,'Invalid vault ID');
+          vaults.requireOpen(header||'default');
+          if(method==='GET')return send(200,{enabled:sourceIngestionEnabled(store)});
+          if(method==='PUT') {
+            if(!/^application\/json(?:;|$)/i.test(req.headers['content-type']||''))throw new HttpError(415,'PDF processing settings require JSON.');
+            const body=await readBody(req);vaults.requireOpen(header||'default');
+            return send(200,saveSourceIngestionSettings(store,body));
+          }
+          throw new HttpError(405,'Method not allowed');
+        }
         if(url.pathname==='/api/source-ingestion/capabilities' && method==='GET') {
           const header=req.headers['x-vault-id'];if(Array.isArray(header))throw new HttpError(400,'Invalid vault ID');
           vaults.requireOpen(header||'default');
-          return send(200,{enabled:process.env.NOEMA_PDF_PROVIDER_INGESTION==='1',localExtraction:process.platform==='darwin',providers:(['openai','gemini'] as const).map(provider=>{
+          return send(200,{enabled:sourceIngestionEnabled(store),localExtraction:process.platform==='darwin',providers:(['openai','gemini'] as const).map(provider=>{
             const status=intelligence.documentStatus(provider);
             return {provider,available:status.configured,reason:status.configured?'Account model access will be checked by the provider when processing starts.':'Configure a server credential in Settings.',models:status.models.map(model=>({id:model.id,label:model.id,available:true}))};
           })});
@@ -108,7 +123,7 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
           if(id && parts[3]==='ingestion') {
             if(parts.length===4&&method==='GET')return send(200,runtime.sourceIngestion.view(vault,id));
             if(parts.length===4&&method==='POST') {
-              if(process.env.NOEMA_PDF_PROVIDER_INGESTION!=='1')throw new HttpError(409,'PDF provider ingestion is not enabled on this server.');
+              if(!sourceIngestionEnabled(store))throw new HttpError(409,'PDF provider ingestion is not enabled on this server.');
               if(!/^application\/json(?:;|$)/i.test(req.headers['content-type']||''))throw new HttpError(415,'PDF processing actions require JSON.');
               const body=await readBody(req);vaults.requireOpen(vault);
               runtime.sourceIngestion.stage(vault,id,parseSourceIngestionOptions(body.options));
@@ -119,10 +134,11 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
               if(!/^application\/json(?:;|$)/i.test(req.headers['content-type']||''))throw new HttpError(415,'PDF processing actions require JSON.');
               const body=await readBody(req);vaults.requireOpen(vault);
               if(parts[4]==='recover-page') {
-                if(process.env.NOEMA_PDF_PROVIDER_INGESTION!=='1')throw new HttpError(409,'PDF provider ingestion is not enabled on this server.');
+                if(!sourceIngestionEnabled(store))throw new HttpError(409,'PDF provider ingestion is not enabled on this server.');
                 if(!Number.isSafeInteger(body.page)||(body.page as number)<1)throw new HttpError(400,'Choose a physical page to recover.');
                 return send(202,runtime.sourceIngestion.recoverPage(vault,id,body.page as number));
               }
+              if(parts[4]==='enrich'){if(!sourceIngestionEnabled(store))throw new HttpError(409,'PDF provider ingestion is not enabled on this server.');return send(202,runtime.sourceIngestion.enrich(vault,id));}
               if(parts[4]==='stop')return send(200,runtime.sourceIngestion.stop(vault,id));
               if(parts[4]==='retry')return send(202,runtime.sourceIngestion.retry(vault,id));
               if(parts[4]==='resume') {
@@ -162,7 +178,7 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
           if(!id && parts.length===2 && method==='POST') {
             const containsMath=url.searchParams.get('containsMath');
             if(containsMath!==null&&containsMath!=='true'&&containsMath!=='false')throw new HttpError(400,'Invalid math notation choice.');
-            let ingestion;
+            let ingestion:import('../shared/source-ingestion.js').SourceIngestionOptions|undefined;
             const encoded=url.searchParams.get('ingestion');
             if(encoded!==null){let value:unknown;try{value=JSON.parse(encoded);}catch{throw new HttpError(400,'Invalid PDF processing configuration.');}ingestion=parseSourceIngestionOptions(value);}
             const chunks:Buffer[]=[];let size=0;
@@ -180,7 +196,7 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
             const raw=evidence.rawExtraction as {ocrPages?:number;pageEvidence?:{page:number}[];unresolvedOutlines?:string[]}|undefined;
             const {originalAvailable,originalHash,originalBytes,admittedBytes,flattening,findings}=evidence;
             const authoritative=store.get<{document_json:string;provenance_json:string}>('SELECT document_json,provenance_json FROM source_ingestion_documents WHERE file_id=? AND vault_id=?',id,vault);
-            let ingestion;
+            let ingestion:SourceIngestionPageEvidence|undefined;
             if(authoritative){
               const document=JSON.parse(authoritative.document_json) as import('../shared/source-ingestion.js').SourceIngestionDocument;
               const provenance=JSON.parse(authoritative.provenance_json) as import('../shared/source-ingestion.js').SourceIngestionProvenance;
@@ -189,8 +205,8 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
               const blocks=document.blocks.filter(block=>block.page===page).sort((a,b)=>a.order-b.order);
               const frozen=store.get<{config_json:string}>('SELECT config_json FROM source_ingestion_runs WHERE published_document_id=(SELECT id FROM source_ingestion_documents WHERE file_id=?) AND vault_id=?',id,vault);
               const consent=frozen?JSON.parse(frozen.config_json) as import('../shared/source-ingestion.js').SourceIngestionOptions:null;
-              const canRecoverPage=process.env.NOEMA_PDF_PROVIDER_INGESTION==='1'&&originalAvailable===true&&file.admitted===1&&consent?.transmissionConsent===true&&consent.route===provenance.provider&&['unreadable','image-only'].includes(physical.state)&&!blocks.some(block=>block.text.trim());
-              ingestion={provider:provenance.provider,model:provenance.returnedModel??provenance.requestedModel,page,pageState:physical.state,role:physical.role,canRecoverPage,text:blocks.map(block=>block.text).join('\n\n'),uncertainty:[...physical.unresolved.map(region=>region.description),...blocks.flatMap(block=>block.uncertainty?[block.uncertainty]:[]),...(physical.state==='unreadable'?['This physical page contains an unreadable region.']:physical.state==='image-only'?['This physical page has image-only content without a faithful textual representation.']:[])],coverage:provenance.coverage,independentEvidence:provenance.independentEvidence};
+              const canRecoverPage=sourceIngestionEnabled(store)&&originalAvailable===true&&file.admitted===1&&consent?.transmissionConsent===true&&consent.route===provenance.provider&&['unreadable','image-only'].includes(physical.state)&&!blocks.some(block=>block.text.trim());
+              ingestion={provider:provenance.provider,model:provenance.returnedModel??provenance.requestedModel,page,pageState:physical.state,role:physical.role,canRecoverPage,layoutWarnings:[...new Set(blocks.flatMap(block=>sourceIngestionBlockNotes(block).layoutWarnings))],text:blocks.map(block=>block.text).join('\n\n'),uncertainty:[...physical.unresolved.map(region=>region.description),...blocks.flatMap(block=>{const note=sourceIngestionBlockNotes(block).uncertainty;return note?[note]:[];}),...(physical.state==='unreadable'?['This physical page contains an unreadable region.']:physical.state==='image-only'?['This physical page has image-only content without a faithful textual representation.']:[])],coverage:provenance.coverage,independentEvidence:provenance.independentEvidence};
             }
             return send(200,{originalAvailable,originalHash,originalBytes,admittedBytes,flattening,findings,ingestion,
               rawExtraction:raw?{ocrPages:raw.ocrPages,unresolvedOutlines:raw.unresolvedOutlines,pageEvidence:raw.pageEvidence?.filter(item=>item.page===page)}:undefined});
@@ -253,6 +269,15 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
           if(id && parts.length===3 && method==='DELETE')return send(200,sourceFiles.remove(vault,id));
           if(id && parts.length===4 && parts[3]==='retry' && method==='POST')return send(200,sourceFiles.retry(vault,id));
           if(id && parts.length===4 && parts[3]==='retry-enrichment' && method==='POST')return send(200,sourceEnrichments.retry(vault,id));
+          if(id && parts.length===4 && parts[3]==='enriched-json' && method==='GET') {
+            const file=sourceFiles.require(vault,id);
+            if(file.admitted!==1||file.status!=='ready'||!file.text.trim())throw new HttpError(409,'Enriched JSON is available after PDF processing completes.');
+            const assembly=resolveSourceIngestionAssembly(store,file);if(!assembly)throw new HttpError(404,'This source has no direct PDF processing result.');
+            const filename=encodeURIComponent((file.name.replace(/\.[^.]+$/,'')||'source')+'.enriched.json').replace(/['()*]/g,char=>'%'+char.charCodeAt(0).toString(16).toUpperCase());
+            res.writeHead(200,{'Content-Type':'application/json; charset=utf-8','Content-Disposition':`attachment; filename="source.enriched.json"; filename*=UTF-8''${filename}`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; sandbox"});
+            // Reuse the saved structured result; no model request or second text/tree copy.
+            return res.end(JSON.stringify(assembly.document,null,2));
+          }
           if(id && parts.length===4 && parts[3]==='download-processed' && method==='GET') {
             const file=sourceFiles.require(vault,id);
             if(file.admitted!==1||file.status!=='ready'||!file.text.trim())throw new HttpError(409,'Processed text is available after source processing completes.');

@@ -156,6 +156,99 @@ test('v1 prompt snapshots are immutable and distinct from v2 compositional profi
  assert.throws(()=>parsePersonaExpression('loud'));assert.throws(()=>parsePersonaIdentity({id:'editor',version:2,origin:'builtin',expression:'loud'}));
 });
 
+test('Oxford Don and Antiquarian retain fixed historical v1 metadata and review instructions',()=>{
+ const snapshots={oxford_don:'37fb5e3d2c57e1c128db7bd91554361f3d20497bde19f678ade799c81b01dcfc',antiquarian:'222b1434566f5ea68bd22c169fa0938cb7de69118875f8421ff12df2f87a649b'};
+ for(const [id,expected] of Object.entries(snapshots)){
+  const resolved=resolvePersona(id,1);
+  const snapshot={metadata:aiPersonasV1.find(p=>p.id===id),resolved,prompt:personaInstructions('TASK',resolved,true)};
+  assert.equal(createHash('sha256').update(JSON.stringify(snapshot)).digest('hex'),expected,id);
+  assert.deepEqual(resolvePersona(id,1,'immersive'),resolved,'Expression never reinterprets historical v1 instructions');
+ }
+});
+
+test('every expression retains mandatory persona syntax after expression guidance',()=>{
+ const intensities={oxford_don:{subtle:/elegant hypotaxis with restrained ornament/,expressive:/periodic sentences and a measured scholarly rhythm/,immersive:/Oxbridge literary cadence/},antiquarian:{subtle:/Brownean hypotaxis with lighter Latinate ornament/,expressive:/strongly ornate syntax, Latinate diction and meditative argument/,immersive:/full Brownean rhetorical amplitude/}};
+ for(const personaId of ['oxford_don','antiquarian']){
+  const resolved=[],baselines=[];
+  for(const expression of ['subtle','expressive','immersive']){
+   const persona=resolvePersona(personaId,2,expression),instructions=persona.instructions;
+   assert.equal(persona.expression,expression);
+   const expressionStart=instructions.indexOf(`EXPRESSION: ${expression}.`),mandatoryStart=instructions.indexOf('MANDATORY PERSONA SYNTAX');
+   assert.ok(expressionStart>=0&&mandatoryStart>expressionStart,`${personaId}/${expression}: syntax must follow expression guidance`);
+   assert.match(instructions.slice(expressionStart,mandatoryStart),intensities[personaId][expression]);
+   const mandatory=instructions.slice(mandatoryStart);
+   assert.match(mandatory,/hypotax|hypotact/i);
+   assert.match(mandatory,/subordinate|relative clauses/i);
+   assert.match(mandatory,/concessive/i);
+   assert.match(mandatory,/mandatory in generated prose, irrespective of the selected expression level/);
+   assert.match(mandatory,/Subtle must never revert to generic, clipped assistant prose/);
+   baselines.push(mandatory);
+   resolved.push(instructions);
+  }
+  assert.equal(new Set(resolved).size,3,'Expression continues to control stylistic intensity');
+  assert.equal(new Set(baselines).size,1,'Mandatory syntax is independent of expression');
+ }
+ for(const persona of aiPersonas.filter(p=>!['oxford_don','antiquarian'].includes(p.id)))assert.doesNotMatch(resolvePersona(persona.id).instructions,/MANDATORY PERSONA SYNTAX/);
+ const oxford=personaProfiles.find(p=>p.id==='oxford_don'),antiquarian=personaProfiles.find(p=>p.id==='antiquarian');
+ assert.match(JSON.stringify(oxford),/hypotax|hypotact/i);assert.match(JSON.stringify(oxford),/British/);assert.match(JSON.stringify(oxford),/understatement/);
+ assert.match(JSON.stringify(antiquarian),/Browne/);assert.match(JSON.stringify(antiquarian),/Urne-Buriall/);assert.match(JSON.stringify(antiquarian),/Latinate/);assert.match(JSON.stringify(antiquarian),/parenthetical/);
+ assert.notEqual(oxford.examples[0].exemplaryOutput,antiquarian.examples[0].exemplaryOutput);
+});
+
+test('literary self-revision applies only to eligible prose within the current generation',()=>{
+ for(const id of ['oxford_don','antiquarian']){
+  const instructions=resolvePersona(id).instructions;
+  assert.match(instructions,/Before finalising eligible generated prose/);
+  assert.match(instructions,/revise the sentence structure within this response/);
+  assert.match(instructions,/not an additional model pass/);
+  assert.match(instructions,/Do not apply stylistic revisions to verbatim quotations, technical schemas, mathematical notation or source extraction/);
+ }
+});
+
+test('classical ornament is optional, authentic, untranslated and subordinate to task constraints at every expression',()=>{
+ for(const id of ['oxford_don','antiquarian'])for(const expression of ['subtle','expressive','immersive']){
+  const persona=resolvePersona(id,2,expression),instructions=persona.instructions;
+  assert.match(instructions,/occasional/);
+  assert.match(instructions,/genuinely pertinent and authentic/);
+  assert.match(instructions,/never invent facts, quotations, classical authorities, attributions or source evidence/);
+  assert.match(instructions,/If uncertain of wording or attribution, omit the quotation/);
+  assert.match(instructions,/Leave Greek or Latin quotations untranslated unless expressly requested/);
+  assert.match(instructions,/omit allusions or quotations that would breach source-only restrictions/);
+  assert.match(instructions,/omit them when the requested output language or task forbids them/);
+  if(id==='antiquarian'){
+   assert.match(instructions,/Never fabricate quotations, misattribute authorities or manufacture historical learning/);
+   assert.match(instructions,/modern subjects without inventing historical parallels or authorities/);
+  }
+  const prompt=personaInstructions('Use only the supplied source. Return French JSON.',persona),last=prompt.indexOf('FINAL OVERRIDING CONSTRAINTS');
+  assert.ok(last>prompt.indexOf('MANDATORY PERSONA SYNTAX'));
+  const constraints=prompt.slice(last);
+  assert.match(constraints,/All task-specific output, evidence, language and input-safety rules above override persona style instructions/);
+  assert.match(constraints,/Requested output language and source-only restrictions remain authoritative/);
+  assert.match(constraints,/mathematical meaning or structured-output requirements/);
+  assert.match(constraints,/source-only boundaries, citations, mathematical accuracy, security protections, output schemas and NDJSON unchanged/);
+  const source=generationPolicy({kind:'sourcePage',input:'{}',personaId:id,personaExpression:expression,signal:new AbortController().signal,onDelta(){}},selections).prompt();
+  assert.match(source.instructions,/MANDATORY PERSONA SYNTAX/);
+  assert.ok(source.instructions.indexOf('FINAL OVERRIDING CONSTRAINTS')>source.instructions.indexOf('MANDATORY PERSONA SYNTAX'));
+ }
+});
+
+test('routine corrections preserve authorial voice while explicit rewrites permit the selected persona',()=>{
+ for(const personaId of ['oxford_don','antiquarian']){
+  for(const action of [undefined,'proofread','refine']){
+   const prompt=generationPolicy({kind:'review',action,input:'Synthetic text.',personaId,personaExpression:'immersive'},selections).prompt();
+   assert.match(prompt.instructions,/Routine corrections must preserve the author’s voice, meaning, and register/);
+   assert.match(prompt.instructions,/Never rewrite corrections in the persona’s voice/);
+   assert.ok(prompt.instructions.indexOf('Writing Review:')>prompt.instructions.indexOf('MANDATORY PERSONA SYNTAX'));
+  }
+  for(const action of ['rewrite','recast']){
+   const prompt=generationPolicy({kind:'review',action,input:'Synthetic text.',personaId,personaExpression:'subtle'},selections).prompt();
+   assert.match(prompt.instructions,/this explicit request permits stylistic rewriting/);
+   assert.doesNotMatch(prompt.instructions,/Never rewrite corrections in the persona’s voice/);
+   assert.match(prompt.instructions,/MANDATORY PERSONA SYNTAX/);
+  }
+ }
+});
+
 test('expression overrides preserve generation contract and historical v1 has no expression reinterpretation',()=>{
  const request={kind:'explanation',input:'Untrusted prose.',personaId:'socratic'};
  const immersive=generationPolicy({...request,personaExpression:'immersive'},selections);

@@ -1,3 +1,4 @@
+import {sourceIngestionEnabled} from './source-ingestion-settings.js';
 import type {PdfPlatform} from './pdf-platform.js';
 import type {SourceIngestionOptions} from '../../shared/source-ingestion.js';
 import type {SourceIngestion} from './source-ingestion.js';
@@ -160,7 +161,7 @@ export class SourceFiles {
     }
     requireOpen();
     if(ingestion&&ingestion.route!=='local'){
-      if(process.env.NOEMA_PDF_PROVIDER_INGESTION!=='1')throw new HttpError(409,'PDF provider ingestion is not enabled on this server.');
+      if(!sourceIngestionEnabled(this.store))throw new HttpError(409,'PDF provider ingestion is not enabled on this server.');
       if(!name.toLowerCase().endsWith('.pdf'))throw new HttpError(400,'Provider ingestion applies only to PDF uploads.');
       if(!this.ingestion)throw new HttpError(503,'PDF provider ingestion is unavailable.');
     }
@@ -179,13 +180,29 @@ export class SourceFiles {
     // Legacy fallback diagnostics describe a missing manifest, not this fresh preserved PDF.
     const originalHash=this.hash(original),previous:Record<string,unknown>=existsSync(path.join(this.evidenceDirectory(vault,id),'manifest.json'))?this.evidence(vault,id):{};
     if(previous.originalHash!==undefined&&previous.originalHash!==originalHash)throw new HttpError(409,'Original PDF provenance changed.');
-    const admitted=previous.admittedHash===this.hash(asset)&&file.admitted===1?{bytes:asset,pages:await pdf.count(asset,signal),flattened:file.pdf_flattened===1,method:typeof previous.admissionMethod==='string'?previous.admissionMethod:'screened-original'}:await pdf.admit(original,signal);
+    const admitted=previous.admittedHash===this.hash(asset)&&file.admitted===1?{bytes:asset,pages:await pdf.count(asset,signal),flattened:file.pdf_flattened===1,method:typeof previous.admissionMethod==='string'?previous.admissionMethod:'screened-original'}:await this.admitProviderPDF(original,pdf,signal);
     scanSourcePDF(admitted.bytes);
     const admittedHash=this.hash(admitted.bytes);
     const evidence={...previous,version:1,originalAvailable:true,originalHash,admittedHash,originalBytes:original.length,admittedBytes:admitted.bytes.length,admissionMethod:admitted.method,createdAt:now(),origin:'provider',independentEvidence:false};
     this.replaceFile(path.join(this.evidenceDirectory(vault,id),'manifest.json'),Buffer.from(JSON.stringify(evidence)));
     if(file.admitted!==1||this.hash(asset)!==admittedHash){this.replaceFile(this.filename(vault,id),admitted.bytes);this.store.run('UPDATE source_files SET admitted=1,size=?,pdf_flattened=? WHERE id=?',admitted.bytes.length,admitted.flattened?1:0,id);rmSync(this.inboxFilename(vault,id),{force:true});}
     return {bytes:admitted.bytes,originalHash,admittedHash,pageCount:admitted.pages};
+  }
+  private async admitProviderPDF(original:Buffer,pdf:PdfPlatform,signal?:AbortSignal) {
+    if(signal?.aborted)throw new HttpError(409,'PDF processing was stopped.');
+    if(process.platform==='darwin') {
+      let requiresReconstruction=false;
+      try{scanSourcePDF(original);}catch{requiresReconstruction=true;}
+      if(requiresReconstruction) {
+        // Reuse the same isolated PDFKit reconstruction as local imports. The
+        // portable worker's Linux-only bwrap sandbox is not available on macOS.
+        const bytes=await this.flattenPDF(original);
+        if(signal?.aborted)throw new HttpError(409,'PDF processing was stopped.');
+        scanSourcePDF(bytes);
+        return {bytes,pages:await pdf.count(bytes,signal),flattened:true,method:'native-'+String(this.lastSanitization.method??'passive-rebuild')};
+      }
+    }
+    return pdf.admit(original,signal);
   }
   publishProviderEvidence(vault:string,id:string,canonicalText:string,provenance:Record<string,unknown>) {
     const manifest=this.evidence(vault,id);

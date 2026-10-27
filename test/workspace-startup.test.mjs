@@ -26,9 +26,9 @@ test('startup resolves vault access once and publishes note before slow inventor
   await workspace.init();
   assert.equal(workspace.snapshot().page.id,'note');assert.equal(workspace.snapshot().busy,false);
   assert.deepEqual(calls,['access','body','pages','organization']);
-  assert.equal(workspace.snapshot().pages.length,0);
+  assert.equal(workspace.snapshot().pages.length,0);assert.equal(workspace.snapshot().entitiesReady,false);
   lists.resolve([note()]);await tick();
-  assert.equal(workspace.snapshot().pages[0].id,'note');
+  assert.equal(workspace.snapshot().pages[0].id,'note');assert.equal(workspace.snapshot().entitiesReady,true);
 });
 test('archive is deferred without permanently omitting its inventory',async t=>{
   const workspace=fixture(t,null),archive=deferred();

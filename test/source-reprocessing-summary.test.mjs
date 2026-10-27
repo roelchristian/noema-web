@@ -49,3 +49,21 @@ test('reading representation retains presentation/mappings while omitting compar
  assert.equal(reading.original.document,undefined);assert.equal(reading.instructions,undefined);assert.equal(reading.report.diagnostics,undefined);
  assert.ok(JSON.stringify(reading).length<JSON.stringify(value).length/2);
 });
+
+test('compact attachment projection whitelists bounded public scalars and fingerprints omitted document content',async()=>{
+ const {sourceFileStatus}=await import('../src/server/modules/source-file-status.ts');
+ const file={id:'file',vault_id:'vault',entity_id:'source',name:'name'.repeat(100),original_filename:'upload.pdf',generated_name:null,language:null,format:'pdf',size:100,status:'ready',admitted:1,progress:100,pages:1,ocr_pages:0,error:'e'.repeat(10000),enrichment_status:'completed',enrichment_error:null,enrichment_attempts:0,enrichment_next_attempt_at:'',created_at:'now',contains_math:0,pdf_flattened:0,import_method:'upload',source_url:null,ingestion_origin:'local',active_ingestion_run:null,text:'secret document'.repeat(10000),structural_nodes:'large structure'.repeat(1000),page_start_lines:'[1]',summary:'full summary',staging_key:'private-key',staging_config_json:'private-provider-config',future_internal_field:{private:true}};
+ const status=sourceFileStatus(file);
+ assert.equal(status.text,'');assert.equal(status.summary,null);assert.equal(status.name.length,200);assert.equal(status.error.length,2000);
+ for(const key of ['structural_nodes','page_start_lines','staging_key','staging_config_json','future_internal_field'])assert.equal(Object.hasOwn(status,key),false,key);
+ assert.ok(JSON.stringify(status).length<4000);assert.match(status.contentVersion,/^[a-f0-9]{64}$/);
+ assert.notEqual(sourceFileStatus({...file,text:file.text+'changed'}).contentVersion,status.contentVersion);
+ assert.equal(sourceFileStatus({...file,progress:75}).contentVersion,status.contentVersion,'progress alone does not change reading identity');
+});
+
+test('compact attachment inventory reads only explicit columns and retains vault/source isolation',async()=>{
+ const {sourceFileStatuses}=await import('../src/server/modules/source-file-status.ts');const reads=[];
+ const store={get:(sql,...args)=>{assert.deepEqual(args,['source','vault']);assert.match(sql,/vault_id=\?/);return {id:'source'};},all:(sql,...args)=>{reads.push(sql);assert.deepEqual(args,['vault','source']);return [];}};
+ assert.deepEqual(sourceFileStatuses(store,'vault','source'),[]);assert.equal(reads.length,1);assert.doesNotMatch(reads[0],/SELECT\s+\*|staging|summary/i);
+ assert.throws(()=>sourceFileStatuses({...store,get:()=>undefined},'vault','source'),/Source not found/);assert.equal(reads.length,1,'foreign/missing sources never query attachment inventory');
+});

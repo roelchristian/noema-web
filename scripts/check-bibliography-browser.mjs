@@ -14,6 +14,9 @@ import {scholarlyEnrichmentVersion} from '../src/shared/source-scholarly.ts';
 import {createApp} from '../src/server/http.ts';
 import {Intelligence} from '../src/server/modules/intelligence.ts';
 const {chromium}=await import(process.env.PLAYWRIGHT_MODULE??'playwright-core');
+const functionalWidth=Number(process.env.NOEMA_BIB_WIDTH??1440),functionalMode=process.env.NOEMA_BIB_MODE??'light';
+assert.ok([390,1440].includes(functionalWidth),'Choose NOEMA_BIB_WIDTH=390 or 1440');assert.ok(['light','dark'].includes(functionalMode),'Choose NOEMA_BIB_MODE=light or dark');
+const functionalViewport={width:functionalWidth,height:functionalWidth===390?844:1000};
 const db=openDatabase(':memory:'),store=new Store(db);
 const ai=new Intelligence({read:()=>null,write(){},remove(){}},async()=>{throw new Error('Real provider calls forbidden');});
 const server=createApp(store,resolve('dist/client'),ai),directory=process.env.NOEMA_SCREENSHOTS??'/tmp/noema-bibliography-evidence';
@@ -21,15 +24,16 @@ let browser,page;const errors=[];
 try {
  await mkdir(directory,{recursive:true});await Promise.all(['failure.json','failure.png'].map(name=>rm(join(directory,name),{force:true}))); server.listen(0,'127.0.0.1');await once(server,'listening');
  browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH??'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
- page=await browser.newPage({viewport:{width:1440,height:1000}});page.setDefaultTimeout(15000);page.on('pageerror',error=>errors.push(error.message));
+ page=await browser.newPage({viewport:functionalViewport,isMobile:functionalWidth===390,hasTouch:functionalWidth===390});await page.addInitScript(mode=>localStorage.setItem('noema.appearance.v1',JSON.stringify({mode,theme:'ink'})),functionalMode);page.setDefaultTimeout(15000);page.on('pageerror',error=>errors.push(error.message));
  await page.route('**/*',route=>new URL(route.request().url()).hostname==='127.0.0.1'?route.continue():route.abort());
  const base=`http://127.0.0.1:${server.address().port}`;
+ const openSources=async()=>{await page.goto(base+'/?vault=default&view=entities');await page.locator('.knowledge-library').waitFor();if(page.viewportSize().width<=750)await page.getByRole('button',{name:'Open navigation',exact:true}).click();await page.getByRole('button',{name:'Sources',exact:true}).first().click();await page.locator('.bibliography-library-more summary').waitFor();};
+ const assertFunctional=async()=>{assert.deepEqual(page.viewportSize(),functionalViewport);assert.equal(await page.evaluate(()=>document.documentElement.dataset.mode),functionalMode);};
  const openBibliography=async()=>{await page.getByRole('tab',{name:'Overview',exact:true}).click();await page.locator('#entity-panel .bibliography-editor').waitFor();};
  const openBulk=async()=>{await page.getByText('More',{exact:true}).click();await page.getByRole('button',{name:'Import bibliography…',exact:true}).click();};
- await page.goto(base+'/?vault=default&view=entities&type=source');
- if(!await page.getByText('More',{exact:true}).count())await page.getByRole('button',{name:'Sources',exact:true}).first().click();
+ await openSources();await assertFunctional();
  // Keyboard activates overflow and modal Escape restores a reachable trigger.
- await page.getByText('More',{exact:true}).focus();await page.keyboard.press('Enter');await page.getByRole('button',{name:'Import bibliography…',exact:true}).click();await page.getByRole('dialog').waitFor();assert.ok(await page.evaluate(()=>document.querySelector('dialog').contains(document.activeElement)));await page.keyboard.press('Escape');await page.getByRole('dialog').waitFor({state:'hidden'});await page.waitForFunction(()=>document.activeElement===document.querySelector('.bibliography-library-more summary'));assert.equal(await page.getByText('More',{exact:true}).evaluate(element=>element===document.activeElement),true);
+ await page.getByText('More',{exact:true}).focus();await page.keyboard.press('Enter');await page.getByRole('button',{name:'Import bibliography…',exact:true}).click();await page.getByRole('dialog').waitFor();assert.ok(await page.evaluate(()=>document.querySelector('dialog[open]').contains(document.activeElement)));await page.keyboard.press('Escape');await page.getByRole('dialog').waitFor({state:'hidden'});await page.waitForFunction(()=>document.activeElement===document.querySelector('.bibliography-library-more summary'));assert.equal(await page.getByText('More',{exact:true}).evaluate(element=>element===document.activeElement),true);
  const open=async()=>{await openBulk();await page.getByRole('textbox',{name:'BibTeX / BibLaTeX',exact:true}).fill('@book{Synthetic2026,title={Synthetic Bibliography Study},author={{Synthetic Group}},year={2026},doi={10.5555/synthetic},custom={retained}}');};
  // Cancellation before commit never creates a Source.
  await open();await page.getByRole('button',{name:'Review import',exact:true}).click();await page.getByRole('combobox',{name:'Import decision for Synthetic2026'}).waitFor();await page.getByRole('button',{name:'Cancel',exact:true}).click();
@@ -62,6 +66,12 @@ try {
  assert.equal(await publisher.getByRole('button',{name:'Save Publisher',exact:true}).isEnabled(),false);
  await publisher.getByRole('checkbox',{name:/Keep authored values/}).check();await publisher.getByRole('button',{name:'Save Publisher',exact:true}).click();
  await publisher.getByText('Canonical Press',{exact:true}).waitFor();assert.equal(store.get("SELECT value FROM properties WHERE id='browser-legacy-publisher'").value,'Preserved Press');
+ // Canonical publication abstracts retain paragraph breaks through the real HTTP owner.
+ const abstract='Synthetic first paragraph.\n\nSynthetic second paragraph with αβ.';
+ const abstractField=metadata.locator('.source-metadata-field').filter({has:page.locator('dt',{hasText:/^Author abstract$/})});
+ await abstractField.getByRole('button',{name:'Edit Author abstract',exact:true}).click();await abstractField.getByRole('textbox',{name:'Author abstract',exact:true}).fill(abstract);assert.equal(await abstractField.locator('textarea').inputValue(),abstract);
+ const abstractSaved=page.waitForResponse(response=>response.url().endsWith('/source-metadata/field')&&response.request().method()==='PUT');await abstractField.getByRole('button',{name:'Save Author abstract',exact:true}).click();const abstractWire=await abstractSaved;assert.equal(abstractWire.request().postDataJSON().value,abstract);assert.equal((await abstractWire.json()).fields.find(field=>field.key==='bibliography:abstract').value,abstract);assert.equal(new Bibliography(store).get('default',record.source_id).fields.abstract,abstract);
+ await abstractField.getByRole('button',{name:'Edit Author abstract',exact:true}).click();assert.equal(await abstractField.locator('textarea').inputValue(),abstract);await abstractField.getByRole('button',{name:'Cancel edit',exact:true}).click();
  await metadata.getByText('DOI verification & publication controls',{exact:true}).click();
  await metadata.getByRole('button',{name:'Look up DOI',exact:true}).waitFor();assert.equal(await metadata.getByRole('button',{name:'Look up DOI',exact:true}).isEnabled(),false);
  let lookup=0;
@@ -82,8 +92,9 @@ try {
  for(const [mode,width,height] of [['light',1440,1000],['dark',1440,1000],['light',390,844],['dark',390,844]]){await page.setViewportSize({width,height});await page.evaluate(mode=>{document.documentElement.dataset.mode=mode;},mode);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:join(directory,`publication-${mode}-${width}.png`)});}
  await page.setViewportSize({width:1440,height:1000});await page.screenshot({path:join(directory,'source-details-desktop.png')});
  await page.setViewportSize({width:390,height:844});await page.screenshot({path:join(directory,'source-details-mobile.png')});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+ // Return from layout screenshots to the selected functional viewport/theme.
+ await page.setViewportSize(functionalViewport);await page.evaluate(mode=>{document.documentElement.dataset.mode=mode;},functionalMode);await assertFunctional();
  // Insert a real file-free citation and reload its persisted locator and bibliography.
- await page.setViewportSize({width:1440,height:1000});
  const pages=new Pages(store,new Knowledge(store)),note=pages.create('default',{title:'Synthetic citation note'});
  await page.goto(base+'/?vault=default&page='+note.id);
  const content=page.locator('.block-content[contenteditable=true]').first();await content.click();await page.keyboard.type('/cite',{delay:100});await page.locator('.command-menu').waitFor();await page.keyboard.press('Enter');
@@ -112,7 +123,7 @@ try {
  const bundle=await page.evaluate(async()=>await (await fetch('/api/bibliography/export',{headers:{'x-vault-id':'default'}})).json());assert.ok(bundle.annotated.includes('A synthetic comparison')); assert.ok(!bundle.bibtex.includes('A synthetic comparison'));assert.equal(JSON.parse(bundle.sidecar).records[0].scholarly.classifications[0].domainId,'general');
  await openBibliography();await page.screenshot({path:join(directory,'reviewed-classification-and-export.png')});
  // New source accepts exactly one BibTeX entry; collection export remains in overflow.
- await page.setViewportSize({width:1440,height:1000});await page.goto(base+'/?vault=default&view=entities&type=source');if(!await page.getByText('More',{exact:true}).count())await page.getByRole('button',{name:'Sources',exact:true}).first().click();
+ await page.setViewportSize(functionalViewport);await openSources();await assertFunctional();
  assert.equal(await page.getByRole('combobox',{name:'Bibliography export format',exact:true}).count(),0);
  await page.getByRole('button',{name:'New source',exact:true}).first().click();await page.getByRole('combobox',{name:'Add source from',exact:true}).click();await page.locator('.select-menu:popover-open [role=option]').filter({hasText:'Import from BibTeX'}).click();
  await page.getByRole('textbox',{name:'BibTeX / BibLaTeX',exact:true}).fill('@book{Single2026,title={Single-entry creation},year={2026}}\n@book{Extra2026,title={Extra entry}}');await page.getByRole('button',{name:'Review import',exact:true}).click();await page.getByRole('alert').filter({hasText:'Import exactly one BibTeX entry'}).waitFor();
@@ -123,7 +134,7 @@ try {
  let releasePreview;const delayed=new Promise(resolve=>{releasePreview=resolve;});let receivedPreview;const received=new Promise(resolve=>{receivedPreview=resolve;});
  await page.route('**/api/bibliography/'+record.source_id+'/import-preview',async route=>{receivedPreview();await delayed;await route.fulfill({json:new Bibliography(store).sourceImportPreview('default',record.source_id,'@book{Pending,title={Late preview must not appear}}')}).catch(()=>{});},{times:1});
  await page.getByRole('button',{name:'Review source import',exact:true}).click();await received;await page.goto(base+'/?vault=default&source='+singleId+'&entity='+singleId);releasePreview();await page.locator('#entity-panel .bibliography-editor strong').filter({hasText:'Single-entry creation'}).waitFor();assert.equal(await page.getByRole('dialog').count(),0);assert.equal(await page.getByText('Late preview must not appear',{exact:true}).count(),0);assert.equal(new Bibliography(store).get('default',record.source_id).fields.title,'Synthetic Bibliography Study');
- await page.goto(base+'/?vault=default&view=entities&type=source');if(!await page.getByText('More',{exact:true}).count())await page.getByRole('button',{name:'Sources',exact:true}).first().click();
+ await openSources();await assertFunctional();
  await page.getByText('More',{exact:true}).click();await page.getByRole('button',{name:'Export bibliography…',exact:true}).click();await page.getByRole('combobox',{name:'Bibliography export format',exact:true}).selectOption('biblatex');await page.getByRole('button',{name:'Export bibliography',exact:true}).click();await page.getByRole('button',{name:'Close dialog',exact:true}).click();
- assert.deepEqual(errors,[]);await writeFile(join(directory,'validation.json'),JSON.stringify({passed:true,synthetic:true,browser:await browser.version(),checks:['keyboard overflow/modal focus','source switching mid-preview','browser binary backup/restore','real DOI selective acceptance','overflow import/export','single-entry creation and rejection','source scoped cancel/accept/stale revision/export','clipboard reference','cited works navigation','desktop/mobile/light/dark','DOI year alias proposal','cancel','idempotent retry','metadata-only','DOI consent','explicit field review','mobile','publication citation save/reload','live inline CSL styles and reload persistence','per-field import review','authored property reconciliation','canonical taxonomy review','reviewed scholarly annotated/sidecar export'],errors},null,2));console.log(JSON.stringify({passed:true,directory}));
+ assert.deepEqual(errors,[]);await writeFile(join(directory,'validation.json'),JSON.stringify({passed:true,synthetic:true,functionalViewport,functionalMode,browser:await browser.version(),checks:['multiline abstract HTTP roundtrip and reopen','keyboard overflow/modal focus','source switching mid-preview','browser binary backup/restore','real DOI selective acceptance','overflow import/export','single-entry creation and rejection','source scoped cancel/accept/stale revision/export','clipboard reference','cited works navigation','desktop/mobile/light/dark','DOI year alias proposal','cancel','idempotent retry','metadata-only','DOI consent','explicit field review','mobile','publication citation save/reload','live inline CSL styles and reload persistence','per-field import review','authored property reconciliation','canonical taxonomy review','reviewed scholarly annotated/sidecar export'],errors},null,2));console.log(JSON.stringify({passed:true,directory,functionalViewport,functionalMode}));
 }catch(error){await writeFile(join(directory,'failure.json'),JSON.stringify({error:String(error),errors,url:page?.url(),body:await page?.locator('body').innerText().catch(()=>'' )},null,2));await page?.screenshot({path:join(directory,'failure.png')}).catch(()=>{});throw error;}finally{if(browser)await browser.close();await new Promise(resolve=>server.close(resolve));db.close();}

@@ -207,3 +207,46 @@ test('common Connect creates one directed relationship and Undo removes that exa
   assert.equal(document.querySelector('#entity-home-panel-connections .entity-connection-list'),null);
  });
 });
+
+
+test('bounded entity overview is visible while complete details are pending, and retries detail failures',async t=>{
+ await fixture(t,async({render,entity,clickText})=>{
+  const preview={...entity(),previewLimited:true,name:'Immediate synthetic preview'};
+  let finish,rejectDetail;const requests=[];
+  t.mock.method(api,'entity',async(vault,id,limited,signal)=>{
+   requests.push({vault,id,limited,signal});
+   return limited?preview:new Promise((resolve,reject)=>{finish=resolve;rejectDetail=reject;});
+  });
+  await render({key:'bounded-first-render'});
+  assert.deepEqual(requests.map(request=>request.limited),[true,false]);
+  assert.equal(document.querySelector('.entity-home h1').textContent,'Immediate synthetic preview');
+  assert.equal(document.querySelector('.eh-short-description').textContent,'Short description');
+  assert.match(document.querySelector('.entity-home').textContent,/Loading complete details/);
+  await act(async()=>rejectDetail(new Error('Synthetic detail unavailable')));
+  assert.equal(document.querySelector('.entity-home h1').textContent,'Immediate synthetic preview');
+  assert.match(document.querySelector('.entity-home [role=alert]').textContent,/Synthetic detail unavailable/);
+  await clickText('Retry details');assert.equal(requests.length,3);
+  await act(async()=>finish({...entity(),name:'Complete synthetic record'}));
+  assert.equal(document.querySelector('.entity-home h1').textContent,'Complete synthetic record');
+  assert.equal(document.querySelector('.entity-home [role=alert]'),null);
+ });
+});
+
+test('bounded overview cancels details on vault navigation and ignores a late response',async t=>{
+ await fixture(t,async({render,entity})=>{
+  let finish,detailSignal;const requests=[];
+  t.mock.method(api,'entity',async(vault,id,limited,signal)=>{
+   requests.push({vault,id,limited});
+   if(vault==='other-vault')return {...entity(),id,vault_id:vault,name:'Other vault identity'};
+   if(limited)return {...entity(),previewLimited:true,name:'Pending preview'};
+   detailSignal=signal;return new Promise(resolve=>finish=resolve);
+  });
+  await render({key:'bounded-cancel'});
+  assert.equal(document.querySelector('.entity-home h1').textContent,'Pending preview');
+  await render({vaultId:'other-vault',id:'other'});
+  assert.equal(detailSignal.aborted,true);
+  await act(async()=>finish({...entity(),name:'Late private old record'}));
+  assert.equal(document.querySelector('.entity-home h1').textContent,'Other vault identity');
+  assert.equal(requests.filter(request=>request.vault==='other-vault').length,1);
+ });
+});

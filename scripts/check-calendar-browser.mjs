@@ -59,20 +59,22 @@ try {
  async function sourcePresentation(page) {
   const viewer=page.locator('#source-viewer'),original=await viewer.evaluateHandle(node=>node);
   const excerpt=await viewer.locator('mark').first().textContent();
-  await viewer.getByRole('button',{name:'Subtle',exact:true}).click();
-  assert.equal(await viewer.getByRole('button',{name:'Subtle',exact:true}).getAttribute('aria-pressed'),'true');
-  await viewer.getByRole('button',{name:'Focus',exact:true}).click();
+  const choosePresentation=async name=>{await viewer.getByRole('button',{name:'Presentation mode',exact:true}).click();await page.getByRole('menuitemcheckbox',{name,exact:true}).click();};
+  const assertSubtle=async()=>{await viewer.getByRole('button',{name:'Presentation mode',exact:true}).click();assert.equal(await page.getByRole('menuitemcheckbox',{name:'Subtle',exact:true}).getAttribute('aria-checked'),'true');await page.keyboard.press('Escape');};
+  await choosePresentation('Subtle');
+  await assertSubtle();
+  await choosePresentation('Focus');
   await page.waitForFunction(()=>document.documentElement.dataset.focusWorkspace==='true'&&document.documentElement.dataset.focusTarget==='source-viewer');
   assert.equal(await viewer.evaluate(node=>Math.round(node.getBoundingClientRect().width)),page.viewportSize().width);
   await page.locator('.focus-controls').getByRole('button',{name:'Exit Focus',exact:true}).click();
   await page.waitForFunction(()=>document.documentElement.dataset.focusWorkspace==='false');
   assert.equal(await viewer.evaluate((node,original)=>node===original,original),true);
   assert.equal(await viewer.locator('mark').first().textContent(),excerpt);
-  await viewer.getByRole('button',{name:'Focus',exact:true}).click();
+  await choosePresentation('Focus');
   await page.keyboard.press('Escape');
   await page.waitForFunction(()=>document.documentElement.dataset.focusWorkspace==='false');
-  assert.equal(await viewer.getByRole('button',{name:'Subtle',exact:true}).getAttribute('aria-pressed'),'true');
-  await viewer.getByRole('button',{name:'Standard',exact:true}).click();
+  await assertSubtle();
+  await choosePresentation('Standard');
   await original.dispose();
  }
  async function targetSizes(page,selector) {const sizes=await page.locator(selector).evaluateAll(elements=>elements.filter(e=>{const r=e.getBoundingClientRect();return e.checkVisibility()&&r.width&&r.height;}).map(e=>{const r=e.getBoundingClientRect();return {label:e.getAttribute('aria-label')??e.textContent.trim().slice(0,40),width:r.width,height:r.height,left:r.left,right:r.right};}));for(const size of sizes){assert.ok(size.width>=43.9&&size.height>=43.9,JSON.stringify(size));assert.ok(size.left>=-.1&&size.right<=page.viewportSize().width+.1,JSON.stringify(size));}return sizes;}

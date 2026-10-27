@@ -99,14 +99,16 @@ const presentationEntity=knowledge.create('default',{name:'Synthetic Rowan',type
 let note=pages.create('default',{title:'Synthetic target title'});
 note=pages.update('default',note.id,{...note,blocks:[{id:'body',type:'paragraph',checked:false,content:[{text:'target ',bold:true},{text:'target',italic:true}]},{id:'table',type:'table',checked:false,content:[],rows:[[[{text:'target',href:'https://example.com'}],[{text:'untouched'}]]]},{id:'references',type:'paragraph',checked:false,content:[{text:'Notes about '},{entityId:presentationEntity.id,mentionText:'Synthetic Rowan'},{text:' and an unchanged association.'}]},{id:'sample-code',type:'code',checked:false,content:[{text:'const example = "'+ 'x'.repeat(180) +'";'}]}]});
 const other=pages.create('default',{title:'Other target page'});
-const otherBefore=JSON.stringify(pages.get('default',other.id));
+let otherBefore;
 const app=createApp(store,join(repo,'dist/client'));app.listen(0,'127.0.0.1');await once(app,'listening');
 let appBrowser;
 try{
  appBrowser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH??'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
  const page=await appBrowser.newPage({viewport:{width:1440,height:1000}}),errors=[];page.on('pageerror',e=>errors.push(e.message));page.setDefaultTimeout(10000);
  await page.goto(`http://127.0.0.1:${app.address().port}/?vault=default&page=${note.id}`);
- const body=page.locator('[data-block-id="body"] .block-content');await body.waitFor();await body.click();await page.keyboard.press('Control+h');
+ const body=page.locator('[data-block-id="body"] .block-content[contenteditable="true"]');await body.waitFor();await page.waitForLoadState('networkidle');
+ // The unrelated startup enrichment queue must settle before exact data-fidelity baselines.
+ await page.waitForFunction(async id=>{const response=await fetch('/api/pages/'+id,{headers:{'x-vault-id':'default'}});return !(await response.json()).enrichmentPending;},other.id,{timeout:30000});otherBefore=JSON.stringify(pages.get('default',other.id));await body.click();await page.keyboard.press('Control+h');
  await page.getByLabel('Find text',{exact:true}).fill('target');await page.getByLabel('Replace with',{exact:true}).fill('revised');
  await page.waitForFunction(()=>document.querySelector('.document-find output')?.textContent.includes('of 3'));
  await page.getByRole('button',{name:'Replace all',exact:true}).click();await page.waitForFunction(()=>document.querySelector('[data-block-id="body"] .block-content')?.textContent==='revised revised');

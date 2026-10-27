@@ -19,3 +19,16 @@ Conflict review follows the Metadata field owner, including publication aliases 
 File-free `/cite`, bundled APA 7 and IEEE formatting, metadata-only Sources, stable citation keys, unknown imported fields, DOI proposals, authored-value history, scholarly review and backup identity remapping remain supported. Source switching aborts preview reads and rejects stale responses. Writes retain revision protection and must be refreshed after an uncertain result.
 
 Validation uses disposable synthetic databases and mocked providers. The bibliography browser script exercises the redesigned entry points as well as persisted `/cite` and citation style changes. Backup tests include a reviewed scoped import, original raw evidence, provenance and remapped Source identity.
+
+## Local validation, 2026-10-27
+
+Based on verified `main` `9a40c63` including PR #125, on local branch `codex/source-bibliography`. No push, PR, merge or deployment was performed.
+
+- Full test suite: 2,116 passed, eight platform skips, zero failures. The last DOI refresh correction was subsequently checked in the final affected suite: 40/40 passed, with an additional independent delayed-refresh reproduction passing.
+- Build includes styles, source/test TypeScript, server compilation and Vite; all passed. Vite retains its large-chunk advisory.
+- Chromium 154 bibliography workflow passed keyboard overflow/modal focus, source switching during a delayed preview, single-entry creation and rejection, scoped conflict cancellation/acceptance/stale revision, source-only export requests, copy, real local acceptance of mocked DOI proposals, Cited works navigation, desktop/mobile light/dark, `/cite` save/reload and APA/IEEE persistence, browser binary backup/restore, canonical taxonomy review and scholarly exports. No page errors or external provider calls.
+- The Source Metadata browser workflow passed canonical edits, separate display-name ownership, evidence/history, run filters, repeated navigation, no idle polling and desktop/mobile/dark layouts.
+- Independent review found and verified fixes for alias conflict bypass, idempotence, stale views and pending-write/refresh races. No remaining concrete code blocker was found.
+- Source Reader redesign browser validation remains failing at its existing editorial-version continuity assertion. The identical failure was reproduced on unmodified `main` `9a40c63` using corrected custom-Select interaction; no reader product code was changed here.
+
+Local evidence: `/tmp/noema-bibliography-evidence/validation.json`, `/tmp/noema-source-metadata-evidence/validation.json`, screenshots in those directories, `/tmp/noema-testall-final-validation.log`, and `/tmp/noema-source-main-browser-validation.log`. Integration with the separate optimization task is pending publication of its branch; the checks above do not claim combined-branch coverage.

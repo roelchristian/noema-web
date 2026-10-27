@@ -20,7 +20,7 @@ File-free `/cite`, bundled APA 7 and IEEE formatting, metadata-only Sources, sta
 
 Validation uses disposable synthetic databases and mocked providers. The bibliography browser script exercises the redesigned entry points as well as persisted `/cite` and citation style changes. Backup tests include a reviewed scoped import, original raw evidence, provenance and remapped Source identity.
 
-## Local validation, 2026-10-27
+## Bibliography-only validation, 2026-10-27
 
 Based on verified `main` `9a40c63` including PR #125, on local branch `codex/source-bibliography`. No push, PR, merge or deployment was performed.
 
@@ -31,4 +31,18 @@ Based on verified `main` `9a40c63` including PR #125, on local branch `codex/sou
 - Independent review found and verified fixes for alias conflict bypass, idempotence, stale views and pending-write/refresh races. No remaining concrete code blocker was found.
 - Source Reader redesign browser validation remains failing at its existing editorial-version continuity assertion. The identical failure was reproduced on unmodified `main` `9a40c63` using corrected custom-Select interaction; no reader product code was changed here.
 
-Local evidence: `/tmp/noema-bibliography-evidence/validation.json`, `/tmp/noema-source-metadata-evidence/validation.json`, screenshots in those directories, `/tmp/noema-testall-final-validation.log`, and `/tmp/noema-source-main-browser-validation.log`. Integration with the separate optimization task is pending publication of its branch; the checks above do not claim combined-branch coverage.
+Local evidence: `/tmp/noema-bibliography-evidence/validation.json`, `/tmp/noema-source-metadata-evidence/validation.json`, screenshots in those directories, `/tmp/noema-testall-final-validation.log`, and `/tmp/noema-source-main-browser-validation.log`. This was the pre-integration checkpoint; combined results follow.
+
+## Combined optimization checkpoint
+
+Optimization head `87684867a2be3be801bf1716e0d3d4e166f2e0e0` was fetched, verified and locally merged as `4e5589a`. The only conflict was an EntityPanel import block; both imports were retained. Pending request/cache access epochs, compact status reads, lazy boundaries, bounded-then-full EntityHome loading and reading-version/Review separation were preserved. No source-reader production fixes were made here.
+
+- Combined full suite: **2,163 tests; 2,155 passed, zero failed, eight skipped**, 257,747 ms. Build/style/type/server/Vite checks passed.
+- Independent combined review: **106/106** focused tests passed; no concrete integration blocker found.
+- Bibliography and Metadata browser workflows passed again on the merged product, including all documented source-scoped exchange, DOI, citation, focus, mobile/theme and browser backup/restore checks.
+- Navigation probe passed protected startup, cached return, bounded overview, locked vault switching, selected editorial reading-version reload through its compact endpoint without another full comparison fetch, and mobile/error/external-request checks. Evidence: `output/navigation-loading/combined/`.
+- Dedicated reading continuity passed all 11 behavior categories, including exact anchors across backend/browser restart, retries, flush and mobile. Reprocessing passed all six viewport/theme combinations.
+- Editor, entity-linking, selection-toolbar, entity-scan, Document Find, Calendar, Chat and Chat research browser scripts passed individually. The first broad runner retained three failures: selection attempted before the editor became editable; Document Find compared transient unrelated enrichment status; Calendar used obsolete inline presentation buttons. Corrections wait for actual editor/fixture readiness and use the current menu roles while preserving full equality, selection, geometry, evidence, focus and Escape assertions. Successful reruns do not retroactively make that initial broad invocation green.
+- The older Source Reader redesign fixture was aligned with compact inventory and reading endpoints. Its original editorial-continuity assertion still fails identically to baseline main; it remains a failure, despite the dedicated continuity suite passing.
+
+Combined evidence is in `/tmp/noema-combined-testall.log`, `/tmp/noema-combined-build.log`, `/tmp/noema-combined-*-browser.log`, `/tmp/noema-combined-bibliography-evidence/`, `/tmp/noema-combined-metadata-evidence/` and `/tmp/noema-combined-reading-evidence/`. No representative-device performance, native macOS execution, live provider work or deployment was performed. Final sign-off is pending the parent-verified updated optimization head that reconciles intervening main changes; these results apply to the exact `87684867` integration above.

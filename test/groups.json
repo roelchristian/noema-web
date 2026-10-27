@@ -49,7 +49,8 @@
     "test/source-ingestion-options.test.mjs",
     "test/source-ingestion-targeted-repair.test.mjs",
     "test/source-ingestion-relations.test.mjs",
-    "test/workspace-startup.test.mjs"
+    "test/workspace-startup.test.mjs",
+    "test/scoped-request-cache.test.mjs"
   ],
   "dom": [
     "test/trash-ui.test.mjs",

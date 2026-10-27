@@ -406,7 +406,7 @@ export class Workspace {
   }
   // init already resolved access; explicit vault changes always revalidate it.
   private async selectResolvedVault(id: string, address?: WorkspaceAddress, resolvedVaults?: Vault[]) {
-    if (this.navigation && !this.startupRequest) return;
+    if (this.navigation && !this.startupRequest && this.state.loadingPageId===null) return;
     this.startupRequest?.abort();this.inventoryRequest?.abort();this.inventoryRetry=null;
     const controller=new AbortController(),sequence=++this.loadSequence;
     this.startupRequest=controller;
@@ -475,19 +475,21 @@ export class Workspace {
           pruneEntityDrafts(id,entities.map(entity=>entity.id));
           const displayed=this.state.page;
           const summaries=displayed?.vault_id===id?pages.map(page=>page.id===displayed.id?{...page,title:displayed.title,icon:displayed.icon,updated_at:displayed.updated_at}:page):pages;
-          this.patch({pages:summaries,entities,organization,entitiesReady:true});this.inventoryRetry=null;
+          this.patch({pages:summaries,entities:[...entities],organization,entitiesReady:true});this.inventoryRetry=null;
           if(priorityPage&&this.state.view==='pages'&&this.state.page?.id===priorityPage){
             const collection=organization.collections.some(item=>item.id===destination?.collection)?String(destination?.collection):'';
             const folder=!collection&&organization.folders.some(item=>item.id===destination?.folder)?String(destination?.folder):'';
             this.patch({organizationContext:{collection,folder}});
           }
           if(priorityPage&&this.state.view==='pages'&&this.state.page?.id===priorityPage&&typeof destination?.entityId==='string'&&entities.some(entity=>entity.id===destination.entityId))this.patch({entityPanelId:destination.entityId});
-          const loadArchive=async()=>{
+          const loadArchive=async():Promise<void>=>{
+            const beforeArchive=this.state.archive;
             try {
               const archive=await api.archivedPages(id,inventory.signal);if(!valid())return;
+              if(beforeArchive!==this.state.archive)return loadArchive();
               this.patch({archive});
               // Drafts can only be pruned once both active and archive ids exist.
-              try {pageDraftJournal.pruneVault(id,new Set([...pages,...archive].map(page=>page.id)));} catch (error) {this.report(error);}
+              try {pageDraftJournal.pruneVault(id,new Set([...this.state.pages,...archive].map(page=>page.id)));} catch (error) {this.report(error);}
             }catch(error){failed(error);}
           };
           if(destination?.view==='archive')await loadArchive();else void loadArchive();
@@ -1067,7 +1069,8 @@ export class Workspace {
       const reconciled=entities.map(entity=>{const before=previous.get(entity.id);return before&&JSON.stringify(canonical(before))===JSON.stringify(canonical(entity))?before:entity;});
       if(entityMatchingDictionary(this.state.entities)!==entityMatchingDictionary(reconciled))this.pageCache.clear();
       pruneEntityDrafts(vault.id,entities.map(entity=>entity.id));
-      if(reconciled.length!==this.state.entities.length||reconciled.some((entity,index)=>entity!==this.state.entities[index]))this.patch({entities:reconciled});
+      const missingDestination=this.state.view==='entity'&&!reconciled.some(entity=>entity.id===this.state.entityId)||this.state.view==='source'&&!reconciled.some(entity=>entity.id===this.state.sourceId);
+      if(missingDestination||reconciled.length!==this.state.entities.length||reconciled.some((entity,index)=>entity!==this.state.entities[index]))this.patch({entities:reconciled});
     }
   }
   async refreshSourceStatuses(signal?:AbortSignal) {

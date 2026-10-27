@@ -521,7 +521,7 @@ function WorkspaceApp({workspace}:{workspace:Workspace}) {
       await workspace.saver.flush();
     }}/>}
     {sourcePage&&vault&&!vault.locked&&<CreatePageFromSourceDialog key={vault.id+'/'+sourcePage.id} vaultId={vault.id} source={sourcePage} onClose={()=>setSourcePage(null)} onCreated={page=>workspace.registerGeneratedPage(page)} onOpenPage={async id=>{workspace.closeEntity();await workspace.openPage(id);}} onSettings={()=>{setSourcePage(null);setSettingsOpen(true);}}/>}
-    {create && vault && <CreateEntityDialog vaultId={vault.id} initial={create} onClose={() => setCreate(null)} onSubmit={async input => {
+    {create && vault && <CreateEntityDialog vaultId={vault.id} initial={{...create,onBibliographyCreated:async()=>{await workspace.refreshEntities();setSourceRefresh(value=>value+1);}}} onClose={() => setCreate(null)} onSubmit={async input => {
       const result = await workspace.createEntity(input);
       if (create.source && workspace.snapshot().view==='pages' && workspace.snapshot().page) workspace.updatePage({sourceIds: [...new Set([...workspace.snapshot().page!.sourceIds, result.id])]});
       if(create.intent==='insert'&&create.onCreated) {

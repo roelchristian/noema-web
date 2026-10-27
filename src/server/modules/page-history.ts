@@ -50,7 +50,7 @@ export class PageHistory {
   const versionId=randomUUID(),createdAt=now();
   this.store.run('INSERT INTO page_versions (id,vault_id,page_id,page_revision,created_at,kind,name,pinned,content_hash,snapshot_json,restored_from_version_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)',versionId,vault,id,p.revision,createdAt,kind,options.name??null,kind==='checkpoint'||kind==='restore'?1:0,hash,JSON.stringify(snapshot),options.restoredFromVersionId??null);
   for(const imageId of new Set([snapshot.featuredImageId,...snapshot.blocks.flatMap(b=>b.imageId?[b.imageId]:[])].filter((v):v is string=>!!v)))this.store.run('INSERT INTO page_version_images VALUES (?,?)',versionId,imageId);
-  return this.get(vault,id,versionId);
+  return {id:versionId,pageId:id,pageRevision:p.revision,createdAt,kind,name:options.name??null,pinned:kind==='checkpoint'||kind==='restore',contentHash:hash,restoredFromVersionId:options.restoredFromVersionId??null,snapshot};
  }
  list(vault:string,id:string):PageVersion[] {this.page(vault,id);return this.store.all<Row>('SELECT id,page_id,page_revision,created_at,kind,name,pinned,content_hash,restored_from_version_id FROM page_versions WHERE vault_id=? AND page_id=? ORDER BY created_at DESC,rowid DESC',vault,id).map(summary);}
  get(vault:string,id:string,versionId:string):PageVersionDetail {this.page(vault,id);const row=this.store.get<Row>('SELECT * FROM page_versions WHERE vault_id=? AND page_id=? AND id=?',vault,id,versionId);if(!row)throw new HttpError(404,'Version not found');return {...summary(row),snapshot:JSON.parse(row.snapshot_json) as PageHistorySnapshot};}

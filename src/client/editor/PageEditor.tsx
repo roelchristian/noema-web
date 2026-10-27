@@ -1,3 +1,4 @@
+import {entityMatchingDictionary} from '../../shared/entity-matching-dictionary';
 import {useBibliographicPresentation} from '../sources/bibliographic-presentation';
 import {NoteBibliographicReferences} from '../sources/NoteBibliographicReferences';
 import {TransliterationBar} from './TransliterationBar';
@@ -27,7 +28,7 @@ import { api } from '../api';
 import type { EntityMatchCache } from '../../shared/entity-match-cache';
 import { EntityMatchReview } from './EntityMatchReview';
 import { ambiguityReviewDelay } from './auto-entity-matching';
-interface Props {hideTitle?:boolean;focusNewBody?:boolean;onCreationFocusConsumed?:()=>void;tocVisible?:boolean;headings?:PageHeading[];subjectsSaving?:boolean;citationStyle?:CitationStyle;pages:PageSummary[];onOpenPage:(id:string)=>void;onAddAlias: (id: string, alias: string) => Promise<void>; page: Page; entities: Entity[]; onChange: (patch: Partial<Pick<Page, 'title' | 'blocks' | 'sourceIds' | 'icon' | 'featuredImageId' | 'aiReviewAccepted'>>) => void; onOpenEntity: (id: string) => void; onCreateEntity: (request: CreateEntityRequest) => void; onSave: () => void; onIdentify: () => Promise<void>; saveStatus: SaveStatus}
+interface Props {entitiesReady?:boolean;hideTitle?:boolean;focusNewBody?:boolean;onCreationFocusConsumed?:()=>void;tocVisible?:boolean;headings?:PageHeading[];subjectsSaving?:boolean;citationStyle?:CitationStyle;pages:PageSummary[];onOpenPage:(id:string)=>void;onAddAlias: (id: string, alias: string) => Promise<void>; page: Page; entities: Entity[]; onChange: (patch: Partial<Pick<Page, 'title' | 'blocks' | 'sourceIds' | 'icon' | 'featuredImageId' | 'aiReviewAccepted'>>) => void; onOpenEntity: (id: string) => void; onCreateEntity: (request: CreateEntityRequest) => void; onSave: () => void; onIdentify: () => Promise<void>; saveStatus: SaveStatus}
 const emptyMatches:EntityMatchCache['matches']=[];
 const mentionedIds=memoizeBlock(block=>blockSegments(block).flatMap(segment=>segment.entityId?[segment.entityId]:[]));
 const wordSegmenter = new Intl.Segmenter(undefined, {granularity:'word'});
@@ -39,8 +40,9 @@ function editedLabel(updatedAt: string, now: number): string {
   const [size, unit] = units.find(([size]) => seconds >= size)!;
   return uiText('Edited {time}',{time:new Intl.RelativeTimeFormat(getLocale(), {numeric:'always'}).format(-Math.floor(seconds/size),unit)});
 }
-export function PageEditor({hideTitle=false,focusNewBody=false,onCreationFocusConsumed,tocVisible=true,headings=[],subjectsSaving=false,citationStyle='references',pages,onOpenPage,page, entities, onChange, onOpenEntity, onCreateEntity, onSave, onIdentify, onAddAlias, saveStatus}: Props) {
-  const readOnly=!!page.editLocked||!!page.archived_at;
+export function PageEditor({entitiesReady=true,hideTitle=false,focusNewBody=false,onCreationFocusConsumed,tocVisible=true,headings=[],subjectsSaving=false,citationStyle='references',pages,onOpenPage,page, entities, onChange, onOpenEntity, onCreateEntity, onSave, onIdentify, onAddAlias, saveStatus}: Props) {
+  const dictionary=useMemo(()=>entityMatchingDictionary(entities,page.vault_id),[entities,page.vault_id]);
+  const readOnly=!entitiesReady||!!page.editLocked||!!page.archived_at;
   const priorCitations=useRef<ReturnType<typeof noteCitations>>(new Map());
   const citationEntries=useMemo(()=>{
     const entries=noteCitations(page.blocks),old=priorCitations.current;
@@ -73,12 +75,12 @@ export function PageEditor({hideTitle=false,focusNewBody=false,onCreationFocusCo
       for(const word of wordSegmenter.segment(text))if(word.isWordLike)count++;
       return count;
     });
-  },[page.vault_id,entities]);
+  },[page.vault_id,dictionary]);
   const wordCount=useMemo(()=>page.blocks.reduce((sum,block)=>sum+countBlockWords(block),0),[page.blocks,countBlockWords]);
-  const [reviewSnapshot, setReviewSnapshot] = useState<{blocks: Page['blocks']; domains:Page['pageDomains']; entities: Entity[]; cache: EntityMatchCache} | null>(() => page.entityMatchCache?.revision === page.revision ? {blocks:page.blocks,domains:page.pageDomains,entities,cache:page.entityMatchCache} : null);
+  const [reviewSnapshot, setReviewSnapshot] = useState<{blocks: Page['blocks']; domains:Page['pageDomains']; dictionary: string; cache: EntityMatchCache} | null>(() => page.entityMatchCache?.revision === page.revision ? {blocks:page.blocks,domains:page.pageDomains,dictionary,cache:page.entityMatchCache} : null);
   const [reviewError, setReviewError] = useState('');
   const [resolving, setResolving] = useState(false);
-  const cache = reviewSnapshot?.blocks === page.blocks && reviewSnapshot.domains===page.pageDomains && reviewSnapshot.entities === entities && reviewSnapshot.cache.revision === page.revision ? reviewSnapshot.cache : null;
+  const cache = reviewSnapshot?.blocks === page.blocks && reviewSnapshot.domains===page.pageDomains && reviewSnapshot.dictionary === dictionary && reviewSnapshot.cache.revision === page.revision ? reviewSnapshot.cache : null;
   const reviewMatches = cache?.matches ?? emptyMatches;
   const currentPage = useRef(page); currentPage.current = page;
   useEffect(() => {
@@ -86,11 +88,11 @@ export function PageEditor({hideTitle=false,focusNewBody=false,onCreationFocusCo
     const controller = new AbortController();
     const timer = setTimeout(() => {
       void api.entityMatches(page.vault_id,page.id,page.revision,controller.signal).then(cache => {
-        if (!controller.signal.aborted && cache.revision === page.revision) { setReviewSnapshot({blocks:page.blocks,domains:page.pageDomains,entities,cache}); setReviewError(''); }
+        if (!controller.signal.aborted && cache.revision === page.revision) { setReviewSnapshot({blocks:page.blocks,domains:page.pageDomains,dictionary,cache}); setReviewError(''); }
       }).catch(error => { if (!controller.signal.aborted) setReviewError(error instanceof Error ? error.message : String(error)); });
     }, ambiguityReviewDelay);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [page.id, page.vault_id, page.blocks, page.revision, page.pageDomains, readOnly, entities, saveStatus]);
+  }, [page.id, page.vault_id, page.blocks, page.revision, page.pageDomains, readOnly, dictionary, saveStatus]);
   useEffect(() => {
     if (readOnly) return;
     let timer: ReturnType<typeof setTimeout>;
@@ -99,11 +101,12 @@ export function PageEditor({hideTitle=false,focusNewBody=false,onCreationFocusCo
     document.addEventListener('selectionchange', schedule);
     document.addEventListener('compositionend', schedule);
     return () => { clearTimeout(timer); document.removeEventListener('selectionchange', schedule); document.removeEventListener('compositionend', schedule); };
-  }, [page.id, page.blocks, page.pageDomains, page.conceptContentHash, readOnly, entities, onIdentify]);
+  }, [page.id, page.blocks, page.pageDomains, page.conceptContentHash, readOnly, dictionary, onIdentify]);
   const hasTitleMath=useMemo(()=>titleHasMath(page.title),[page.title]);
   const status = {saved: editedLabel(page.updated_at, now), pending: uiText("Waiting to save…"), identifying: uiText("Identifying entities…"), saving: uiText("Saving…"), error: uiText("Could not save changes")}[saveStatus];
   return <CitationPresentationContext.Provider value={citationPresentation}><article ref={article} className="page document-frame" lang={page.language??undefined} inert={subjectsSaving} aria-busy={subjectsSaving} onCompositionStart={event => { event.currentTarget.dataset.entityComposing = 'true'; }} onCompositionEnd={event => { delete event.currentTarget.dataset.entityComposing; }}>
     <TransliterationBar pageKey={page.vault_id+'/'+page.id}/>
+    {!entitiesReady&&<p role="status">{uiText("Loading entity names…")}</p>}
     <DocumentFind key={page.vault_id+":"+page.id} blocks={page.blocks} entities={entities} disabled={!!readOnly} onChange={blocks=>onChange({blocks})}/>
     {!hideTitle && <h1 className={"page-title-heading page-heading"+(hasTitleMath?" has-title-math":"")+(page.editLocked?" is-title-locked":"")} aria-label={page.title || uiText("Untitled")}><textarea id="page-title" rows={1} aria-label={uiText("Page title")} title={uiText("Use $…$ or \\(…\\) for math")} placeholder={uiText("Untitled")} maxLength={500} readOnly={!!readOnly} onKeyDown={event=>{if(event.key==='Enter'&&!event.nativeEvent.isComposing){event.preventDefault();event.currentTarget.blur();}}} value={page.title} onChange={e => onChange({title: smartQuoteTitle(e.currentTarget, e.nativeEvent as InputEvent).replace(/[\r\n]+/g,' ')})}/>{!hasTitleMath&&<span className="page-title-sizer" aria-hidden="true">{page.title || uiText("Untitled")}</span>}{hasTitleMath&&<span className="page-title-preview" aria-hidden="true"><TitleText text={page.title}/></span>}</h1>}
     {page.readingNote&&<aside className="source-reading-note-context" aria-label={uiText("Reading note context")}><strong>{uiText("Reading note ·") + " "}{readingNoteWordCount(projectPageText(page.blocks,id=>entityMentionName(entities.find(entity=>entity.id===id))).text)} / {readingNoteMaxWords}{" " + uiText("words")}</strong><p>{page.readingNote.sourceId?<button type="button" onClick={()=>onOpenEntity(page.readingNote!.sourceId!)}>{uiText("Open source")}</button>:uiText("Original source unavailable")}</p><blockquote>{page.readingNote.excerpt}</blockquote></aside>}

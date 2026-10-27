@@ -24,6 +24,8 @@ import { blockTypes, safeHref, type Segment, type Block, type Page, type PageSum
 import { Store } from '../store.js';
 import { HttpError, now, object, required, text } from '../validation.js';
 import { Knowledge } from './knowledge.js';
+type PageEntity = Pick<import('../../shared/domain.js').Entity,'name'|'mentionCase'|'type'>;
+type EntityLookup = (id:string) => PageEntity | undefined;
 type PageRow = Omit<Page, 'blocks' | 'sourceIds' | 'featuredImageId'> & {blocks: string; summary_content_hash: string | null; summary_hash_version:number; featured_image_id:string|null; ai_status:PageAIStatus;ai_review_accepted:number;generation_metadata:string|null;creation_method:Page['creationMethod']};
 export const trashRetentionMs = 30 * 24 * 60 * 60 * 1000;
 export class Pages {
@@ -78,17 +80,17 @@ export class Pages {
     this.store.run('DELETE FROM page_page_associations WHERE source_id=? AND target_id=?',source,target);
     return this.associations(vault,id);
   }
-  get(vault: string, id: string): Page {
+  get(vault: string, id: string, entity=this.entityLookup(vault)): Page {
     const row=this.store.get<PageRow>('SELECT * FROM pages WHERE id=? AND vault_id=? AND deleted_at IS NULL',id,vault);
     if (!row) throw new HttpError(404,'Page not found');
     const {summary_content_hash: cachedHash, summary_hash_version: hashVersion, featured_image_id: featuredImageId, ai_status: aiStatus, ai_review_accepted: aiReviewAccepted, generation_metadata: generationMetadata, creation_method: creationMethod, ...stored} = row;
     stored.title=resolvePageTitle(this.store,stored);
     const blocks = enrichCitationPages(this.store,JSON.parse(row.blocks) as Block[]);
-    const names=new Map<string,string|undefined>();
-    const resolveName=this.resolveNames(vault,names);
+    const resolveName=(id:string)=>entityMentionName(entity(id));
     const classificationRow=this.store.get<{data:string}>("SELECT data FROM page_ai_enrichments WHERE page_id=? AND kind='concept_classification'",id);
     const conceptClassification=classificationRow ? JSON.parse(classificationRow.data) as import('../../shared/domain.js').ConceptClassification : undefined;
     const hash=cachedHash&&hashVersion===2?cachedHash:summaryContentHash({...stored,blocks},resolveName);
+    const conceptHash=conceptContentHash({...stored,blocks},resolveName);
     const editLock=this.store.get<{password_hash:string|null}>('SELECT password_hash FROM page_edit_locks WHERE page_id=? AND vault_id=?',id,vault);
     const domainService=new Domains(this.store);
     const readingRow=this.store.get<{source_id:string|null;file_id:string|null;source_hash:string;start_offset:number;end_offset:number;excerpt:string;reference_json:string;created_at:string}>('SELECT * FROM page_reading_notes WHERE page_id=? AND vault_id=?',id,vault);
@@ -101,7 +103,15 @@ export class Pages {
       if(Array.isArray(fields))enrichmentPendingFields=(['title','domains','language','summary'] as const).filter(field=>fields.includes(field)&&enrichmentState.fields[field]?.origin!=='manual'&&!enrichmentState.fields[field]?.suppressed);
     }catch{/* Invalid queue data cannot claim a particular field is being generated. */}
     if(this.store.get<{automatic_summaries:number}>('SELECT automatic_summaries FROM page_enrichment_settings WHERE vault_id=?',vault)?.automatic_summaries===0)enrichmentPendingFields=enrichmentPendingFields.filter(field=>field!=='summary');
-    return {...stored,creationMethod,editedAfterGeneration:aiStatus==='ai_generated_edited',containsAIExplanations:blocks.some(isAIExplanation),aiReviewAccepted:!!aiReviewAccepted,generationMetadata:parsePageGenerationMetadata(generationMetadata),...(readingNote?{readingNote}:{}),enrichmentFields:enrichmentState.fields,enrichmentPending:!!queued,enrichmentPendingFields,pageDomains:domainService.get(id,conceptContentHash({...stored,blocks},resolveName),enrichmentState),aiStatus:reviewedPageAIStatus(aiStatus,!!aiReviewAccepted),editLocked:!!editLock,editProtected:!!editLock?.password_hash,featuredImageId,blocks,conceptClassification,conceptContentHash:conceptContentHash({...stored,blocks},resolveName),summaryContentHash:hash,sourceIds:[...new Set([...this.store.all<{source_id:string}>('SELECT source_id FROM page_sources WHERE page_id=?',id).map(s=>s.source_id),...citationSourceIds(blocks).filter(sourceId=>this.knowledge.find(vault,sourceId)?.type==='source')])]};
+    return {...stored,creationMethod,editedAfterGeneration:aiStatus==='ai_generated_edited',containsAIExplanations:blocks.some(isAIExplanation),aiReviewAccepted:!!aiReviewAccepted,generationMetadata:parsePageGenerationMetadata(generationMetadata),...(readingNote?{readingNote}:{}),enrichmentFields:enrichmentState.fields,enrichmentPending:!!queued,enrichmentPendingFields,pageDomains:domainService.get(id,conceptHash,enrichmentState),aiStatus:reviewedPageAIStatus(aiStatus,!!aiReviewAccepted),editLocked:!!editLock,editProtected:!!editLock?.password_hash,featuredImageId,blocks,conceptClassification,conceptContentHash:conceptHash,summaryContentHash:hash,sourceIds:[...new Set([...this.store.all<{source_id:string}>('SELECT source_id FROM page_sources WHERE page_id=?',id).map(s=>s.source_id),...citationSourceIds(blocks).filter(sourceId=>entity(sourceId)?.type==='source')])]};
+  }
+  /** A mutation-local, vault-scoped dictionary: never load entity detail per mention. */
+  private entityLookup(vault:string):EntityLookup {
+    const entities=new Map<string,PageEntity|undefined>();
+    return id=>{
+      if(!entities.has(id))entities.set(id,this.store.get<PageEntity>('SELECT name,mention_case AS mentionCase,type FROM entities WHERE vault_id=? AND id=?',vault,id));
+      return entities.get(id);
+    };
   }
   /** Only names referenced by this page are needed for textual fingerprints. */
   private resolveNames(vault:string,names=new Map<string,string|undefined>()) {
@@ -114,7 +124,7 @@ export class Pages {
     };
   }
   /** Mutation/queued preparation owns legacy fingerprint upgrades, never a page read. */
-  prepareHashes(vault:string,id:string):void {
+  prepareHashes(vault:string,id:string,resolveName?: (id:string)=>string|undefined):void {
     const row=this.store.get<{title:string;blocks:string;revision:number;summary_content_hash:string|null;summary_hash_version:number;legacySummary:number}>(`SELECT title,blocks,revision,summary_content_hash,summary_hash_version,
       EXISTS(SELECT 1 FROM page_ai_enrichments e WHERE e.page_id=pages.id AND e.kind='summary' AND e.content_hash IS NULL AND e.revision=pages.revision AND COALESCE(json_extract(e.data,'$.freshness.status'),'')!='refresh_needed') AS legacySummary
       FROM pages WHERE vault_id=? AND id=? AND deleted_at IS NULL`,vault,id);
@@ -123,7 +133,7 @@ export class Pages {
       if(row.legacySummary)this.store.run("UPDATE page_ai_enrichments SET content_hash=? WHERE page_id=? AND kind='summary' AND content_hash IS NULL AND revision=? AND COALESCE(json_extract(data,'$.freshness.status'),'')!='refresh_needed'",row.summary_content_hash,id,row.revision);
       return;
     }
-    const page={title:resolvePageTitle(this.store,{id,...row}),blocks:JSON.parse(row.blocks) as Block[]},resolve=this.resolveNames(vault);
+    const page={title:resolvePageTitle(this.store,{id,...row}),blocks:JSON.parse(row.blocks) as Block[]},resolve=resolveName??this.resolveNames(vault);
     const hash=summaryContentHash(page,resolve);
     if(row.summary_hash_version!==2||row.legacySummary) {
       const legacy=summaryContentHash(page,resolve,true);
@@ -168,8 +178,8 @@ export class Pages {
     });
     return this.get(vault,id);
   }
-  requireEditable(vault: string, id: string) {
-    const page=this.get(vault,id);
+  requireEditable(vault: string, id: string, entity?:EntityLookup) {
+    const page=this.get(vault,id,entity);
     if (page.archived_at) throw new HttpError(409,'This page is archived. Restore it before making changes.');
     if (page.editLocked) throw new HttpError(423,'This page is locked for editing. Unlock it to make changes.');
     return page;
@@ -219,7 +229,7 @@ export class Pages {
     }
     return this.get(vault,id);
   }
-  validateBlocks(vault: string, input: unknown, historical=false): Block[] {
+  validateBlocks(vault: string, input: unknown, historical=false,entity=this.entityLookup(vault)): Block[] {
     if (!Array.isArray(input) || input.length>2000) throw new HttpError(400,'Invalid blocks');
     const ids=new Set<string>();
     const validated = input.map(value=>{
@@ -232,7 +242,7 @@ export class Pages {
           const segment=object(value);
           if(segment.entityId) {
             const entityId=required(segment.entityId);
-            if(!historical&&!this.knowledge.find(vault,entityId))throw new HttpError(400,'Referenced entity does not exist');
+            if(!historical&&!entity(entityId))throw new HttpError(400,'Referenced entity does not exist');
             return {entityId, ...(segment.skipAutoTag === true ? {skipAutoTag:true} : {}), ...(segment.mentionText !== undefined ? {mentionText: text(segment.mentionText,10000)} : {})};
           }
           const result: Segment = {text:text(segment.text)};
@@ -240,13 +250,13 @@ export class Pages {
           if(segment.bibliographicReference!==undefined) {
             const ref=object(segment.bibliographicReference),sourceId=required(ref.sourceId);
             if(segment.sourceReference||segment.math||segment.code||segment.href)throw new HttpError(400,'Invalid bibliographic citation');
-            if(!historical&&this.knowledge.find(vault,sourceId)?.type!=='source')throw new HttpError(400,'Invalid bibliographic source');
+            if(!historical&&entity(sourceId)?.type!=='source')throw new HttpError(400,'Invalid bibliographic source');
             if(ref.label!==undefined&&!['page','chapter','section'].includes(ref.label as string))throw new HttpError(400,'Invalid bibliographic locator label');
             result.bibliographicReference={id:required(ref.id),sourceId,...(ref.locator===undefined?{}:{locator:text(ref.locator,1000)}),...(ref.label===undefined?{}:{label:ref.label as 'page'|'chapter'|'section'})};
           }
           if(segment.sourceReference!==undefined) {
             const ref=object(segment.sourceReference),sourceId=required(ref.sourceId),fileId=required(ref.fileId);
-            if(!historical&&(this.knowledge.find(vault,sourceId)?.type!=='source'||!this.store.get('SELECT 1 FROM source_files WHERE id=? AND entity_id=? AND vault_id=?',fileId,sourceId,vault)))throw new HttpError(400,'Invalid citation source');
+            if(!historical&&(entity(sourceId)?.type!=='source'||!this.store.get('SELECT 1 FROM source_files WHERE id=? AND entity_id=? AND vault_id=?',fileId,sourceId,vault)))throw new HttpError(400,'Invalid citation source');
             if(!Number.isSafeInteger(ref.startLine)||!Number.isSafeInteger(ref.endLine)||(ref.startLine as number)<1||(ref.endLine as number)<(ref.startLine as number)||(ref.nodeId===undefined&&ref.userLocator===undefined&&(ref.endLine as number)-(ref.startLine as number)>=30)||typeof ref.sourceHash!=='string'||!/^[a-f0-9]{64}$/.test(ref.sourceHash)||segment.math||segment.code)throw new HttpError(400,'Invalid source reference');
             if(ref.sourceNumber!==undefined&&(!Number.isSafeInteger(ref.sourceNumber)||(ref.sourceNumber as number)<1||(ref.sourceNumber as number)>1_000_000_000))throw new HttpError(400,'Invalid source number');
             if(ref.startPage!==undefined&&(!Number.isInteger(ref.startPage)||!Number.isInteger(ref.endPage)||(ref.startPage as number)<1||(ref.endPage as number)<(ref.startPage as number)||(ref.endPage as number)>1000))throw new HttpError(400,'Invalid citation page');
@@ -338,7 +348,8 @@ export class Pages {
     return validated;
   }
   update(vault: string, id: string, body: Record<string, unknown>) {
-    const page=this.requireEditable(vault,id),blocks=this.validateBlocks(vault,body.blocks);
+    const entity=this.entityLookup(vault),resolveName=(id:string)=>entityMentionName(entity(id));
+    const page=this.requireEditable(vault,id,entity),blocks=this.validateBlocks(vault,body.blocks,false,entity);
     const incomingTitle=text(body.title,500);
     const authored=this.store.get<{title:string}>('SELECT title FROM pages WHERE id=?',id)!;
     // Background enrichment does not advance the authored revision. A body-only
@@ -347,7 +358,7 @@ export class Pages {
       &&incomingTitle===authored.title&&page.title!==authored.title
       &&new PageEnrichmentState(this.store).get(id).fields.title?.origin==='inferred';
     const title=stalePlaceholder?page.title:incomingTitle;
-    if(page.readingNote&&readingNoteWordCount(projectPageText(blocks,id=>entityMentionName(this.knowledge.find(vault,id))).text)>readingNoteMaxWords)throw new HttpError(400,'Reading notes can contain at most 200 words.');
+    if(page.readingNote&&readingNoteWordCount(projectPageText(blocks,resolveName).text)>readingNoteMaxWords)throw new HttpError(400,'Reading notes can contain at most 200 words.');
     const language=body.language===undefined?page.language??null:pageLanguage(body.language);
     const protectedIds=new Set(page.blocks.filter(isAIExplanation).map(block=>block.id));
     if(blocks.some(block=>protectedIds.has(block.id)&&!isAIExplanation(block)))throw new HttpError(400,'The AI Explanation tag cannot be removed or changed.');
@@ -359,13 +370,9 @@ export class Pages {
     const requestedSourceIds=body.sourceIds ?? page.sourceIds;
     if(!Array.isArray(requestedSourceIds))throw new HttpError(400,'Page sources must be Source entities in this vault');
     const sourceIds=[...new Set([...requestedSourceIds,...citationSourceIds(blocks)])];
-    if(!Array.isArray(sourceIds)||sourceIds.length>1000||sourceIds.some(s=>typeof s!=='string'||this.knowledge.find(vault,s)?.type!=='source'))throw new HttpError(400,'Page sources must be Source entities in this vault');
+    if(!Array.isArray(sourceIds)||sourceIds.length>1000||sourceIds.some(s=>typeof s!=='string'||entity(s)?.type!=='source'))throw new HttpError(400,'Page sources must be Source entities in this vault');
     if(body.revision!==undefined && (!Number.isInteger(body.revision)||body.revision!==page.revision))throw new HttpError(409,'This page changed in another window. Reload the latest page before saving.');
-    const names=new Map<string,string|undefined>();
-    const aiStatus=nextPageAIStatus(page,{title,blocks,editedAfterGeneration:body.editedAfterGeneration===true,aiReviewAccepted:body.aiReviewAccepted===true},id=>{
-      if(!names.has(id))names.set(id,entityMentionName(this.knowledge.find(vault,id)));
-      return names.get(id);
-    });
+    const aiStatus=nextPageAIStatus(page,{title,blocks,editedAfterGeneration:body.editedAfterGeneration===true,aiReviewAccepted:body.aiReviewAccepted===true},resolveName);
     // ai_status retains the original schema's origin values; accepted reviews
     // are persisted independently and projected as ai_assisted when reading.
     const storedAIStatus=aiStatus==='ai_assisted'?(blocks.some(isAIExplanation)?'regular_with_ai_explanations':'regular'):aiStatus;
@@ -379,20 +386,24 @@ export class Pages {
         state.markManual(id,'language');
         this.store.run("INSERT INTO page_ai_enrichments (page_id,kind,data,revision,model,reasoning_effort,updated_at) VALUES (?,'language',?,?,'manual','none',?) ON CONFLICT(page_id,kind) DO UPDATE SET data=excluded.data,revision=excluded.revision,updated_at=excluded.updated_at",id,JSON.stringify({language,origin:'manual'}),page.revision+1,now());
       }
-      syncSourceReferences(this.store,id,blocks);
+      syncSourceReferences(this.store,id,blocks,resolveName);
       this.store.run('UPDATE pages SET title=?,language=?,icon=?,featured_image_id=?,blocks=?,ai_status=?,ai_review_accepted=MAX(ai_review_accepted,?),updated_at=?,revision=revision+1 WHERE id=? AND vault_id=?',title,language,icon,featuredImageId,JSON.stringify(blocks),storedAIStatus,body.aiReviewAccepted===true?1:0,now(),id,vault);
       this.store.run('DELETE FROM page_sources WHERE page_id=?',id);
       for(const source of new Set(sourceIds as string[]))this.store.run('INSERT INTO page_sources VALUES (?,?)',id,source);
-      this.prepareHashes(vault,id);
-      new Domains(this.store).assess({id,title,blocks},this.resolveNames(vault));
+      this.prepareHashes(vault,id,resolveName);
+      new Domains(this.store).assess({id,title,blocks},resolveName);
       history.capture(vault,id,'edit');
       if(title!==page.title && (!page.title.trim()||page.title.trim()==='Untitled')) {
         const generated=this.store.get<{data:string;revision:number}>("SELECT data,revision FROM page_ai_enrichments WHERE page_id=? AND kind='title'",id);
         if(generated?.revision===page.revision && JSON.parse(generated.data).title===title) new AINotifications(this.store).record(vault,id,'page_title');
       }
     });
-    this.cleanupImages(vault,[...this.imageIds(page.blocks),...(page.featuredImageId?[page.featuredImageId]:[])]);
-    return this.get(vault,id);
+    const retainedImages=new Set([...this.imageIds(blocks),...(featuredImageId?[featuredImageId]:[])]);
+    const removedImages=[...new Set([...this.imageIds(page.blocks),...(page.featuredImageId?[page.featuredImageId]:[])])].filter(image=>!retainedImages.has(image));
+    // Text/style/position changes cannot release an image. Keep vault-wide maintenance
+    // off the autosave path; historical and shared references still guard removals.
+    if(removedImages.length)this.cleanupImages(vault,removedImages);
+    return this.get(vault,id,entity);
   }
   delete(vault: string, id: string) {
     this.requireEditable(vault,id);

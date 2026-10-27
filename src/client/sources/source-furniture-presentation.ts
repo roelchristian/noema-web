@@ -1,8 +1,8 @@
-import type {SourceReprocessingRevision} from '../../shared/source-reprocessing';
+import type {SourceReadingRevision} from '../../shared/source-reprocessing';
 import type {SourceViewEntry} from './SourceDocumentView';
 
 /** Classify only whole reading nodes; adjacent substantive text is never hidden. */
-export function classifiedFurnitureNodes(editorial:SourceReprocessingRevision|null,entries:SourceViewEntry[],viewEntries:SourceViewEntry[]):Map<string,'header'|'footer'>{
+export function classifiedFurnitureNodes(editorial:SourceReadingRevision|null,entries:SourceViewEntry[],viewEntries:SourceViewEntry[]):Map<string,'header'|'footer'>{
     const ids=new Map<string,'header'|'footer'>();if(!editorial?.furniture?.length)return ids;
     for(const entry of viewEntries){
       if(!entry.node.text||entry.node.kind!=='paragraph')continue;

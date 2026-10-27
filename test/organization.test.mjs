@@ -6,6 +6,7 @@ import path from 'node:path';
 import { openDatabase } from '../src/server/database.ts';
 import { Store } from '../src/server/store.ts';
 import { Organizer } from '../src/server/modules/organization.ts';
+import {Vaults} from '../src/server/modules/vaults.ts';
 
 const fails = (work, status) => assert.throws(work, error => error.status === status);
 test('one folder location, independent memberships, nested folders, isolation and restart', () => {
@@ -169,4 +170,57 @@ test('upgrading favourites preserves page and entity stars and allows folders af
     org.remove('default', 'folders', folder);
     assert.deepEqual(org.list('default').favourites, []);
   } finally { db.close(); rmSync(dir, {recursive: true, force: true}); }
+});
+
+test('bulk organization applies fifty pages atomically with one final snapshot and idempotent retries',t=>{
+ const db=openDatabase(':memory:');t.after(()=>db.close());const store=new Store(db),org=new Organizer(store);
+ const ids=Array.from({length:50},(_,index)=>'bulk-'+index);
+ for(const id of ids)store.run("INSERT INTO pages(id,title,blocks,updated_at,vault_id) VALUES (?,?,?,'now','default')",id,id,'[]');
+ const folder=org.saveFolder('default',{name:'Bulk destination'}).folders[0].id;
+ const list=t.mock.method(org,'list',org.list.bind(org));
+ const result=org.bulk('default',{operation:'locations',kind:'page',item_ids:ids,folder_id:folder});
+ assert.equal(list.mock.callCount(),1);assert.equal(result.locations.filter(row=>ids.includes(row.item_id)&&row.folder_id===folder).length,50);
+ org.bulk('default',{operation:'locations',kind:'page',item_ids:ids,folder_id:folder});
+ assert.equal(store.get('SELECT count(*) AS n FROM item_locations').n,50);
+ org.bulk('default',{operation:'favourites',kind:'page',item_ids:ids,favourite:true});
+ assert.equal(store.get('SELECT count(*) AS n FROM favourites').n,50);
+});
+
+test('bulk organization rejects duplicates, bounds, foreign and invalid IDs without partial writes',t=>{
+ const db=openDatabase(':memory:');t.after(()=>db.close());const store=new Store(db),org=new Organizer(store);
+ store.run("INSERT INTO vaults(id,name,updated_at) VALUES ('other','Other','now')");
+ store.run("INSERT INTO pages(id,title,blocks,updated_at,vault_id) VALUES ('private','Private','[]','now','other')");
+ const command={operation:'favourites',kind:'page',favourite:true};
+ for(const ids of [[],['welcome','welcome'],Array.from({length:101},(_,i)=>'p'+i),[''],[7]])fails(()=>org.bulk('default',{...command,item_ids:ids}),400);
+ for(const ids of [['welcome','missing'],['welcome','private']])fails(()=>org.bulk('default',{...command,item_ids:ids}),404);
+ assert.equal(store.get('SELECT count(*) AS n FROM favourites').n,0);
+ fails(()=>org.bulk('default',{...command,item_ids:['welcome'],operation:'unknown'}),400);
+ fails(()=>org.bulk('default',{...command,item_ids:['welcome'],kind:'entity'}),400);
+});
+
+test('bulk membership protection and storage failures roll back every preceding write',t=>{
+ const db=openDatabase(':memory:');t.after(()=>db.close());const store=new Store(db),org=new Organizer(store);
+ store.run("INSERT INTO pages(id,title,blocks,updated_at,vault_id) VALUES ('first','First','[]','now','default')");
+ store.run("INSERT INTO page_reading_notes(page_id,vault_id,source_id,source_hash,start_offset,end_offset,excerpt,reference_json,created_at) VALUES ('welcome','default','earthsea','hash',0,5,'saved','{}','now')");
+ const collection=org.list('default').collections.find(row=>row.name==='Reading Notes').id;
+ org.membership('default',{kind:'page',item_id:'first',collection_id:collection});
+ org.list('default');
+ fails(()=>org.bulk('default',{operation:'memberships',kind:'page',item_ids:['first','welcome'],collection_id:collection,remove:true}),400);
+ assert.ok(store.get('SELECT 1 FROM collection_memberships WHERE item_id=? AND collection_id=?','first',collection));
+ db.exec("CREATE TRIGGER reject_bulk_second BEFORE INSERT ON favourites WHEN NEW.item_id='welcome' BEGIN SELECT RAISE(ABORT,'synthetic write failure'); END");
+ assert.throws(()=>org.bulk('default',{operation:'favourites',kind:'page',item_ids:['first','welcome'],favourite:true}),/synthetic write failure/);
+ assert.equal(store.get('SELECT count(*) AS n FROM favourites').n,0);
+ db.exec('DROP TRIGGER reject_bulk_second');
+ assert.equal(org.bulk('default',{operation:'favourites',kind:'page',item_ids:['first','welcome'],favourite:true}).favourites.length,2);
+});
+
+
+test('bulk organization rejects locked or unknown vaults before writing',t=>{
+ const db=openDatabase(':memory:');t.after(()=>db.close());const store=new Store(db),org=new Organizer(store),vaults=new Vaults(store);
+ const command={operation:'favourites',kind:'page',item_ids:['welcome'],favourite:true};
+ fails(()=>org.bulk('missing-vault',command),404);
+ vaults.lock('default',{passphrase:'synthetic-only'});fails(()=>org.bulk('default',command),423);
+ assert.equal(store.get('SELECT count(*) AS n FROM favourites').n,0);
+ vaults.unlock('default',{passphrase:'synthetic-only'});
+ assert.equal(org.bulk('default',command).favourites.length,1);
 });

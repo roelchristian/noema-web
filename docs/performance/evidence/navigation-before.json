@@ -1,0 +1,986 @@
+{
+  "label": "before",
+  "browser": "154.0.8037.57",
+  "synthetic": true,
+  "devicePerformanceMeasured": false,
+  "startupChecks": null,
+  "startup": {
+    "vaultRequests": 2,
+    "requests": [
+      {
+        "path": "/api/intelligence/notifications",
+        "method": "GET",
+        "at": 1793092523037
+      },
+      {
+        "path": "/api/intelligence/notifications",
+        "method": "GET",
+        "at": 1793092523037
+      },
+      {
+        "path": "/api/vaults",
+        "method": "GET",
+        "at": 1793092523039
+      },
+      {
+        "path": "/api/intelligence/notifications",
+        "method": "GET",
+        "at": 1793092523039
+      },
+      {
+        "path": "/api/intelligence/notifications",
+        "method": "GET",
+        "at": 1793092523170
+      },
+      {
+        "path": "/api/intelligence/notifications",
+        "method": "GET",
+        "at": 1793092523171
+      },
+      {
+        "path": "/api/vaults",
+        "method": "GET",
+        "at": 1793092523171
+      },
+      {
+        "path": "/api/pages",
+        "method": "GET",
+        "at": 1793092523250
+      },
+      {
+        "path": "/api/entities",
+        "method": "GET",
+        "at": 1793092523250
+      },
+      {
+        "path": "/api/organization",
+        "method": "GET",
+        "at": 1793092523250
+      },
+      {
+        "path": "/api/pages/archive",
+        "method": "GET",
+        "at": 1793092523251
+      },
+      {
+        "path": "/api/temporal/liturgical/preload",
+        "method": "POST",
+        "at": 1793092523251
+      },
+      {
+        "path": "/api/pages/27a0cbff-039b-4821-b780-b7fe8874df3a/editor",
+        "method": "GET",
+        "at": 1793092523344
+      },
+      {
+        "path": "/api/entities",
+        "method": "GET",
+        "at": 1793092523344
+      },
+      {
+        "path": "/api/entities",
+        "method": "GET",
+        "at": 1793092523344
+      },
+      {
+        "path": "/api/intelligence/notifications",
+        "method": "GET",
+        "at": 1793092523422
+      },
+      {
+        "path": "/api/entity-schema",
+        "method": "GET",
+        "at": 1793092523778
+      },
+      {
+        "path": "/api/intelligence",
+        "method": "GET",
+        "at": 1793092523778
+      },
+      {
+        "path": "/api/intelligence",
+        "method": "GET",
+        "at": 1793092523781
+      }
+    ]
+  },
+  "cacheReturnFetches": 1,
+  "cachedReturnVisible": false,
+  "preview": {
+    "detailStarted": true,
+    "visibleBeforeFullDetail": false
+  },
+  "hiddenRevisionRequests": 1,
+  "reviewLoaded": false,
+  "mobileOverflow": false,
+  "errors": [],
+  "external": [],
+  "checks": [
+    "background processing navigation with editor response held",
+    "bounded overview with full detail held"
+  ],
+  "requests": [
+    {
+      "path": "/api/intelligence/notifications",
+      "method": "GET",
+      "at": 1793092523037
+    },
+    {
+      "path": "/api/intelligence/notifications",
+      "method": "GET",
+      "at": 1793092523037
+    },
+    {
+      "path": "/api/vaults",
+      "method": "GET",
+      "at": 1793092523039
+    },
+    {
+      "path": "/api/intelligence/notifications",
+      "method": "GET",
+      "at": 1793092523039
+    },
+    {
+      "path": "/api/intelligence/notifications",
+      "method": "GET",
+      "at": 1793092523170
+    },
+    {
+      "path": "/api/intelligence/notifications",
+      "method": "GET",
+      "at": 1793092523171
+    },
+    {
+      "path": "/api/vaults",
+      "method": "GET",
+      "at": 1793092523171
+    },
+    {
+      "path": "/api/pages",
+      "method": "GET",
+      "at": 1793092523250
+    },
+    {
+      "path": "/api/entities",
+      "method": "GET",
+      "at": 1793092523250
+    },
+    {
+      "path": "/api/organization",
+      "method": "GET",
+      "at": 1793092523250
+    },
+    {
+      "path": "/api/pages/archive",
+      "method": "GET",
+      "at": 1793092523251
+    },
+    {
+      "path": "/api/temporal/liturgical/preload",
+      "method": "POST",
+      "at": 1793092523251
+    },
+    {
+      "path": "/api/pages/27a0cbff-039b-4821-b780-b7fe8874df3a/editor",
+      "method": "GET",
+      "at": 1793092523344
+    },
+    {
+      "path": "/api/entities",
+      "method": "GET",
+      "at": 1793092523344
+    },
+    {
+      "path": "/api/entities",
+      "method": "GET",
+      "at": 1793092523344
+    },
+    {
+      "path": "/api/intelligence/notifications",
+      "method": "GET",
+      "at": 1793092523422
+    },
+    {
+      "path": "/api/entity-schema",
+      "method": "GET",
+      "at": 1793092523778
+    },
+    {
+      "path": "/api/intelligence",
+      "method": "GET",
+      "at": 1793092523778
+    },
+    {
+      "path": "/api/intelligence",
+      "method": "GET",
+      "at": 1793092523781
+    },
+    {
+      "path": "/api/pages/6fedfc5c-0b2e-4714-8aaa-4a00324ae972/editor",
+      "method": "GET",
+      "at": 1793092524435
+    },
+    {
+      "path": "/api/intelligence/notifications",
+      "method": "GET",
+      "at": 1793092524662
+    },
+    {
+      "path": "/api/entity-schema",
+      "method": "GET",
+      "at": 1793092524662
+    },
+    {
+      "path": "/api/intelligence",
+      "method": "GET",
+      "at": 1793092524663
+    },
+    {
+      "path": "/api/intelligence",
+      "method": "GET",
+      "at": 1793092524663
+    },
+    {
+      "path": "/api/pages/27a0cbff-039b-4821-b780-b7fe8874df3a/editor",
+      "method": "GET",
+      "at": 1793092524894
+    },
+    {
+      "path": "/api/entities",
+      "method": "GET",
+      "at": 1793092524894
+    },
+    {
+      "path": "/api/intelligence/notifications",
+      "method": "GET",
+      "at": 1793092525093
+    },
+    {
+      "path": "/api/entity-schema",
+      "method": "GET",
+      "at": 1793092525093
+    },
+    {
+      "path": "/api/intelligence",
+      "method": "GET",
+      "at": 1793092525093
+    },
+    {
+      "path": "/api/intelligence",
+      "method": "GET",
+      "at": 1793092525093
+    },
+    {
+      "path": "/api/entities",
+      "method": "GET",
+      "at": 1793092526346
+    },
+    {
+      "path": "/api/intelligence/notifications",
+      "method": "GET",
+      "at": 1793092526385
+    },
+    {
+      "path": "/api/intelligence/notifications",
+      "method": "GET",
+      "at": 1793092526463
+    },
+    {
+      "path": "/api/pages/27a0cbff-039b-4821-b780-b7fe8874df3a/metadata",
+      "method": "GET",
+      "at": 1793092526907
+    },
+    {
+      "path": "/api/intelligence/notifications",
+      "method": "GET",
+      "at": 1793092527758
+    },
+    {
+      "path": "/api/intelligence/notifications",
+      "method": "GET",
+      "at": 1793092527811
+    },
+    {
+      "path": "/api/entities",
+      "method": "GET",
+      "at": 1793092527843
+    },
+    {
+      "path": "/api/pages/27a0cbff-039b-4821-b780-b7fe8874df3a/metadata",
+      "method": "GET",
+      "at": 1793092528965
+    },
+    {
+      "path": "/api/pages/6fedfc5c-0b2e-4714-8aaa-4a00324ae972/editor",
+      "method": "GET",
+      "at": 1793092529248
+    },
+    {
+      "path": "/api/intelligence/notifications",
+      "method": "GET",
+      "at": 1793092529387
+    },
+    {
+      "path": "/api/entity-schema",
+      "method": "GET",
+      "at": 1793092529387
+    },
+    {
+      "path": "/api/intelligence",
+      "method": "GET",
+      "at": 1793092529387
+    },
+    {
+      "path": "/api/intelligence",
+      "method": "GET",
+      "at": 1793092529388
+    },
+    {
+      "path": "/api/entities",
+      "method": "GET",
+      "at": 1793092529589
+    },
+    {
+      "path": "/api/pages/27a0cbff-039b-4821-b780-b7fe8874df3a/editor",
+      "method": "GET",
+      "at": 1793092530360
+    },
+    {
+      "path": "/api/intelligence/notifications",
+      "method": "GET",
+      "at": 1793092530912
+    },
+    {
+      "path": "/api/entity-schema",
+      "method": "GET",
+      "at": 1793092530912
+    },
+    {
+      "path": "/api/intelligence",
+      "method": "GET",
+      "at": 1793092530912
+    },
+    {
+      "path": "/api/intelligence",
+      "method": "GET",
+      "at": 1793092530912
+    },
+    {
+      "path": "/api/entities",
+      "method": "GET",
+      "at": 1793092530988
+    },
+    {
+      "path": "/api/intelligence/notifications",
+      "method": "GET",
+      "at": 1793092534208
+    },
+    {
+      "path": "/api/intelligence/notifications",
+      "method": "GET",
+      "at": 1793092534208
+    },
+    {
+      "path": "/api/vaults",
+      "method": "GET",
+      "at": 1793092534254
+    },
+    {
+      "path": "/api/intelligence/notifications",
+      "method": "GET",
+      "at": 1793092534334
+    },
+    {
+      "path": "/api/intelligence/notifications",
+      "method": "GET",
+      "at": 1793092534592
+    },
+    {
+      "path": "/api/intelligence/notifications",
+      "method": "GET",
+      "at": 1793092534598
+    },
+    {
+      "path": "/api/vaults",
+      "method": "GET",
+      "at": 1793092534610
+    },
+    {
+      "path": "/api/pages",
+      "method": "GET",
+      "at": 1793092534713
+    },
+    {
+      "path": "/api/entities",
+      "method": "GET",
+      "at": 1793092534714
+    },
+    {
+      "path": "/api/organization",
+      "method": "GET",
+      "at": 1793092534714
+    },
+    {
+      "path": "/api/pages/archive",
+      "method": "GET",
+      "at": 1793092534715
+    },
+    {
+      "path": "/api/temporal/liturgical/preload",
+      "method": "POST",
+      "at": 1793092534788
+    },
+    {
+      "path": "/api/entities",
+      "method": "GET",
+      "at": 1793092535042
+    },
+    {
+      "path": "/api/entity-schema",
+      "method": "GET",
+      "at": 1793092535146
+    },
+    {
+      "path": "/api/entities/4ecff7bb-5140-42c8-a0b7-12882651c5ba?preview=1",
+      "method": "GET",
+      "at": 1793092535157
+    },
+    {
+      "path": "/api/entities/4ecff7bb-5140-42c8-a0b7-12882651c5ba",
+      "method": "GET",
+      "at": 1793092535511
+    },
+    {
+      "path": "/api/entities/4ecff7bb-5140-42c8-a0b7-12882651c5ba/evidence?preview=1",
+      "method": "GET",
+      "at": 1793092536408
+    },
+    {
+      "path": "/api/entities",
+      "method": "GET",
+      "at": 1793092536477
+    },
+    {
+      "path": "/api/intelligence/notifications",
+      "method": "GET",
+      "at": 1793092538711
+    },
+    {
+      "path": "/api/intelligence/notifications",
+      "method": "GET",
+      "at": 1793092538734
+    },
+    {
+      "path": "/api/vaults",
+      "method": "GET",
+      "at": 1793092538757
+    },
+    {
+      "path": "/api/intelligence/notifications",
+      "method": "GET",
+      "at": 1793092538757
+    },
+    {
+      "path": "/api/intelligence/notifications",
+      "method": "GET",
+      "at": 1793092539002
+    },
+    {
+      "path": "/api/intelligence/notifications",
+      "method": "GET",
+      "at": 1793092539003
+    },
+    {
+      "path": "/api/vaults",
+      "method": "GET",
+      "at": 1793092539004
+    },
+    {
+      "path": "/api/pages",
+      "method": "GET",
+      "at": 1793092539165
+    },
+    {
+      "path": "/api/entities",
+      "method": "GET",
+      "at": 1793092539167
+    },
+    {
+      "path": "/api/organization",
+      "method": "GET",
+      "at": 1793092539171
+    },
+    {
+      "path": "/api/pages/archive",
+      "method": "GET",
+      "at": 1793092539171
+    },
+    {
+      "path": "/api/entities",
+      "method": "GET",
+      "at": 1793092539172
+    },
+    {
+      "path": "/api/temporal/liturgical/preload",
+      "method": "POST",
+      "at": 1793092539179
+    },
+    {
+      "path": "/api/entities",
+      "method": "GET",
+      "at": 1793092539305
+    },
+    {
+      "path": "/api/entities/361cdc1d-ab38-40f3-81d8-5e5a8b2e4e7c",
+      "method": "GET",
+      "at": 1793092539356
+    },
+    {
+      "path": "/api/source-files/f597e513-2e4f-4575-97f6-bb2dcd702be7.md?fingerprint=1&context=1",
+      "method": "GET",
+      "at": 1793092539656
+    },
+    {
+      "path": "/api/source-files/f597e513-2e4f-4575-97f6-bb2dcd702be7.md/reprocessing",
+      "method": "GET",
+      "at": 1793092539903
+    },
+    {
+      "path": "/api/source-files/f597e513-2e4f-4575-97f6-bb2dcd702be7.md/reading-locations",
+      "method": "GET",
+      "at": 1793092539947
+    },
+    {
+      "path": "/api/source-files/f597e513-2e4f-4575-97f6-bb2dcd702be7.md/highlights",
+      "method": "GET",
+      "at": 1793092539947
+    },
+    {
+      "path": "/api/source-files/f597e513-2e4f-4575-97f6-bb2dcd702be7.md/reading-notes",
+      "method": "GET",
+      "at": 1793092539947
+    },
+    {
+      "path": "/api/source-files/f597e513-2e4f-4575-97f6-bb2dcd702be7.md/reprocessing/synthetic-reading-revision",
+      "method": "GET",
+      "at": 1793092540037
+    },
+    {
+      "path": "/api/entities",
+      "method": "GET",
+      "at": 1793092540807
+    },
+    {
+      "path": "/api/source-files/f597e513-2e4f-4575-97f6-bb2dcd702be7.md/reading-locations/resume",
+      "method": "PUT",
+      "at": 1793092541257
+    },
+    {
+      "path": "/api/entities/361cdc1d-ab38-40f3-81d8-5e5a8b2e4e7c",
+      "method": "GET",
+      "at": 1793092541603
+    }
+  ],
+  "responses": [
+    {
+      "path": "/api/vaults",
+      "bytes": 259,
+      "status": 200
+    },
+    {
+      "path": "/api/intelligence/notifications",
+      "bytes": 674,
+      "status": 200
+    },
+    {
+      "path": "/api/vaults",
+      "bytes": 259,
+      "status": 200
+    },
+    {
+      "path": "/api/intelligence/notifications",
+      "bytes": 674,
+      "status": 200
+    },
+    {
+      "path": "/api/pages",
+      "bytes": 1402,
+      "status": 200
+    },
+    {
+      "path": "/api/entities",
+      "bytes": 3136,
+      "status": 200
+    },
+    {
+      "path": "/api/organization",
+      "bytes": 300,
+      "status": 200
+    },
+    {
+      "path": "/api/pages/archive",
+      "bytes": 2,
+      "status": 200
+    },
+    {
+      "path": "/api/temporal/liturgical/preload",
+      "bytes": 452,
+      "status": 202
+    },
+    {
+      "path": "/api/pages/27a0cbff-039b-4821-b780-b7fe8874df3a/editor",
+      "bytes": 2332,
+      "status": 200
+    },
+    {
+      "path": "/api/entities",
+      "bytes": 3136,
+      "status": 200
+    },
+    {
+      "path": "/api/entities",
+      "bytes": 3136,
+      "status": 200
+    },
+    {
+      "path": "/api/intelligence/notifications",
+      "bytes": 674,
+      "status": 200
+    },
+    {
+      "path": "/api/entity-schema",
+      "bytes": 172028,
+      "status": 200
+    },
+    {
+      "path": "/api/intelligence",
+      "bytes": 586,
+      "status": 200
+    },
+    {
+      "path": "/api/intelligence",
+      "bytes": 586,
+      "status": 200
+    },
+    {
+      "path": "/api/pages/6fedfc5c-0b2e-4714-8aaa-4a00324ae972/editor",
+      "bytes": 1247,
+      "status": 200
+    },
+    {
+      "path": "/api/intelligence/notifications",
+      "bytes": 674,
+      "status": 200
+    },
+    {
+      "path": "/api/entity-schema",
+      "bytes": 172028,
+      "status": 200
+    },
+    {
+      "path": "/api/intelligence",
+      "bytes": 586,
+      "status": 200
+    },
+    {
+      "path": "/api/intelligence",
+      "bytes": 586,
+      "status": 200
+    },
+    {
+      "path": "/api/pages/27a0cbff-039b-4821-b780-b7fe8874df3a/editor",
+      "bytes": 2332,
+      "status": 200
+    },
+    {
+      "path": "/api/entities",
+      "bytes": 3136,
+      "status": 200
+    },
+    {
+      "path": "/api/intelligence/notifications",
+      "bytes": 674,
+      "status": 200
+    },
+    {
+      "path": "/api/entity-schema",
+      "bytes": 172028,
+      "status": 200
+    },
+    {
+      "path": "/api/intelligence",
+      "bytes": 586,
+      "status": 200
+    },
+    {
+      "path": "/api/intelligence",
+      "bytes": 586,
+      "status": 200
+    },
+    {
+      "path": "/api/entities",
+      "bytes": 3136,
+      "status": 200
+    },
+    {
+      "path": "/api/intelligence/notifications",
+      "bytes": 674,
+      "status": 200
+    },
+    {
+      "path": "/api/pages/27a0cbff-039b-4821-b780-b7fe8874df3a/metadata",
+      "bytes": 763,
+      "status": 200
+    },
+    {
+      "path": "/api/intelligence/notifications",
+      "bytes": 674,
+      "status": 200
+    },
+    {
+      "path": "/api/entities",
+      "bytes": 3136,
+      "status": 200
+    },
+    {
+      "path": "/api/pages/27a0cbff-039b-4821-b780-b7fe8874df3a/metadata",
+      "bytes": 763,
+      "status": 200
+    },
+    {
+      "path": "/api/pages/6fedfc5c-0b2e-4714-8aaa-4a00324ae972/editor",
+      "bytes": 1247,
+      "status": 200
+    },
+    {
+      "path": "/api/intelligence/notifications",
+      "bytes": 674,
+      "status": 200
+    },
+    {
+      "path": "/api/entity-schema",
+      "bytes": 172028,
+      "status": 200
+    },
+    {
+      "path": "/api/intelligence",
+      "bytes": 586,
+      "status": 200
+    },
+    {
+      "path": "/api/intelligence",
+      "bytes": 586,
+      "status": 200
+    },
+    {
+      "path": "/api/entities",
+      "bytes": 3136,
+      "status": 200
+    },
+    {
+      "path": "/api/pages/27a0cbff-039b-4821-b780-b7fe8874df3a/editor",
+      "bytes": 2332,
+      "status": 200
+    },
+    {
+      "path": "/api/intelligence/notifications",
+      "bytes": 674,
+      "status": 200
+    },
+    {
+      "path": "/api/entity-schema",
+      "bytes": 172028,
+      "status": 200
+    },
+    {
+      "path": "/api/intelligence",
+      "bytes": 586,
+      "status": 200
+    },
+    {
+      "path": "/api/intelligence",
+      "bytes": 586,
+      "status": 200
+    },
+    {
+      "path": "/api/entities",
+      "bytes": 3136,
+      "status": 200
+    },
+    {
+      "path": "/api/vaults",
+      "bytes": 259,
+      "status": 200
+    },
+    {
+      "path": "/api/intelligence/notifications",
+      "bytes": 674,
+      "status": 200
+    },
+    {
+      "path": "/api/intelligence/notifications",
+      "bytes": 674,
+      "status": 200
+    },
+    {
+      "path": "/api/vaults",
+      "bytes": 259,
+      "status": 200
+    },
+    {
+      "path": "/api/pages",
+      "bytes": 1402,
+      "status": 200
+    },
+    {
+      "path": "/api/entities",
+      "bytes": 3136,
+      "status": 200
+    },
+    {
+      "path": "/api/organization",
+      "bytes": 300,
+      "status": 200
+    },
+    {
+      "path": "/api/pages/archive",
+      "bytes": 2,
+      "status": 200
+    },
+    {
+      "path": "/api/temporal/liturgical/preload",
+      "bytes": 452,
+      "status": 202
+    },
+    {
+      "path": "/api/entities",
+      "bytes": 3136,
+      "status": 200
+    },
+    {
+      "path": "/api/entity-schema",
+      "bytes": 172028,
+      "status": 200
+    },
+    {
+      "path": "/api/entities/4ecff7bb-5140-42c8-a0b7-12882651c5ba?preview=1",
+      "bytes": 3085,
+      "status": 200
+    },
+    {
+      "path": "/api/entities/4ecff7bb-5140-42c8-a0b7-12882651c5ba",
+      "bytes": 4308,
+      "status": 200
+    },
+    {
+      "path": "/api/entities/4ecff7bb-5140-42c8-a0b7-12882651c5ba/evidence?preview=1",
+      "bytes": 844,
+      "status": 200
+    },
+    {
+      "path": "/api/entities",
+      "bytes": 3136,
+      "status": 200
+    },
+    {
+      "path": "/api/intelligence/notifications",
+      "bytes": 674,
+      "status": 200
+    },
+    {
+      "path": "/api/vaults",
+      "bytes": 259,
+      "status": 200
+    },
+    {
+      "path": "/api/intelligence/notifications",
+      "bytes": 674,
+      "status": 200
+    },
+    {
+      "path": "/api/vaults",
+      "bytes": 259,
+      "status": 200
+    },
+    {
+      "path": "/api/pages",
+      "bytes": 1402,
+      "status": 200
+    },
+    {
+      "path": "/api/entities",
+      "bytes": 3136,
+      "status": 200
+    },
+    {
+      "path": "/api/organization",
+      "bytes": 300,
+      "status": 200
+    },
+    {
+      "path": "/api/pages/archive",
+      "bytes": 2,
+      "status": 200
+    },
+    {
+      "path": "/api/entities",
+      "bytes": 3136,
+      "status": 200
+    },
+    {
+      "path": "/api/temporal/liturgical/preload",
+      "bytes": 452,
+      "status": 202
+    },
+    {
+      "path": "/api/entities",
+      "bytes": 3136,
+      "status": 200
+    },
+    {
+      "path": "/api/entities/361cdc1d-ab38-40f3-81d8-5e5a8b2e4e7c",
+      "bytes": 2715,
+      "status": 200
+    },
+    {
+      "path": "/api/source-files/f597e513-2e4f-4575-97f6-bb2dcd702be7.md?fingerprint=1&context=1",
+      "bytes": 2295,
+      "status": 200
+    },
+    {
+      "path": "/api/source-files/f597e513-2e4f-4575-97f6-bb2dcd702be7.md/reprocessing",
+      "bytes": 95384,
+      "status": 200
+    },
+    {
+      "path": "/api/source-files/f597e513-2e4f-4575-97f6-bb2dcd702be7.md/reading-locations",
+      "bytes": 514,
+      "status": 200
+    },
+    {
+      "path": "/api/source-files/f597e513-2e4f-4575-97f6-bb2dcd702be7.md/highlights",
+      "bytes": 453,
+      "status": 200
+    },
+    {
+      "path": "/api/source-files/f597e513-2e4f-4575-97f6-bb2dcd702be7.md/reading-notes",
+      "bytes": 248,
+      "status": 200
+    },
+    {
+      "path": "/api/source-files/f597e513-2e4f-4575-97f6-bb2dcd702be7.md/reprocessing/synthetic-reading-revision",
+      "bytes": 95350,
+      "status": 200
+    },
+    {
+      "path": "/api/entities",
+      "bytes": 3136,
+      "status": 200
+    },
+    {
+      "path": "/api/entities/361cdc1d-ab38-40f3-81d8-5e5a8b2e4e7c",
+      "bytes": 2715,
+      "status": 200
+    }
+  ]
+}

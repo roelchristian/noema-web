@@ -1,3 +1,4 @@
+import {organizationIndex} from './organization-index';
 import {FolderDialog} from './FolderDialog';
 import {CollectionDialog} from './CollectionDialog';
 import {SmartCollectionStatus,SmartMembershipDetails} from './SmartCollectionStatus';
@@ -29,7 +30,7 @@ import { PageIcon } from '../components/PageIcon';
 import { ActionMenu } from '../components/ActionMenu';
 import { ItemOrganization } from './ItemOrganization';
 import { Select } from '../components/Select';
-import { useEffect, useRef, useState, type SetStateAction } from 'react';
+import { useEffect, useMemo, useRef, useState, type SetStateAction } from 'react';
 import {entityLabels} from '../../shared/domain';
 import type { Entity, Folder, FavouriteKind, Organization, OrganizationContext, PageSummary } from '../../shared/domain';
 import { api } from '../api';
@@ -48,7 +49,9 @@ export function OrganizationLibrary({data, vaultId, pages, entities, favouritesO
   onRenamePage: (page: PageSummary) => void; onDeletePage: (page: PageSummary) => void;
   onOpenPassage:(reference:SourceReference,trigger?:HTMLElement)=>void; onOpenPage: (id: string,reference?:PageReference) => void; onOpenEntity: (id: string) => void; onError: (error: unknown) => void;
 }) {
+  const index=useMemo(()=>organizationIndex(data,pages),[data,pages]);
   const activeVault=useRef(vaultId);activeVault.current=vaultId;
+  const ownership=useRef({vaultId});if(ownership.current.vaultId!==vaultId)ownership.current={vaultId};
   const mounted=useRef(true);
   useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
   const {collection, folder} = favouritesOnly || inboxOnly ? {collection: '', folder: ''} : context;
@@ -102,29 +105,29 @@ export function OrganizationLibrary({data, vaultId, pages, entities, favouritesO
   const items: Item[] = [
     ...(inboxOnly ? inboxPages(pages, data) : pages).map(p => ({kind: 'page' as const, id: p.id, name: p.title || 'Untitled', get label(){return uiText("Page")}, icon: p.icon, featuredImageId:p.featuredImageId, updatedAt: p.updated_at})),
     ...(favouritesOnly ? entities.filter(entity=>!entity.archived_at) : []).map(e => ({kind: 'entity' as const, id: e.id, name: e.name, aliases: e.aliases, label: entityLabels[e.type], description: e.description, updatedAt: e.updated_at, entityType: e.type})),
-    ...(!inboxOnly ? data.folders : []).filter(f => favouritesOnly || (collection ? (data.folderLinks ?? []).some(link=>link.collection_id===collection && link.folder_id===f.id) : (f.parent_id || '') === folder)).map(f => ({kind: 'folder' as const, id: f.id, name: f.name, description:f.description, label: collection ? uiText("Linked folder") : uiText("Folder")})),
+    ...(!inboxOnly ? data.folders : []).filter(f => favouritesOnly || (collection ? index.linkedFolders.get(collection)?.has(f.id) : (f.parent_id || '') === folder)).map(f => ({kind: 'folder' as const, id: f.id, name: f.name, description:f.description, label: collection ? uiText("Linked folder") : uiText("Folder")})),
   ];
-  const pagesById = new Map(pages.map(page => [page.id, page]));
-  const linkedFolderCount = (id:string) => (data.folderLinks ?? []).filter(link=>link.collection_id===id).length;
+  const {pagesById}=index;
+  const linkedFolderCount = (id:string) => index.linkedFolders.get(id)?.size ?? 0;
   const openItem = (item: Item) => {
     suppressSemantic();
     setViewState(previous => ({...previous, focusedRow: item.kind + ':' + item.id}));
     if (item.kind === 'folder') onOpenFolder(item.id); else if (item.kind === 'page') onOpenPage(item.id,textHits.get('page:'+item.id)?.pageReference??semanticNotes.get(item.id)?.pageReference); else {const reference=textHits.get('entity:'+item.id)?.reference??semanticNotes.get(item.id)?.reference;if(query&&reference)onOpenPassage(reference,document.activeElement instanceof HTMLElement?document.activeElement:undefined);else onOpenEntity(item.id);}
   };
   const folderDescription = (id: string) => {
-    const notes = data.locations.filter(location => location.kind === 'page' && location.folder_id === id && pagesById.has(location.item_id)).length;
-    const children = data.folders.filter(child => child.parent_id === id).length;
+    const notes = index.folderPages.get(id) ?? 0;
+    const children = index.folderChildren.get(id) ?? 0;
     return `${notes} ${notes === 1 ? 'page' : 'pages'} · ${children} ${children === 1 ? 'subfolder' : 'subfolders'}`;
   };
-  const currentCollection = data.collections.find(c => c.id === collection), currentFolder = data.folders.find(f => f.id === folder);
+  const currentCollection = index.collectionsById.get(collection), currentFolder = index.foldersById.get(folder);
   const currentDescription=currentFolder?currentFolder.description:currentCollection?.description;
-  const isFavourite = (item: Item) => data.favourites.some(f => f.kind === item.kind && f.item_id === item.id);
-  const location = (item: Item) => data.locations.find(l => l.kind === item.kind && l.item_id === item.id);
+  const isFavourite = (item: Item) => index.favourites.has(item.kind+':'+item.id);
+  const location = (item: Item) => index.locations.get(item.kind+':'+item.id);
   const scopedItems = items.filter(item => {
     if (favouritesOnly) return isFavourite(item);
     if (allPages) return item.kind === 'page';
     if (item.kind === 'folder') return true;
-    if (collection) return data.memberships.some(m => m.kind === item.kind && m.item_id === item.id && m.collection_id === collection);
+    if (collection) return index.collectionItems.get(collection)?.has(item.kind+':'+item.id);
     if (folder) return location(item)?.folder_id === folder;
     return !location(item)?.folder_id;
   });
@@ -162,24 +165,24 @@ export function OrganizationLibrary({data, vaultId, pages, entities, favouritesO
   });
   const checked = visible.filter(item => item.kind === 'page' && checkedPages.has(item.id));
   const {showPreview,quickPreview}=useLibraryQuickPreview(libraryRef,{vaultId,items:visible,pages,entities,organization:data,onOpen:value=>{const item=visible.find(item=>item.kind===value.kind&&item.id===value.id);if(item)openItem(item);}});
-  const automaticMembership = (kind: string, id: string, collectionId: string) => data.memberships.some(member => member.kind === kind && member.item_id === id && member.collection_id === collectionId && member.automatic && data.collections.find(c=>c.id===collectionId)?.kind!=='smart');
+  const automaticMembership = (kind: string, id: string, collectionId: string) => (index.memberships.get(kind+':'+id)??[]).some(member=>member.collection_id===collectionId&&member.automatic&&index.collectionsById.get(collectionId)?.kind!=='smart');
+  const bulkLimitExceeded=checked.length>100;
   const bulkRemovalProtected = checked.some(item => automaticMembership(item.kind,item.id,bulkCollection));
   const bulkRemoving = bulkRemove && !bulkRemovalProtected;
   const visiblePages = visible.filter(item => item.kind === 'page');
   const togglePage=useLibraryRangeSelection(visiblePages.map(item=>item.id),checkedPages,setCheckedPages,JSON.stringify([vaultId,destination,search,allPages]));
   const allChecked = visiblePages.length > 0 && checked.length === visiblePages.length;
   async function bulkUpdate(route: 'favourites' | 'locations' | 'memberships', body: Record<string, unknown>) {
-    if (pending || !checked.length) return;
-    setPending(true);
+    if (pending || !checked.length || bulkLimitExceeded) return;
+    const requestOwner=ownership.current;setPending(true);
     try {
-      for (const item of checked) {
-        const updated = await api.organize(vaultId, route, {kind: 'page', item_id: item.id, ...body});
-        if(!mounted.current||activeVault.current!==vaultId)return;
-        onChanged(updated);
-        setCheckedPages(previous => { const next = new Set(previous); next.delete(item.id); return next; });
-      }
+      const selectedIds=checked.map(item=>item.id);
+      const updated=await api.organize(vaultId,'bulk',{operation:route,kind:'page',item_ids:selectedIds,...body});
+      if(!mounted.current||ownership.current!==requestOwner)return;
+      onChanged(updated);
+      setCheckedPages(previous=>new Set([...previous].filter(id=>!selectedIds.includes(id))));
       setBulkOrganize(false);
-    } finally { setPending(false); }
+    } finally { if(mounted.current&&ownership.current===requestOwner)setPending(false); }
   }
   const semanticNotes = new Map((related ? semantic.results : []).map(result => [result.id, result]));
   const previewPages = (query ? visible : []).filter(item => item.kind === 'page' && !textHits.get('page:' + item.id)?.snippet && !semanticNotes.get(item.id)?.snippet);
@@ -187,8 +190,8 @@ export function OrganizationLibrary({data, vaultId, pages, entities, favouritesO
   const passageFor=(item:Item)=>item.kind==='entity'?(textHits.get('entity:'+item.id)?.reference??semanticNotes.get(item.id)?.reference):undefined;
   const snippetFor = (item: Item) => (passageFor(item)?citationLocation(passageFor(item)!)+': ':'')+(textHits.get(item.kind + ':' + item.id)?.snippet || semanticNotes.get(item.id)?.snippet || (item.kind === 'page' ? previews.snippets[item.id] ?? semanticNotes.get(item.id)?.snippet ?? '' : makeSearchSnippet(item.description ?? '', search)));
   const folderPath = (id: string): string => {
-    const names: string[] = []; let f = data.folders.find(value => value.id === id);
-    while (f) { names.unshift(f.name); f = data.folders.find(value => value.id === f!.parent_id); }
+    const names: string[] = []; let f = index.foldersById.get(id);
+    while (f) { names.unshift(f.name); f = index.foldersById.get(f!.parent_id??''); }
     return names.join(' / ');
   };
   function move(item: Item, context: string, target: string | null, remove = false) {
@@ -237,7 +240,7 @@ export function OrganizationLibrary({data, vaultId, pages, entities, favouritesO
       {(!inboxOnly || !triaging) && <>{toolbar}<div className="library-scope" role="status"><span>{visibleCount} {visibleCount===1?'item':'items'} · {filterScope}</span></div></>}
       {currentCollection?.kind==='smart' && <SmartCollectionStatus key={vaultId+collection} vaultId={vaultId} collection={currentCollection} data={data} itemNames={new Map([...pages.map(p=>['page:'+p.id,p.title||'Untitled'] as const),...entities.map(e=>['entity:'+e.id,e.name] as const)])} onChanged={onChanged} onError={onError}/>}
       {visibleCount > 0 || inboxOnly && triaging ? <>
-      {!favouritesOnly && checked.length > 0 && <div className="organization-bulk-actions" role="toolbar" aria-label={uiText("Selected page actions")}>{onArchivePages&&<button disabled={pending} onClick={()=>run(async()=>{await onArchivePages?.(checked.map(page=>page.id));setCheckedPages(new Set());})}>Archive</button>}<span role="status">{checked.length}{" " + uiText("selected")}</span><button disabled={pending} onClick={() => run(() => bulkUpdate('favourites', {favourite: true}))}><Icon name="star"/>{uiText("Favourite")}</button><button disabled={pending} onClick={() => run(() => bulkUpdate('favourites', {favourite: false}))}>{uiText("Unfavourite")}</button><button disabled={pending} onClick={() => { setBulkMode('folder'); setBulkRemove(false); setBulkCollection(collection || data.collections[0]?.id || ''); setBulkFolder(folder); setBulkOrganize(true); }}><Icon name="folder"/>{uiText("Organize")}</button><button disabled={pending} onClick={() => setCheckedPages(new Set())}>{uiText("Clear")}</button></div>}
+      {!favouritesOnly && checked.length > 0 && <div className="organization-bulk-actions" role="toolbar" aria-label={uiText("Selected page actions")}>{onArchivePages&&<button disabled={pending} onClick={()=>run(async()=>{await onArchivePages?.(checked.map(page=>page.id));setCheckedPages(new Set());})}>Archive</button>}<span role="status">{checked.length}{" " + uiText("selected")}{bulkLimitExceeded&&" · Choose up to 100 pages. Reduce the selection to organize or favourite pages."}</span><button disabled={pending||bulkLimitExceeded} onClick={() => run(() => bulkUpdate('favourites', {favourite: true}))}><Icon name="star"/>{uiText("Favourite")}</button><button disabled={pending||bulkLimitExceeded} onClick={() => run(() => bulkUpdate('favourites', {favourite: false}))}>{uiText("Unfavourite")}</button><button disabled={pending||bulkLimitExceeded} onClick={() => { setBulkMode('folder'); setBulkRemove(false); setBulkCollection(collection || data.collections[0]?.id || ''); setBulkFolder(folder); setBulkOrganize(true); }}><Icon name="folder"/>{uiText("Organize")}</button><button disabled={pending} onClick={() => setCheckedPages(new Set())}>{uiText("Clear")}</button></div>}
       {inboxOnly && triaging ? <InboxTriage onRefresh={onRefresh} vaultId={vaultId} pages={visiblePages.map(item=>pagesById.get(item.id)!)} allPages={pages} entities={entities} data={data} checked={checkedPages} onToggle={togglePage} onSelectAll={ids=>setCheckedPages(ids.every(id=>checkedPages.has(id)) ? new Set() : new Set(ids))} onBusyChange={setPending} onChanged={onChanged} onOpenPage={onOpenPage} onOpenEntity={onOpenEntity} onArchive={id=>onArchivePages?.([id])??Promise.resolve()} onTrash={onDeletePage} disabled={pending}/> : <div className={'organization-items'  + (checked.length ? ' has-selection' : '')}>
       {!favouritesOnly && density === 'compact' && <label className="library-select-all"><input type="checkbox" aria-label={uiText("Select all visible pages")} checked={allChecked} ref={input => { if (input) input.indeterminate = checked.length > 0 && !allChecked; }} disabled={pending || !visiblePages.length} onChange={() => setCheckedPages(allChecked ? new Set() : new Set(visiblePages.map(item => item.id)))}/>{uiText("Select all")}</label>}
       {!favouritesOnly && density !== 'compact' && <div className="organization-list-head" aria-label={uiText("Page columns")}>
@@ -265,7 +268,7 @@ export function OrganizationLibrary({data, vaultId, pages, entities, favouritesO
       </article>)}
       {visible.map(item => <article data-library-row={item.kind + ':' + item.id} className={'organization-item' + (item.kind === 'page' && checkedPages.has(item.id) ? ' is-checked' : '') + (dropTarget === item.id && item.kind === 'folder' ? ' is-drop-target' : '')} key={item.kind + item.id}
         {...(item.kind === 'folder' ? folderDropHandlers({folder: data.folders.find(folder => folder.id === item.id)!, vaultId, pages, data, pending, moving, onHover: setDropTarget, onStatus: setDropStatus, onMove: (pageId, folderId) => mutate('locations', {kind: 'page', item_id: pageId, folder_id: folderId}), onMoveFolder: (source, parentId) => mutate('folders/' + source.id, {name: source.name, parent_id: parentId}), onError}) : {})}>
-        <div className={'organization-item-row' + (favouritesOnly ? '' : ' organization-page-row')} draggable={(item.kind === 'page' || item.kind === 'folder') && !pending && !checked.length} onDragStart={event => { if (item.kind === 'page') startPageDrag(event, vaultId, item.id); else if (item.kind === 'folder') startFolderDrag(event, vaultId, item.id); }}>{!favouritesOnly && item.kind === 'page' ? <label className="organization-item-icon page-selection" draggable={false}><span className="page-selection-icon"><PageIcon icon={item.icon}/></span><input type="checkbox" aria-label={uiText("Select ") + item.name} checked={checkedPages.has(item.id)} disabled={pending} onChange={event=>togglePage(item.id,(event.nativeEvent as MouseEvent).shiftKey)}/><span className="page-selection-check"><Icon name="check"/></span></label> : <span className="organization-item-icon">{item.kind === 'page' ? <PageIcon icon={item.icon}/> : <Icon name={item.kind === 'folder' ? collection ? 'folder-linked' : 'folder' : item.entityType ?? 'knowledge'}/>}</span>}<button data-library-focus className="organization-item-name" title={query ? item.name + ' · ' + matchLabel(item) : item.name} onClick={() => openItem(item)}><span className="organization-page-title">{item.kind==='page'?<TitleText text={item.name} query={search}/>:<HighlightedText text={item.name} query={search}/>}</span>{(viewState.columns === 'location') && <span className="library-item-extra">{location(item)?.folder_id ? folderPath(location(item)!.folder_id!) : item.kind === 'page' ? 'Unfiled' : folderDescription(item.id)}</span>}{viewState.columns === 'collections' && <span className="library-item-extra">{data.memberships.filter(member=>member.kind===item.kind&&member.item_id===item.id).map(member=>data.collections.find(value=>value.id===member.collection_id)?.name).filter(Boolean).join(', ') || '—'}</span>}<small>{favouritesOnly ? item.label : item.kind === 'folder' ? <><span className="sr-only">{folderDescription(item.id)}</span><span aria-hidden="true">{collection ? uiText("Linked folder") : '—'}</span></> : item.updatedAt && Number.isFinite(Date.parse(item.updatedAt)) ? <time dateTime={item.updatedAt} title={new Date(item.updatedAt).toLocaleString(getLocale())}>{new Date(item.updatedAt).toLocaleDateString(getLocale(), {month: 'short', day: 'numeric', year: 'numeric'})}</time> : uiText("Modified date unavailable")}{item.kind === 'page' && <PageAIHistoryIcons page={pagesById.get(item.id)}/>}{!!query && <span className="search-match-badge">{matchLabel(item)}</span>}</small>{!!query && !!(item.kind === 'folder' ? [item.description,folderDescription(item.id)].filter(Boolean).join(' · ') : snippetFor(item)) && <span className="search-result-snippet item-preview"><HighlightedText text={item.kind === 'folder' ? [item.description,folderDescription(item.id)].filter(Boolean).join(' · ') : snippetFor(item)} query={search}/></span>}</button><button className={'favourite-button ' + (isFavourite(item) ? 'is-favourite' : '')} disabled={pending} aria-label={(isFavourite(item) ? uiText("Remove favourite: ") : uiText("Favourite: ")) + item.name} aria-pressed={isFavourite(item)} onClick={() => run(() => mutate('favourites', {kind: item.kind, item_id: item.id, favourite: !isFavourite(item)}))}><Icon name="star"/></button><span className="page-row-actions"><ActionMenu lazy label={'Actions for ' + item.name} disabled={pending} actions={[
+        <div className={'organization-item-row' + (favouritesOnly ? '' : ' organization-page-row')} draggable={(item.kind === 'page' || item.kind === 'folder') && !pending && !checked.length} onDragStart={event => { if (item.kind === 'page') startPageDrag(event, vaultId, item.id); else if (item.kind === 'folder') startFolderDrag(event, vaultId, item.id); }}>{!favouritesOnly && item.kind === 'page' ? <label className="organization-item-icon page-selection" draggable={false}><span className="page-selection-icon"><PageIcon icon={item.icon}/></span><input type="checkbox" aria-label={uiText("Select ") + item.name} checked={checkedPages.has(item.id)} disabled={pending} onChange={event=>togglePage(item.id,(event.nativeEvent as MouseEvent).shiftKey)}/><span className="page-selection-check"><Icon name="check"/></span></label> : <span className="organization-item-icon">{item.kind === 'page' ? <PageIcon icon={item.icon}/> : <Icon name={item.kind === 'folder' ? collection ? 'folder-linked' : 'folder' : item.entityType ?? 'knowledge'}/>}</span>}<button data-library-focus className="organization-item-name" title={query ? item.name + ' · ' + matchLabel(item) : item.name} onClick={() => openItem(item)}><span className="organization-page-title">{item.kind==='page'?<TitleText text={item.name} query={search}/>:<HighlightedText text={item.name} query={search}/>}</span>{(viewState.columns === 'location') && <span className="library-item-extra">{location(item)?.folder_id ? folderPath(location(item)!.folder_id!) : item.kind === 'page' ? 'Unfiled' : folderDescription(item.id)}</span>}{viewState.columns === 'collections' && <span className="library-item-extra">{(index.memberships.get(item.kind+':'+item.id)??[]).map(member=>index.collectionsById.get(member.collection_id)?.name).filter(Boolean).join(', ') || '—'}</span>}<small>{favouritesOnly ? item.label : item.kind === 'folder' ? <><span className="sr-only">{folderDescription(item.id)}</span><span aria-hidden="true">{collection ? uiText("Linked folder") : '—'}</span></> : item.updatedAt && Number.isFinite(Date.parse(item.updatedAt)) ? <time dateTime={item.updatedAt} title={new Date(item.updatedAt).toLocaleString(getLocale())}>{new Date(item.updatedAt).toLocaleDateString(getLocale(), {month: 'short', day: 'numeric', year: 'numeric'})}</time> : uiText("Modified date unavailable")}{item.kind === 'page' && <PageAIHistoryIcons page={pagesById.get(item.id)}/>}{!!query && <span className="search-match-badge">{matchLabel(item)}</span>}</small>{!!query && !!(item.kind === 'folder' ? [item.description,folderDescription(item.id)].filter(Boolean).join(' · ') : snippetFor(item)) && <span className="search-result-snippet item-preview"><HighlightedText text={item.kind === 'folder' ? [item.description,folderDescription(item.id)].filter(Boolean).join(' · ') : snippetFor(item)} query={search}/></span>}</button><button className={'favourite-button ' + (isFavourite(item) ? 'is-favourite' : '')} disabled={pending} aria-label={(isFavourite(item) ? uiText("Remove favourite: ") : uiText("Favourite: ")) + item.name} aria-pressed={isFavourite(item)} onClick={() => run(() => mutate('favourites', {kind: item.kind, item_id: item.id, favourite: !isFavourite(item)}))}><Icon name="star"/></button><span className="page-row-actions"><ActionMenu lazy label={'Actions for ' + item.name} disabled={pending} actions={[
           {get label(){return uiText("Open")}, icon: item.kind === 'folder' ? collection ? 'folder-linked' : 'folder' : item.kind === 'page' ? 'page' : 'knowledge', onSelect: () => openItem(item)},
           ...(item.kind !== 'folder' ? [{label:'Quick preview',icon:'page',onSelect:()=>showPreview(item)}] : []),
           ...(item.kind === 'page' ? [{get label(){return uiText("Rename")}, icon: 'edit', onSelect: () => onRenamePage(pages.find(page => page.id === item.id)!)}] : []),
@@ -274,7 +277,7 @@ export function OrganizationLibrary({data, vaultId, pages, entities, favouritesO
           {label: isFavourite(item) ? uiText("Remove from favourites") : uiText("Add to favourites"), icon: 'star', onSelect: () => run(() => mutate('favourites', {kind: item.kind, item_id: item.id, favourite: !isFavourite(item)}))},
           ...(item.kind === 'page' ? [{label:'Archive',icon:'archive',onSelect:()=>void onArchivePages?.([item.id]).catch(onError)},{label: uiText("Move to Trash"), icon: 'trash', danger: true, onSelect: () => onDeletePage(pages.find(page => page.id === item.id)!)}] : []),
         ]}/></span></div>
-        {currentCollection?.kind==='smart' && item.kind!=='folder' && data.memberships.filter(m=>m.collection_id===collection&&m.kind===item.kind&&m.item_id===item.id).map(member=><SmartMembershipDetails key={member.item_id} membership={member} semantic={!!currentCollection.matching&&currentCollection.matching!=='rules'} disabled={pending} onDecision={decision=>run(()=>mutate('memberships',{kind:item.kind,item_id:item.id,collection_id:collection,...(decision==='reset'?{reset:true}:{remove:decision==='exclude'})}))}/>)}
+        {currentCollection?.kind==='smart' && item.kind!=='folder' && (index.memberships.get(item.kind+':'+item.id)??[]).filter(m=>m.collection_id===collection).map(member=><SmartMembershipDetails key={member.item_id} membership={member} semantic={!!currentCollection.matching&&currentCollection.matching!=='rules'} disabled={pending} onDecision={decision=>run(()=>mutate('memberships',{kind:item.kind,item_id:item.id,collection_id:collection,...(decision==='reset'?{reset:true}:{remove:decision==='exclude'})}))}/>)}
         {item.kind !== 'folder' && selected === item.kind + item.id && <ItemOrganization data={data} kind={item.kind} itemId={item.id} pending={pending} onMove={(context, target, remove) => move(item, context, target, remove)}/>}
       </article>)}</div>}</> : <div className="organization-empty" role="status"><span className="destination-icon"><Icon name={search ? 'search' : favouritesOnly ? 'star' : 'folder'}/></span><h2>{query ? semantic.loading || textSearch.loading ? uiText("Filtering this view…") : uiText("No matching content") : favouritesOnly ? uiText("Keep useful ideas close") : inboxOnly ? uiText("No unfiled pages") : currentFolder ? uiText("This folder is empty") : currentCollection ? uiText("This collection is empty") : uiText("Nothing here yet")}</h2><p>{query ? uiText("Try a title, page text, or an idea in this view. Use ⌘/Ctrl+K to search the whole vault.") : favouritesOnly ? uiText("Star any page, folder, or entity to find it here.") : currentFolder ? uiText("Move notes or folders into this folder from Pages or the sidebar.") : currentCollection ? uiText("Add notes or link a folder using collection options. Linked folders include future additions automatically.") : inboxOnly ? uiText("New notes appear here automatically. Move them to a folder when you’re ready. Collection membership does not change Inbox.") : uiText("Create a note or folder to get started. Filed notes live inside their folders.")}</p>{!!search && <button className="button" onClick={() => setSearch('')}>{uiText("Clear filter")}</button>}{!search && !favouritesOnly && (collection || folder) && <button className="button" onClick={() => onContextChange({collection: '', folder: ''})}>{uiText("Browse Pages")}<Icon name="chevron"/></button>}</div>}
     </div>
@@ -284,7 +287,7 @@ export function OrganizationLibrary({data, vaultId, pages, entities, favouritesO
       <label>{uiText("Action")}<Select value={bulkMode} disabled={pending} onChange={event => setBulkMode(event.target.value as 'folder' | 'collection')}><option value="folder">{uiText("Move to folder")}</option><option value="collection">{uiText("Update collection membership")}</option></Select></label>
       {bulkMode === 'folder' ? <label>{uiText("Folder")}<Select value={bulkFolder} disabled={pending} onChange={event => setBulkFolder(event.target.value)}><option value="">{uiText("Inbox (unfiled)")}</option>{data.folders.map(item => <option key={item.id} value={item.id}>{folderPath(item.id)}</option>)}</Select></label> : <><label>{uiText("Collection")}<Select value={bulkCollection} disabled={pending} onChange={event => setBulkCollection(event.target.value)}><option value="" disabled>{uiText("Choose a collection")}</option>{data.collections.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</Select></label><label>{uiText("Membership")}<Select value={bulkRemoving ? 'remove' : 'add'} disabled={pending} onChange={event => setBulkRemove(event.target.value === 'remove')}><option value="add">{uiText("Add to collection")}</option>{!bulkRemovalProtected && <option value="remove">{uiText("Remove from collection")}</option>}</Select></label></>}
       <p>{bulkMode === 'folder' ? uiText("Changes location and keeps collection memberships.") : uiText("Changes membership and keeps folder locations.")}</p>
-      <div className="dialog-actions"><button type="button" className="button" disabled={pending} onClick={() => setBulkOrganize(false)}>{uiText("Cancel")}</button><button className="button primary" disabled={pending || bulkMode === 'collection' && !bulkCollection || !checked.length}>{pending ? uiText("Saving…") : bulkMode === 'folder' ? uiText("Move pages") : bulkRemoving ? uiText("Remove membership") : uiText("Add to collection")}</button></div></form></Modal>}
+      <div className="dialog-actions"><button type="button" className="button" disabled={pending} onClick={() => setBulkOrganize(false)}>{uiText("Cancel")}</button><button className="button primary" disabled={pending || bulkLimitExceeded || bulkMode === 'collection' && !bulkCollection || !checked.length}>{pending ? uiText("Saving…") : bulkMode === 'folder' ? uiText("Move pages") : bulkRemoving ? uiText("Remove membership") : uiText("Add to collection")}</button></div></form></Modal>}
     {edit?.type === 'collections' && <CollectionDialog key={vaultId+':'+(edit.id??'new')} vaultId={vaultId} data={data} pages={pages} collection={data.collections.find(c=>c.id===edit.id)} onChanged={onChanged} onClose={()=>setEdit(null)}/>}
     {edit?.type === 'folders' && <FolderDialog key={vaultId+':'+(edit.id??'new')} vaultId={vaultId} data={data} folder={data.folders.find(f=>f.id===edit.id)} parentId={edit.parent} onChanged={onChanged} onClose={()=>setEdit(null)}/>}
     {remove && <ConfirmDialog danger title={uiText("Remove ") + (remove.type === 'folders' ? uiText("folder?") : uiText("collection?"))} description={remove.type === 'folders' ? `Remove “${remove.name}” and its subfolders? Their contents return to Inbox. Collection memberships and note favourites are kept.` : `Remove “${remove.name}”? Only its memberships are removed. Notes keep their folder locations.`} action={uiText("Remove")} onClose={() => setRemove(null)} onConfirm={async () => {

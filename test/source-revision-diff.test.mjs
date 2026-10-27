@@ -7,7 +7,7 @@ import {createRoot} from 'react-dom/client';
 import {setupDOM} from './helpers/dom.mjs';
 
 const css=registerHooks({load(url,context,next){return url.endsWith('.css')?{format:'module',source:'export default {};',shortCircuit:true}:next(url,context);}});
-const {SourceRevisionDiff,revisionDiffLines,buildRevisionDiffGroups,buildRevisionDiffContext,revisionSplitRows}=await import('../src/client/sources/SourceRevisionDiff.tsx');
+const {SourceRevisionDiff,revisionDiffLines,buildRevisionDiffGroups,buildRevisionDiffContext,revisionSplitRows,buildRevisionDiffIndex,planRevisionDiffSections,materializeRevisionDiffSection}=await import('../src/client/sources/SourceRevisionDiff.tsx');
 css.deregister();
 
 function fixture(){
@@ -186,4 +186,26 @@ test('hunk actions are disabled while mutations are unavailable or no pending ch
  const revision=fixture();revision.patches=revision.patches.map(patch=>({...patch,decision:'accepted'}));
  await mount(t,{revision,disabled:false,onDecision:async()=>{},onDecisions:async()=>assert.fail('No pending changes')});
  assert.ok([...document.querySelectorAll('.revision-diff-hunk-actions button')].every(button=>button.disabled));
+});
+
+
+test('indexed plans retain UTF-16 multiline coordinates and never collide linked and standalone keys',()=>{
+ const text='😀 original\nsecond line\n'+('unchanged\n'.repeat(10))+'standalone';
+ const base=fixture().patches[0],first={...base,id:'A',patchGroupId:'patch:B',original:'original\nsecond',replacement:'corrected\nextra\nsecond',range:{...base.range,startOffset:3,endOffset:18}},second={...base,id:'B',patchGroupId:undefined,original:'standalone',replacement:'independent',range:{...base.range,startOffset:text.indexOf('standalone'),endOffset:text.length}};
+ const all=[first,second],index=buildRevisionDiffIndex(text,all),plans=planRevisionDiffSections(text,all,[first],index);
+ assert.equal(plans.length,1);assert.equal(Object.hasOwn(plans[0],'before'),false);assert.equal(Object.hasOwn(plans[0],'after'),false,'planning never creates comparison strings');
+ assert.deepEqual(plans[0].hunkPatches.map(item=>item.id),['A']);
+ const section=materializeRevisionDiffSection(text,plans[0]);assert.match(section.before,/😀 original/);assert.match(section.after,/😀 corrected\nextra\nsecond/);
+ assert.equal(index.lineAt(text.indexOf('standalone')),13);
+});
+
+test('comparison materializes a bounded initial section set and expands by keyboard-accessible action',async t=>{
+ const revision=fixture(),base=revision.patches[0],blocks=Array.from({length:28},(_,i)=>`passage ${i}\n`+'unchanged\n'.repeat(8));
+ revision.original.text=blocks.join('');let from=0;
+ revision.patches=blocks.map((block,i)=>{const original=`passage ${i}`,patch={...base,id:`p${i}`,patchGroupId:undefined,original,replacement:`corrected ${i}`,range:{...base.range,startOffset:from,endOffset:from+original.length}};from+=block.length;return patch;});
+ const click=await mount(t,{revision,disabled:false,onDecision:async()=>{}});
+ assert.equal(document.querySelectorAll('.revision-diff-section').length,12);
+ const more=()=>[...document.querySelectorAll('button')].find(button=>button.textContent.startsWith('Show more changes'));
+ assert.ok(more());await click(more());assert.equal(document.querySelectorAll('.revision-diff-section').length,24);
+ await click(more());assert.equal(document.querySelectorAll('.revision-diff-section').length,28);assert.equal(more(),undefined);
 });

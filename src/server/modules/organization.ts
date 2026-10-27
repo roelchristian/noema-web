@@ -121,6 +121,25 @@ export class Organizer {
     this.store.run(`DELETE FROM ${type} WHERE id=? AND vault_id=?`, id, vault);
     return this.list(vault);
   }
+  /** One bounded command, all writes committed together, one final inventory. */
+  bulk(vault: string, body: Record<string, unknown>): Organization {
+    new Vaults(this.store).requireOpen(vault);
+    const operation=body.operation;
+    if(operation!=='locations'&&operation!=='memberships'&&operation!=='favourites')throw new HttpError(400,'Invalid bulk organization operation');
+    if(body.kind!=='page')throw new HttpError(400,'Bulk organization requires pages');
+    const ids=body.item_ids;
+    if(!Array.isArray(ids)||!ids.length||ids.length>100||ids.some(id=>typeof id!=='string'||!id.trim()||id.length>200))throw new HttpError(400,'Choose between 1 and 100 valid page IDs');
+    if(new Set(ids).size!==ids.length)throw new HttpError(400,'Duplicate page IDs are not allowed');
+    this.store.transaction(()=>{
+      for(const id of ids) {
+        const input={...body,item_id:id};
+        if(operation==='locations')this.applyLocation(vault,input);
+        else if(operation==='memberships')this.applyMembership(vault,input);
+        else this.applyFavourite(vault,input);
+      }
+    });
+    return this.list(vault);
+  }
   private item(vault: string, body: Record<string, unknown>): {kind: ItemKind; id: string} {
     const kind = body.kind;
     if (kind !== 'page' && kind !== 'entity') throw new HttpError(400, 'Invalid item kind');
@@ -129,6 +148,11 @@ export class Organizer {
     return {kind, id};
   }
   locate(vault: string, body: Record<string, unknown>) {
+    new Vaults(this.store).requireOpen(vault);
+    this.applyLocation(vault,body);
+    return this.list(vault);
+  }
+  private applyLocation(vault: string, body: Record<string, unknown>) {
     const {kind, id} = this.item(vault, body);
     if (body.collection_id != null) throw new HttpError(400, 'Use memberships to change collections');
     if ('expected_folder_id' in body) {
@@ -141,19 +165,24 @@ export class Organizer {
     if (body.remove !== undefined && typeof body.remove !== 'boolean') throw new HttpError(400, 'Invalid remove flag');
     if (body.remove || !folder) this.store.run('DELETE FROM item_locations WHERE vault_id=? AND kind=? AND item_id=?', vault, kind, id);
     else this.store.run('INSERT INTO item_locations VALUES (?,?,?,?) ON CONFLICT(vault_id,kind,item_id) DO UPDATE SET folder_id=excluded.folder_id', vault, kind, id, folder);
-    return this.list(vault);
+    return;
   }
   membership(vault: string, body: Record<string, unknown>) {
+    new Vaults(this.store).requireOpen(vault);
+    this.applyMembership(vault,body);
+    return this.list(vault);
+  }
+  private applyMembership(vault: string, body: Record<string, unknown>) {
     const {kind, id} = this.item(vault, body);
     const collection = required(body.collection_id);
     const target=this.collection(vault, collection);
     if (body.folder_id != null) throw new HttpError(400, 'Collection membership cannot change a folder');
     if (body.remove !== undefined && typeof body.remove !== 'boolean') throw new HttpError(400, 'Invalid remove flag');
-    if(this.smart.definition(vault,collection)){this.smart.override(vault,body,collection,kind,id);return this.list(vault);}
+    if(this.smart.definition(vault,collection)){this.smart.override(vault,body,collection,kind,id);return;}
     if (body.remove && kind==='page' && target.name==='Reading Notes' && this.store.get('SELECT 1 FROM page_reading_notes WHERE vault_id=? AND page_id=?',vault,id)) throw new HttpError(400,'Reading notes belong to Reading Notes automatically.');
     if (body.remove) this.store.run('DELETE FROM collection_memberships WHERE vault_id=? AND kind=? AND item_id=? AND collection_id=?', vault, kind, id, collection);
     else this.store.run('INSERT OR IGNORE INTO collection_memberships VALUES (?,?,?,?)', vault, kind, id, collection);
-    return this.list(vault);
+    return;
   }
   folderMembership(vault: string, body: Record<string, unknown>) {
     const folder = this.folder(vault, required(body.folder_id));
@@ -175,10 +204,15 @@ export class Organizer {
     return this.list(vault);
   }
   favourite(vault: string, body: Record<string, unknown>) {
+    new Vaults(this.store).requireOpen(vault);
+    this.applyFavourite(vault,body);
+    return this.list(vault);
+  }
+  private applyFavourite(vault: string, body: Record<string, unknown>) {
     const {kind, id} = body.kind === 'folder' ? {kind: 'folder' as const, id: this.folder(vault, required(body.item_id)).id} : this.item(vault, body);
     if (typeof body.favourite !== 'boolean') throw new HttpError(400, 'A favourite flag is required');
     if (body.favourite) this.store.run('INSERT OR IGNORE INTO favourites VALUES (?,?,?)', vault, kind, id);
     else this.store.run('DELETE FROM favourites WHERE vault_id=? AND kind=? AND item_id=?', vault, kind, id);
-    return this.list(vault);
+    return;
   }
 }

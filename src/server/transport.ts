@@ -1,3 +1,4 @@
+import {sourceFileStatuses} from './modules/source-file-status.js';
 import {fetchSource} from './modules/source-import.js';
 import {parseSourceIngestionOptions} from './modules/source-ingestion-options.js';
 import {chatRoutes} from './routes/chat.js';
@@ -105,6 +106,7 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
           const header=req.headers['x-vault-id'];if(Array.isArray(header))throw new HttpError(400,'Invalid vault ID');
           const vault=vaults.requireOpen(header || (method==='GET'?url.searchParams.get('vault'):null) || 'default');
           const parts=url.pathname.split('/').filter(Boolean),id=parts[2];
+          if(!id&&method==='GET'&&url.searchParams.get('compact')==='1')return send(200,sourceFileStatuses(store,vault,url.searchParams.get('entity')??''));
           if(id && parts[3]==='ingestion') {
             if(parts.length===4&&method==='GET')return send(200,runtime.sourceIngestion.view(vault,id));
             if(parts.length===4&&method==='POST') {
@@ -136,6 +138,7 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
             if(method==='POST'&&!/^application\/json(?:;|$)/i.test(req.headers['content-type']||''))throw new HttpError(415,'Editorial requests require JSON.');
             if(parts.length===4&&method==='GET')return send(200,sourceReprocessing.list(vault,id));
             if(parts.length===4&&method==='POST'){const body=await readBody(req);vaults.requireOpen(vault);return send(202,sourceReprocessing.start(vault,id,body));}
+            if(parts.length===6&&parts[5]==='reading'&&method==='GET')return send(200,sourceReprocessing.reading(vault,id,parts[4]!));
             if(parts.length===6&&parts[5]==='status'&&method==='GET')return send(200,sourceReprocessing.status(vault,id,parts[4]!));
             if(parts.length===5&&parts[4]==='capabilities'&&method==='GET')return send(200,sourceReprocessing.capabilities(vault,id));
             if(parts.length===5&&method==='GET')return send(200,sourceReprocessing.detail(vault,id,parts[4]!));
@@ -496,6 +499,7 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
             if(id && parts.length===3 && method==='DELETE')return send(200,pages.permanentlyDelete(vault,id));
           }
           if(collection==='organization') {
+            if(parts.length===3 && method==='PUT' && id==='bulk')return send(200,organizer.bulk(vault,body));
             if(parts.length===3 && method==='POST' && id==='generate-rules')return send(200,await organizer.smart.ruleGeneration.generate(vault,body));
             if(parts.length===3 && method==='POST' && id==='example-preview')return send(200,organizer.smart.examplePreview(vault,body));
             if(parts.length===3 && method==='POST' && id==='semantic-evaluate')return send(200,await organizer.smart.evaluateDescription(vault,body));
@@ -667,6 +671,7 @@ export function createTransportHandler(runtime: Runtime, clientRoot: string, soc
             }
           }
           if(collection==='entities') {
+            if(id==='source-status'&&parts.length===3&&method==='GET')return send(200,knowledge.sourceStatuses(vault));
             if(id&&child==='source-metadata') {
               const metadata=new SourceMetadata(store);
               if(parts.length===4&&method==='GET')return send(200,metadata.snapshot(vault,id,url.searchParams.get('runId')??undefined,url.searchParams.get('proposalId')??undefined));

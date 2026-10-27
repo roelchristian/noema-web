@@ -54,6 +54,7 @@ test('refresh reopens the current note with fresh content and preserves recent h
   first.openOrganization('', 'nested'); await first.openPage('note');
   const recent = storage.get('noema-recent/a');
   const refreshed = create(); await refreshed.init();
+  if(!refreshed.snapshot().entitiesReady)await new Promise(resolve=>{const unsubscribe=refreshed.subscribe(()=>{if(refreshed.snapshot().entitiesReady){unsubscribe();resolve();}});});
   assert.equal(refreshed.snapshot().view, 'pages');
   assert.equal(refreshed.snapshot().page.id, 'note');
   assert.equal(refreshed.snapshot().page.title, 'Fresh title');
@@ -95,7 +96,7 @@ test('missing, malformed and deleted destinations fall back safely to Library', 
     assert.equal(refreshed.snapshot().page, null);
     assert.equal(refreshed.snapshot().error, null);
   }
-  assert.equal(loadPage.mock.callCount(), 0);
+  assert.equal(loadPage.mock.callCount(), 1, 'the saved page is now checked directly before inventories');
 });
 
 test('refresh retains other library views, and navigation works without browser storage', async t => {

@@ -48,12 +48,13 @@ try{
  assert.equal(await page.locator('.source-reader-document').count(),1);
  assert.match(await page.locator('.source-reader-document').innerText(),/Printed heading 1/);
  const picker=page.getByRole('combobox',{name:'Reading version',exact:true});
- await picker.selectOption('revision-1');assert.equal(await page.evaluate(()=>localStorage.getItem('noema:source-reading:default:synthetic')),null,'Viewing a revision does not set its preference');await page.getByRole('button',{name:'Set as preferred reading version',exact:true}).click();assert.equal(await page.evaluate(()=>localStorage.getItem('noema:source-reading:default:synthetic')),'revision-1');
+ await picker.click();await page.locator('.select-menu:popover-open [role=option]').nth(1).click();assert.equal(await page.evaluate(()=>localStorage.getItem('noema:source-reading:default:synthetic')),null,'Viewing a revision does not set its preference');await page.getByRole('button',{name:'Set as preferred reading version',exact:true}).click();assert.equal(await page.evaluate(()=>localStorage.getItem('noema:source-reading:default:synthetic')),'revision-1');
  await page.waitForFunction(()=>document.querySelector('.source-reader-document')?.textContent.includes('An editorial fictional'));
+ // Retain this regression assertion: it also fails on verified main 9a40c63 (2026-10-27).
  assert.equal(await page.locator('[aria-label="Reading continuity"]').count(),0,'Editorial offsets never reach canonical continuity tools');
  assert.equal(await page.locator('.source-reader-document').count(),1);
  assert.equal(requests.filter(r=>r.method==='POST'&&!r.path.endsWith('/review')).length,0,'Version switching never starts processing');
- await picker.selectOption('original');
+ await picker.click();await page.locator('.select-menu:popover-open [role=option]').first().click();
  await page.waitForFunction(()=>document.querySelector('.source-reader-document')?.textContent.includes('A second fictional'));
  await page.getByRole('button',{name:'Review changes (1)',exact:true}).click();await page.waitForFunction(()=>document.activeElement?.classList.contains('reprocessing-reviews')).catch(async error=>{console.log(await page.evaluate(()=>({active:document.activeElement?.outerHTML,review:document.querySelector('.reprocessing-reviews')?.getBoundingClientRect().toJSON(),hostHidden:document.querySelector('.source-reader-review-host')?.hidden})));throw error;});
  const row=page.locator('.reprocessing-patch-list li>button').first();

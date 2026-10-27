@@ -5,6 +5,7 @@ import {createHash, randomUUID} from 'node:crypto';
 import type {Block, Segment, SourceFile} from '../../shared/domain.js';
 import {sourcePageRange,sourceTextLines} from '../../shared/source-text.js';
 import {Store} from '../store.js';
+import {entityMentionName} from '../../shared/domain.js';
 
 /** Only interpret legacy markers when the generating source is known. */
 export function linkSourceReferences(blocks:Block[], file:SourceFile):Block[] {
@@ -27,7 +28,12 @@ export function linkSourceReferences(blocks:Block[], file:SourceFile):Block[] {
 }
 
 /** Reconcile locations on every save; deleted tags disappear and moved tags retain identity. */
-export function syncSourceReferences(store:Store,pageId:string,blocks:Block[]) {
+export function syncSourceReferences(store:Store,pageId:string,blocks:Block[],resolveName?: (id:string)=>string|undefined) {
+  const names=new Map<string,string|undefined>();
+  const name=(id:string)=>{
+    if(!names.has(id))names.set(id,resolveName?resolveName(id):entityMentionName(store.get<{name:string;mentionCase:'canonical'|'lowercase'}>("SELECT e.name,e.mention_case AS mentionCase FROM entities e JOIN pages p ON p.vault_id=e.vault_id WHERE p.id=? AND e.id=?",pageId,id)));
+    return names.get(id);
+  };
   enrichCitationPages(store,blocks);
   store.run('DELETE FROM note_source_references WHERE page_id=?',pageId);
   const used=new Set<string>();
@@ -39,7 +45,7 @@ export function syncSourceReferences(store:Store,pageId:string,blocks:Block[]) {
     // UTF-16 offsets in stored note text (citation marker text, not its display label).
     let offset=0;
     for(const segment of content) {
-      const length=segment.text?.length??segment.mentionText?.length??(segment.entityId?store.get<{name:string}>("SELECT CASE WHEN mention_case='lowercase' THEN lower(name) ELSE name END AS name FROM entities WHERE id=?",segment.entityId)?.name.length??0:0);
+      const length=segment.text?.length??segment.mentionText?.length??(segment.entityId?name(segment.entityId)?.length??0:0);
       const ref=segment.sourceReference;
       if(ref) {
         let sourceNumber=numbers.get(ref.fileId);

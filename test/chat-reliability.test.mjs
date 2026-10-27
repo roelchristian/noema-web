@@ -8,6 +8,18 @@ import {chatAPI} from '../src/client/chat/api.ts';
 import {api} from '../src/client/api.ts';
 import {readChatDrafts,writeChatDrafts} from '../src/client/chat/chat-session.ts';
 
+function chatClock(t) {
+ t.mock.timers.enable({apis:['setTimeout','Date'],now:Date.now()});
+ return async()=>{
+  assert.ok(document.querySelector('.chat-progress'),'Answer is still staged before the typing beat');
+  // Each promise continuation schedules the next beat; flush React between ticks.
+  await act(async()=>t.mock.timers.tick(300));
+  assert.ok(document.querySelector('.chat-progress.is-leaving'),'Typing exits before the answer appears');
+  await act(async()=>t.mock.timers.tick(140));
+  assert.equal(document.querySelector('.chat-progress'),null,'The completed turn leaves the busy state');
+ };
+}
+
 test('drafts follow saved threads across switches and remounts, isolated from another vault and temporary chat',async t=>{
  const env=setupDOM(t);let root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
  const threads=['a','b'].map(id=>({id,vaultId:'default',title:'Thread '+id,scope:{kind:'vault'},messages:[],createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()}));
@@ -39,6 +51,7 @@ test('draft storage validates bounded fields and isolates vault keys',t=>{
 
 test('retrying a restored failure retains original request depth and the independently drafted next question',async t=>{
  const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
+ const completeAnswer=chatClock(t);
  t.mock.method(api,'intelligence',async()=>({personaId:'oxford_don'}));
  const thread={id:'failed',vaultId:'default',title:'Failed research',scope:{kind:'page',id:'note'},createdAt:'',updatedAt:new Date().toISOString(),messages:[{id:'user',role:'user',text:'Original question',mentions:[],searchDepth:'deep',createdAt:''},{id:'failure',role:'assistant',text:'Failure',status:'failed',createdAt:''}]};
  t.mock.method(chatAPI,'list',async()=>[thread]);t.mock.method(chatAPI,'get',async()=>thread);
@@ -49,20 +62,26 @@ test('retrying a restored failure retains original request depth and the indepen
  await act(async()=>[...document.querySelectorAll('button')].find(button=>button.textContent==='Try again').click());
  assert.equal(sent.question,'Original question');assert.equal(sent.deep,true);assert.deepEqual(sent.scope,{kind:'page',id:'note'});assert.equal(sent.retryMessageId,'failure');assert.equal(sent.regenerateMessageId,undefined);
  assert.equal(document.getElementById('chat-question').value,'Next draft');assert.equal(document.getElementById('chat-question').disabled,false);
- await act(async()=>new Promise(resolve=>setTimeout(resolve,500)));
+ await completeAnswer();
  assert.equal(document.querySelectorAll('.is-user').length,1);assert.equal(document.querySelectorAll('.is-assistant').length,1);assert.match(document.querySelector('.is-assistant').textContent,/Validated answer/);
 });
 
 test('closing a pending temporary turn tears down private retry and draft state',async t=>{
  const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
- t.mock.method(api,'intelligence',async()=>({personaId:'oxford_don'}));t.mock.method(chatAPI,'list',async()=>[]);t.mock.method(chatAPI,'cancel',async()=>({cancelled:true}));
- t.mock.method(globalThis,'fetch',async(_url,options)=>new Response(new ReadableStream({start(controller){options.signal.addEventListener('abort',()=>controller.error(new DOMException('Stopped','AbortError')),{once:true});}})));
+ let activeSignal,requestId;const cancellations=[];
+ t.mock.method(api,'intelligence',async()=>({personaId:'oxford_don'}));t.mock.method(chatAPI,'list',async()=>[]);t.mock.method(chatAPI,'cancel',async(vault,id)=>{cancellations.push({vault,id});return {cancelled:true};});
+ t.mock.method(globalThis,'fetch',async(_url,options)=>{
+  activeSignal=options.signal;requestId=JSON.parse(options.body).requestId;
+  return new Response(new ReadableStream({start(controller){options.signal.addEventListener('abort',()=>controller.error(new DOMException('Stopped','AbortError')),{once:true});}}));
+ });
  const props={vaultId:'default',vaultName:'Test',initialScope:{kind:'vault'},entities:[],pages:[],visible:true,onClose(){},onOpenEvidence(){}};
  await act(async()=>root.render(createElement(ChatWorkspace,props)));
  await act(async()=>document.querySelector('.chat-check input').click());
  await act(async()=>{const input=document.getElementById('chat-question');input[Object.keys(input).find(key=>key.startsWith('__reactProps'))].onChange({target:{value:'PRIVATE_PENDING_QUESTION'}});});
  await act(async()=>document.querySelector('.chat-composer').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
+ assert.equal(activeSignal.aborted,false);
  await act(async()=>root.render(createElement(ChatWorkspace,{...props,visible:false})));
+ assert.equal(activeSignal.aborted,true);assert.deepEqual(cancellations,[{vault:'default',id:requestId}]);
  await act(async()=>root.render(createElement(ChatWorkspace,props)));
  assert.doesNotMatch(document.body.textContent,/PRIVATE_PENDING_QUESTION|Try again/);assert.equal(document.getElementById('chat-question').value,'');assert.equal(document.querySelector('.chat-typing'),null);
  assert.doesNotMatch(JSON.stringify(readChatDrafts('default')),/PRIVATE_PENDING_QUESTION/);
@@ -70,13 +89,13 @@ test('closing a pending temporary turn tears down private retry and draft state'
 
 async function retryFixture(t,{threads=[],entities=[]}={}) {
  const env=setupDOM(t),root=createRoot(document.querySelector('#mount'));env.defer(()=>act(async()=>root.unmount()));
+ const completeAnswer=chatClock(t);
  t.mock.method(api,'intelligence',async()=>({personaId:'oxford_don'}));t.mock.method(chatAPI,'list',async()=>threads);
  const edit=value=>act(async()=>{const input=document.getElementById('chat-question');input[Object.keys(input).find(key=>key.startsWith('__reactProps'))].onChange({target:{value}});});
  const send=()=>act(async()=>document.querySelector('.chat-composer').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
  const retry=()=>act(async()=>{const button=[...document.querySelectorAll('button')].find(button=>button.textContent==='Try again');assert.ok(button,'A failed turn offers direct retry');button.click();});
- const settle=()=>act(async()=>new Promise(resolve=>setTimeout(resolve,500)));
  await act(async()=>root.render(createElement(ChatWorkspace,{vaultId:'default',vaultName:'Test',initialScope:{kind:'vault'},entities,pages:[],visible:true,onClose(){},onOpenEvidence(){}})));
- return {edit,send,retry,settle};
+ return {edit,send,retry,completeAnswer};
 }
 function retryStream(events) {
  const encoder=new TextEncoder();return new Response(new ReadableStream({start(controller){for(const event of events)controller.enqueue(encoder.encode('data: '+JSON.stringify(event)+'\n\n'));controller.close();}}));
@@ -88,7 +107,7 @@ test('temporary retry retains original inherited subjects and prior questions wh
  const f=await retryFixture(t,{entities:[subject,next]}),requests=[];
  t.mock.method(globalThis,'fetch',async(_url,options)=>{requests.push(JSON.parse(options.body));return requests.length===1?retryStream([retryAnswer('first')]):retryStream([{type:'error',message:'Synthetic failure'}]);});
  await act(async()=>document.querySelector('.chat-check input').click());
- await f.edit('Explain @Subject');await act(async()=>document.querySelector('[data-context-id=subject]').click());await f.send();await f.settle();
+ await f.edit('Explain @Subject');await act(async()=>document.querySelector('[data-context-id=subject]').click());await f.send();await f.completeAnswer();
  await f.edit('What follows from that?');await f.send();
  assert.equal(requests.length,2);assert.deepEqual(requests[1].contextMentions,[{id:'subject',name:'Subject'}]);assert.deepEqual(requests[1].previousQuestions,['Explain Subject']);
  await f.edit('Next draft @Next');await act(async()=>document.querySelector('[data-context-id=next]').click());await f.retry();
@@ -128,5 +147,5 @@ test('unknown-thread failed recovery targets the resolved failure marker without
  t.mock.method(chatAPI,'get',async(vault,id)=>{assert.equal(vault,'default');assert.equal(id,thread.id);return thread;});
  await f.edit('Recover this question');await f.send();await f.retry();
  assert.equal(requests.length,2);assert.equal(requests[1].threadId,thread.id);assert.equal(requests[1].retryMessageId,'persisted-failure');assert.notEqual(requests[1].requestId,requests[0].requestId);assert.equal(requests[1].question,requests[0].question);
- await f.settle();assert.equal(document.querySelectorAll('.is-user').length,1);assert.equal(document.querySelectorAll('.is-assistant').length,1);assert.match(document.querySelector('.is-assistant').textContent,/Recovered validated answer/);
+ await f.completeAnswer();assert.equal(document.querySelectorAll('.is-user').length,1);assert.equal(document.querySelectorAll('.is-assistant').length,1);assert.match(document.querySelector('.is-assistant').textContent,/Recovered validated answer/);
 });

@@ -2344,7 +2344,7 @@ main.source-workspace > #content > .source-reader[data-reader-width='wide'] {
 .source-metadata-evidence { margin-block: 10px; font-size: 12px; }
 .source-metadata-evidence blockquote { margin-inline: 0; white-space: pre-wrap; }
 .source-metadata-edit { margin-block: 12px; }
-.source-metadata-edit input { width: 100%; min-width: 0; }
+.source-metadata-edit input, .source-metadata-edit textarea { width: 100%; min-width: 0; }
 .source-metadata-history { margin-top: 12px; }
 @media (min-width: 720px) {
   .source-metadata-full .source-metadata-field { display: grid; grid-template-columns: minmax(130px, 1fr) minmax(0, 3fr); gap: 18px; }

@@ -100,3 +100,18 @@ test('quick metadata review excludes stale, competing and preserved authored val
  t.mock.method(sourceMetadataAPI,'snapshot',async()=>{const value=snapshot('protected-review-source');value.fields[2].proposals[0].compatible=false;value.fields[2].preservedValues=[{id:'authored',name:'publisher',value:'Authored Press',target_id:null}];const candidate={...value.fields[2].proposals[0],id:'stale',stale:true,fieldKey:'bibliography:date'};value.fields.push({key:'bibliography:date',label:'Date',value:null,editable:true,fingerprint:'date-field',proposals:[candidate],history:[]},{key:'bibliography:edition',label:'Edition',value:null,editable:true,fingerprint:'edition-field',proposals:[{...candidate,id:'edition-a',stale:false,value:'First edition'},{...candidate,id:'edition-b',stale:false,value:'Second edition'}],history:[]});return value;});
  let writes=0;t.mock.method(sourceMetadataAPI,'review',async()=>{writes++;throw Error('No review expected');});await mount(t,{sourceId:'protected-review-source'});assert.equal([...document.querySelectorAll('button')].some(item=>item.textContent.startsWith('Accept non-conflicting suggestions')),false);assert.equal(writes,0);
 });
+
+test('publication abstracts retain line breaks through canonical edits and corrected suggestions',async t=>{
+ const original='First paragraph.\nSecond paragraph.',edited=original+'\nThird paragraph.',suggested='Suggested paragraph.\nAnother paragraph.',corrected='Corrected paragraph.\nSecond corrected paragraph.';
+ const value=snapshot('multiline-abstract-source');value.fields[2].proposals=[];
+ const proposal={...snapshot().fields[2].proposals[0],id:'abstract-suggestion',fieldKey:'bibliography:abstract',value:suggested,fingerprint:'abstract-proposal-fingerprint',compatible:false};
+ value.fields.push({key:'bibliography:abstract',label:'Author abstract',owner:'bibliography',value:original,editable:true,fingerprint:'abstract-field-fingerprint',proposals:[proposal],history:[]});
+ t.mock.method(sourceMetadataAPI,'snapshot',async()=>structuredClone(value));let saved,reviewed;
+ t.mock.method(sourceMetadataAPI,'save',async(_vault,_id,body)=>{saved=body;value.fields.at(-1).value=body.value;return structuredClone(value);});
+ t.mock.method(sourceMetadataAPI,'review',async(_vault,_id,body)=>{reviewed=body;value.fields.at(-1).value=body.value;value.fields.at(-1).proposals=[];return structuredClone(value);});
+ await mount(t,{sourceId:'multiline-abstract-source'});await click('Edit Author abstract');
+ const manual=document.querySelector('form.source-metadata-edit textarea');assert.equal(manual.rows,4);assert.equal(manual.value,original);manual.value=edited;await act(async()=>reactProps(manual).onChange({target:manual}));
+ await act(async()=>reactProps(manual.closest('form')).onSubmit({preventDefault(){}}));assert.deepEqual(saved,{fieldKey:'bibliography:abstract',value:edited,fingerprint:'abstract-field-fingerprint'});assert.equal(document.querySelector('form.source-metadata-edit'),null);
+ await click('Edit and accept');const correction=document.querySelector('.source-metadata-suggestion textarea');assert.equal(correction.rows,4);assert.equal(correction.value,suggested);correction.value=corrected;await act(async()=>reactProps(correction).onChange({target:correction}));await click('Save correction and accept');
+ assert.deepEqual(reviewed,{proposalId:'abstract-suggestion',fingerprint:'abstract-proposal-fingerprint',action:'accept',value:corrected,replace:true});assert.match(document.querySelector('dl').textContent,/Corrected paragraph.\nSecond corrected paragraph./);
+});

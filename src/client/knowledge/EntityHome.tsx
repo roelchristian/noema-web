@@ -60,7 +60,8 @@ const tabLabels = {overview:'Overview', metadata:'Metadata', connections:'Connec
 export function EntityHome({vaultId, id, entities, refreshKey, onOpen, onInspect, onOpenPage, onOpenMention, onOpenSourcePassage, onUpdated, onError, onClose, pages = [], onCreatePage}: EntityHomeProps) {
   const reviewDestination=useContext(ReviewDestination);
   const reviewTab=reviewDestination?.category==='discovery'&&reviewDestination.originId===id?'connections':reviewDestination?.category==='property'&&reviewDestination.originId===id?(entities.find(item=>item.id===id)?.type==='source'?'metadata':'overview'):null;
-  const [entity, setEntity] = useState<EntityDetail | null>(null);
+  const [loadedEntity, setEntity] = useState<EntityDetail | null>(null);
+  const entity=loadedEntity?.vault_id===vaultId&&loadedEntity.id===id?loadedEntity:null;
   const [error, setError] = useState('');
   const [detailAttempt, setDetailAttempt] = useState(0);
   const [entityAttempt, setEntityAttempt] = useState(0);

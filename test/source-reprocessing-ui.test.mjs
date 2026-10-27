@@ -17,7 +17,7 @@ const fixture=()=>{
  r.acceptanceMode='review_all';r.patches=r.patches.slice(0,2).map((p,i)=>({...p,id:'patch-'+i,decision:'pending',riskReasons:['Quotation wording requires comparison with the PDF.']}));
  r.reprocessed=structuredClone(r.original);r.reprocessed.document.semantic.children=[];r.reprocessed.text='Sample reading text';return r;
 };
-async function mount(t,{initial=null,history,remove,post,onReadingRevision,get,onShow=()=>{},onOriginal=()=>{},onReviewOpenChange,onReturnContext,onCompare,component=SourceReprocessing,legacyDetails=true,capabilities={originalPages:false,ocr:false,externalImages:false,reason:'Native evidence is unavailable on this device.'}}={}){
+async function mount(t,{initial=null,history,remove,post,onReadingRevision,get,onShow=()=>{},onOriginal=()=>{},onReviewOpenChange,onReturnContext,onCompare,component=SourceReprocessing,legacyDetails=true,reviewOnDemand=false,visible=true,capabilities={originalPages:false,ocr:false,externalImages:false,reason:'Native evidence is unavailable on this device.'}}={}){
  const env=setupDOM(t),{dom}=env;
  dom.window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};
  dom.window.HTMLDialogElement.prototype.close=function(){this.open=false;};
@@ -36,7 +36,7 @@ async function mount(t,{initial=null,history,remove,post,onReadingRevision,get,o
  });
  const root=createRoot(document.querySelector('#mount'));
  env.defer(()=>act(async()=>root.unmount()));
- const props={vaultId:'v',fileId:'f',visible:true,onReadingRevision,onShow,onOriginal,onReviewOpenChange,onReturnContext,onCompare};
+ const props={vaultId:'v',fileId:'f',visible,reviewOnDemand,onReadingRevision,onShow,onOriginal,onReviewOpenChange,onReturnContext,onCompare};
  await act(async()=>root.render(React.createElement(component,{...props,key:'f'})));
  const switchFile=async fileId=>act(async()=>root.render(React.createElement(SourceReprocessing,{...props,fileId,key:fileId})));
  const button=text=>[...document.querySelectorAll('button')].find(el=>el.textContent===text||el.getAttribute('aria-label')===text);
@@ -656,4 +656,23 @@ test('numbered bibliography citations jump to exact entries without becoming foo
  assert.equal(document.querySelector('sup,.source-reader-footnote'),null);assert.equal(document.querySelector('.source-reader-text').textContent,text.replace(/\n+/g,''));
  await act(async()=>root.render(React.createElement(SourceReaderText,{text:'Ordinary [1], math $[1]$, and code `[1]` have no bibliography.'})));
  assert.equal(document.querySelector('a[data-bibliographic-reference]'),null);
+});
+
+
+test('ordinary reading restores its selected version after remount without loading full comparison detail',async t=>{
+ const storage=new Map(),descriptor=Object.getOwnPropertyDescriptor(globalThis,'localStorage');
+ Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)}});
+ t.after(()=>{if(descriptor)Object.defineProperty(globalThis,'localStorage',descriptor);else delete globalThis.localStorage;});
+ const revision={...fixture(),fileId:'f',status:'completed'};revision.report.chunksCompleted=revision.report.chunksTotal;
+ const readings=[],env=await mount(t,{initial:revision,visible:false,reviewOnDemand:true,onReadingRevision:value=>readings.push(value?.id??null),get:entry=>{assert.ok(entry.url.endsWith('/reading'),'ordinary reading must not request full comparison detail');return revision;}});
+ const picker=document.querySelector('[aria-label="Reading version"]');
+ await act(async()=>{picker.value=revision.id;picker.dispatchEvent(new env.dom.window.Event('change',{bubbles:true}));});
+ assert.equal(readings.at(-1),revision.id);
+ const saved=JSON.parse(storage.get('noema:source-view:v:f'));
+ assert.deepEqual(saved,{readingChoice:revision.id,revisionId:revision.id,tab:'read',reviewStyle:'diff'});
+ await env.remount();
+ assert.equal(document.querySelector('[aria-label="Reading version"]').value,revision.id);assert.equal(readings.at(-1),revision.id);
+ assert.equal(env.requests.filter(entry=>/\/reprocessing\/[^/]+$/.test(entry.url)).length,0);
+ assert.equal(env.requests.filter(entry=>entry.url.endsWith('/reading')).length,2);
+ assert.equal(storage.has('noema:source-reading:v:f'),false,'restoring the current version does not change the preferred version');
 });

@@ -165,9 +165,11 @@ export function SourceReprocessing({onRevisionChanged,reviewOnDemand=false,sourc
   const defaultTabRevision=useRef('');
   useEffect(()=>{if(!revision||defaultTabRevision.current===revision.id)return;defaultTabRevision.current=revision.id;if(!revision.patches.some(patch=>patch.decision==='pending'))setFilter('all');if(reviewRun===revision.id){setTab('review');setReviewStyle('diff');setFilter('all');onShow();}else if(savedView?.revisionId===revision.id&&savedView.tab==='review'){onShow();}},[revision,reviewRun,requestedReadingId,onShow]);
   useEffect(()=>{
-    if(!revision||revision.id!==revisionId||evidenceSurface!=='reading')return;
+    // Reading choices are durable even when comparison detail has never loaded.
+    // Temporary original/PDF evidence views still must not overwrite that choice.
+    if(evidenceSurface!=='reading')return;
     try {localStorage.setItem(viewKey,JSON.stringify({readingChoice,revisionId,tab,reviewStyle}));}catch{/* Keep the selected view for this session. */}
-  },[viewKey,readingChoice,revisionId,revision,tab,reviewStyle,evidenceSurface]);
+  },[viewKey,readingChoice,revisionId,tab,reviewStyle,evidenceSurface]);
   const [configuration,setConfiguration]=useState<IntelligencePreferences|null>(null),[configurationError,setConfigurationError]=useState('');
   useEffect(()=>{if(!prompt)return;const controller=new AbortController();setConfiguration(null);setConfigurationError('');void request<IntelligencePreferences>('intelligence','GET',undefined,undefined,controller.signal).then(value=>{if(!controller.signal.aborted){if(supportedIntelligencePreferences(value))setConfiguration(value);else setConfigurationError('Choose a supported model and reasoning in Settings → Intelligence.');}}).catch(()=>{if(!controller.signal.aborted)setConfigurationError('Could not load the AI configuration. Reopen this form to retry.');});return()=>controller.abort();},[prompt]);
   const actionRunning=useRef(false);

@@ -15,6 +15,7 @@ const pending=f.files.add('default','background.pdf',Buffer.from(await pdf.save(
 f.knowledge.create('default',{type:'source',name:'Synthetic background processing',attachmentIds:[pending.id]});
 const revision=JSON.parse(await readFile(new URL('../test/fixtures/dante-editorial-revision.json',import.meta.url),'utf8'));
 revision.fileId=f.file.id;revision.id='synthetic-reading-revision';revision.patches=revision.patches.slice(0,1);revision.status='completed';revision.reprocessed=structuredClone(revision.original);
+const locked=f.vaults.create({name:'Synthetic locked vault'});f.vaults.lock(locked.id,{passphrase:'synthetic-only'});
 const server=createApp(f.store,resolve(process.env.CLIENT_DIST??'dist/client'));server.listen(0,'127.0.0.1');await once(server,'listening');
 let browser;const errors=[],external=[],requests=[],responses=[],checks=[];
 try{
@@ -30,9 +31,14 @@ try{
  await link(other.id).click();await page.locator('#page-title').waitFor();await link(f.active.id).click();
  await page.waitForTimeout(3300);
  const beforeReturn=requests.filter(r=>r.path===`/api/pages/${f.active.id}/editor`&&r.method==='GET').length;
- await link(other.id).click();await link(f.active.id).click();await page.waitForTimeout(250);
+ await link(other.id).click();await page.waitForFunction(title=>document.querySelector('#page-title')?.value===title,other.title);
+ let returnStarted,returnRelease;const returnRequest=new Promise(r=>returnStarted=r),returnGate=new Promise(r=>returnRelease=r);
+ await page.route(`**/api/pages/${f.active.id}/editor`,async route=>{returnStarted();await returnGate;await route.continue().catch(()=>{});});
+ await link(f.active.id).click();await returnRequest;await page.waitForTimeout(100);
+ const cachedReturnVisible=await page.locator('#page-title').inputValue()===f.active.title;
+ returnRelease();await page.unroute(`**/api/pages/${f.active.id}/editor`);await page.waitForFunction(title=>document.querySelector('#page-title')?.value===title,f.active.title);
  const afterReturn=requests.filter(r=>r.path===`/api/pages/${f.active.id}/editor`&&r.method==='GET').length;
- const cacheReturnFetches=afterReturn-beforeReturn;checks.push('background processing navigation');
+ const cacheReturnFetches=afterReturn-beforeReturn;checks.push('background processing navigation with editor response held');
  await page.screenshot({path:join(out,'desktop-navigation.png')});
  // Hold only full detail. A bounded overview must be visible while it is pending.
  let release,started,detailStarted=false;const gate=new Promise(r=>release=r),requestedDetail=new Promise(r=>started=r);
@@ -49,8 +55,25 @@ try{
  if(await review.isVisible()){await review.click();await page.waitForTimeout(500);reviewLoaded=requests.filter(r=>r.path===fullPath).length>hiddenRevisionRequests;}
  await page.setViewportSize({width:390,height:844});await page.screenshot({path:join(out,'mobile-reader.png')});
  const mobileOverflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth);
- const result={label,browser:await browser.version(),synthetic:true,devicePerformanceMeasured:false,startup:{vaultRequests:startup.filter(r=>r.path==='/api/vaults').length,requests:startup},cacheReturnFetches,preview:{detailStarted,visibleBeforeFullDetail:previewVisible},hiddenRevisionRequests,reviewLoaded,mobileOverflow,errors,external,checks,requests,responses};
+ let startupChecks=null;
+ if(label!=='before'){
+  await page.setViewportSize({width:1440,height:1000});
+  let inventoryRelease,inventoryStarted;const inventoryGate=new Promise(r=>inventoryRelease=r),inventoryRequest=new Promise(r=>inventoryStarted=r);
+  await page.route('**/api/entities',async route=>{inventoryStarted();await inventoryGate;await route.continue().catch(()=>{});});
+  await page.goto(`${base}/?vault=default&page=${f.active.id}`);await inventoryRequest;await page.locator('#page-title').waitFor();
+  const noteVisibleBeforeInventory=await page.locator('#page-title').isVisible(),editorProtectedBeforeInventory=await page.locator('#page-title').getAttribute('readonly')!==null;
+  // Switch while the original inventory is pending; its stale response cannot unlock or populate the new vault.
+  await page.locator('#vault-select').selectOption(locked.id,{force:true});await page.locator('.locked-state h1').filter({hasText:locked.name}).waitFor();
+  inventoryRelease();await page.unroute('**/api/entities');await page.waitForTimeout(200);
+  const lockedStayedEmpty=await page.locator('#page-title').count()===0;
+  await page.setViewportSize({width:390,height:844});await page.screenshot({path:join(out,'mobile-locked.png')});
+  await page.goto(`${base}/?vault=default&page=${f.active.id}`);await page.locator('#page-title').waitFor();
+  for(let i=0;i<2;i++){await page.reload();await page.locator('#page-title').waitFor();}
+  startupChecks={noteVisibleBeforeInventory,editorProtectedBeforeInventory,lockedStayedEmpty};
+  assert.deepEqual(startupChecks,{noteVisibleBeforeInventory:true,editorProtectedBeforeInventory:true,lockedStayedEmpty:true});checks.push('slow startup renders note and protects edits','vault switch cancels pending inventory','locked vault on mobile','repeated startup');
+ }
+ const result={label,browser:await browser.version(),synthetic:true,devicePerformanceMeasured:false,startupChecks,startup:{vaultRequests:startup.filter(r=>r.path==='/api/vaults').length,requests:startup},cacheReturnFetches,cachedReturnVisible,preview:{detailStarted,visibleBeforeFullDetail:previewVisible},hiddenRevisionRequests,reviewLoaded,mobileOverflow,errors,external,checks,requests,responses};
  await writeFile(join(out,'metrics.json'),JSON.stringify(result,null,2));console.log(JSON.stringify({...result,requests:requests.length,responses:responses.length}));
  assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
- if(label!=='before'){assert.equal(cacheReturnFetches,0);assert.equal(previewVisible,true);assert.equal(hiddenRevisionRequests,0);assert.equal(reviewLoaded,true);assert.equal(mobileOverflow,false);}
+ if(label!=='before'){assert.equal(cachedReturnVisible,true);assert.equal(previewVisible,true);assert.equal(hiddenRevisionRequests,0);assert.equal(reviewLoaded,true);assert.equal(mobileOverflow,false);}
 }finally{await browser?.close();server.closeAllConnections();await new Promise(r=>server.close(r));f.close();}

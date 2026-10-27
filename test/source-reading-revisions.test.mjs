@@ -67,6 +67,9 @@ test('bookmarks saved in either version project through accepted changes and kee
  const originalOffset=file.text.indexOf(passage),revisedOffset=r.reprocessed.text.indexOf('A fictional triangle'),id=randomUUID();
  reading.saveLocation('default',file.id,id,{revision:sourceTextHash(file.text),offset:originalOffset,label:'Original bookmark'});
  const projected=reading.continuity('default',file.id,r.id).bookmarks[0];assert.equal(projected.resolution.status,'resolved');assert.equal(projected.resolution.offset,revisedOffset);
+ const beforeUnscoped=store.all('SELECT * FROM source_reading_locations WHERE file_id=?',file.id);
+ assert.throws(()=>reading.saveLocation('default',file.id,randomUUID(),{revision:sourceTextHash(r.reprocessed.text),offset:revisedOffset,label:'Unscoped edited coordinate'}),error=>error.status===409,'Edited coordinates without a revision ID cannot enter canonical storage');
+ assert.deepEqual(store.all('SELECT * FROM source_reading_locations WHERE file_id=?',file.id),beforeUnscoped,'Rejected unscoped writes leave canonical anchors intact');
  const secondId=randomUUID();reading.saveLocation('default',file.id,secondId,{revisionId:r.id,revision:sourceTextHash(r.reprocessed.text),offset:revisedOffset,label:'Revised bookmark'});
  assert.equal(reading.continuity('default',file.id).bookmarks.find(item=>item.id===secondId).resolution.offset,originalOffset);
  const saved=JSON.parse(store.get('SELECT anchor_json FROM source_reading_locations WHERE file_id=? AND id=?',file.id,secondId).anchor_json);assert.equal(saved.revision,sourceTextHash(file.text));

@@ -26,7 +26,7 @@ export class AIActivityLog {
       FROM ai_activity a JOIN ai_activity_debug d ON d.activity_id=a.id WHERE a.input_tokens IS NULL OR a.output_tokens IS NULL OR a.cached_input_tokens IS NULL OR a.cache_write_tokens IS NULL OR a.reasoning_tokens IS NULL`)) {
       if(!row.usage)continue;
       let usage:unknown;try{usage=JSON.parse(row.usage);}catch{continue;}
-      this.usage(row.id,usage);
+      this.usage(row.id,usage,true);
     }
   }
   private pruneDebug(reserveBytes=0) {
@@ -94,7 +94,7 @@ export class AIActivityLog {
     return trace;
   }
 
-  private usage(id:string,value:unknown) {
+  private usage(id:string,value:unknown,preserveExisting=false) {
     if(!value||typeof value!=='object'||Array.isArray(value))return;
     const usage=value as Record<string,unknown>;
     const count=(value:unknown)=>typeof value==='number'&&Number.isSafeInteger(value)&&value>=0?value:null;
@@ -104,7 +104,17 @@ export class AIActivityLog {
     const cached=count(details.cached_tokens),writes=count(details.cache_write_tokens);
     const outputDetails=usage.output_tokens_details??usage.completion_tokens_details;
     const reasoning=count(outputDetails&&typeof outputDetails==='object'&&!Array.isArray(outputDetails)?(outputDetails as Record<string,unknown>).reasoning_tokens:undefined);
+    if(usage.logical_operation===true&&!preserveExisting){
+      this.store.run('UPDATE ai_activity SET input_tokens=?,output_tokens=?,cached_input_tokens=?,cache_write_tokens=?,reasoning_tokens=?,estimated_cost=NULL,pricing_version=NULL WHERE id=?',input,output,cached,writes,reasoning,id);
+      this.updateCost(id,usage);return;
+    }
     if(input===null&&output===null&&cached===null&&writes===null&&reasoning===null)return;
+    if(preserveExisting){
+      // A debug response may describe a single historical provider request.
+      // Recovery fills gaps without replacing known logical-operation totals.
+      this.store.run('UPDATE ai_activity SET input_tokens=COALESCE(input_tokens,?),output_tokens=COALESCE(output_tokens,?),cached_input_tokens=COALESCE(cached_input_tokens,?),cache_write_tokens=COALESCE(cache_write_tokens,?),reasoning_tokens=COALESCE(reasoning_tokens,?) WHERE id=?',input,output,cached,writes,reasoning,id);
+      this.updateCost(id,usage);return;
+    }
     this.store.run(`UPDATE ai_activity SET input_tokens=COALESCE(?,input_tokens),
       output_tokens=COALESCE(?,CASE WHEN action IN ('note_embedding','search_embedding') AND ? IS NOT NULL THEN 0 ELSE output_tokens END),
       cached_input_tokens=COALESCE(?,cached_input_tokens),cache_write_tokens=COALESCE(?,cache_write_tokens),reasoning_tokens=COALESCE(?,reasoning_tokens) WHERE id=?`,input,output,input,cached,writes,reasoning,id);

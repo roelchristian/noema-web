@@ -72,13 +72,20 @@ export function extractSourceMetadata(text:string,publicationTitle:string):Metad
 /** Model interpretations remain proposals. Exact source support and scope are checked
  * locally; model agreement does not promote them to independently validated facts. */
 export function extractEditorialMetadata(result:string,chunk:PlannedReprocessingChunk,canonical:string):{facts:MetadataFact[];diagnostics:string[]} {
+ let data:any;try{data=JSON.parse(result.replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,''));}catch{return {facts:[],diagnostics:['Metadata candidates could not be read from the editorial response.']};}
+ return extractModelMetadataCandidates(data.metadata,chunk.blocks,canonical,{limit:32,interpretation:'Editorial metadata interpretation'});
+}
+
+export interface MetadataEvidenceBlock {id:string;text:string;start:number;end:number;page?:number}
+/** Shared by editorial reconstruction and direct PDF enrichment. Values may be
+ * normalized; exact quotations, block identity and publication scope own evidence. */
+export function extractModelMetadataCandidates(candidates:unknown,blocks:MetadataEvidenceBlock[],canonical:string,options:{limit?:number;interpretation?:string}={}):{facts:MetadataFact[];diagnostics:string[]} {
  const facts:MetadataFact[]=[],diagnostics:string[]=[];
- let data:any;try{data=JSON.parse(result.replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,''));}catch{return {facts,diagnostics:['Metadata candidates could not be read from the editorial response.']};}
- if(data.metadata===undefined)return {facts,diagnostics};
- if(!Array.isArray(data.metadata)||data.metadata.length>32)return {facts,diagnostics:['Metadata candidates exceeded the supported response shape.']};
- for(const item of data.metadata){
-  const block=chunk.blocks.find(block=>block.id===item?.blockId);
-  if(!item||!editorialMetadataFields.includes(item.field)||typeof item.value!=='string'||!item.value.trim()||item.value.length>2000||typeof item.quote!=='string'||!item.quote.trim()||item.quote.length>4000||typeof item.reason!=='string'||!item.reason.trim()||item.reason.length>1000||!block||!block.text.includes(item.quote)){
+ if(candidates===undefined)return {facts,diagnostics};
+ if(!Array.isArray(candidates)||candidates.length>(options.limit??128))return {facts,diagnostics:['Metadata candidates exceeded the supported response shape.']};
+ for(const item of candidates){
+  const block=blocks.find(block=>block.id===item?.blockId),field=item?.field==='decision_date'?'date':item?.field;
+  if(!item||!editorialMetadataFields.includes(field)||typeof item.value!=='string'||!item.value.trim()||item.value.length>2000||typeof item.quote!=='string'||!item.quote.trim()||item.quote.length>4000||typeof item.reason!=='string'||!item.reason.trim()||item.reason.length>1000||!block||!block.text.includes(item.quote)||item.page!==undefined&&item.page!==block.page){
    diagnostics.push('A metadata candidate was excluded because its field, value, role or exact canonical quotation was invalid.');continue;
   }
   const start=canonical.indexOf(item.quote);
@@ -88,7 +95,7 @@ export function extractEditorialMetadata(result:string,chunk:PlannedReprocessing
   if(/^(?:#{1,6}\s*)?(?:references|bibliography|works cited)\s*$/im.test(preceding)){
    diagnostics.push('A metadata candidate in the reference section was excluded.');continue;
   }
-  facts.push({fieldKey:'bibliography:'+item.field,value:item.value.trim(),excerpt:item.quote,start,end:start+item.quote.length,validated:false,validationReason:'Editorial metadata interpretation; review the quoted document evidence and publication role. '+item.reason});
+  facts.push({fieldKey:'bibliography:'+field,value:item.value.trim(),excerpt:item.quote,start,end:start+item.quote.length,validated:false,validationReason:(options.interpretation??'Provider metadata interpretation')+'; review the quoted document evidence and publication role. '+item.reason});
  }
  return {facts,diagnostics};
 }

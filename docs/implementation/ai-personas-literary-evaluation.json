@@ -1,0 +1,116 @@
+{
+  "date": "2026-10-26",
+  "endpoint": "/api/intelligence/persona-preview",
+  "model": "gpt-6-luna",
+  "reasoningEffort": "none",
+  "input": "A novel may preserve a person's memory without making the narrator reliable. When the narrator selects an incident and omits another, readers must distinguish the remembered life from the account through which they encounter it.\n\nA belief can be true by accident. If a person has reached a conclusion for inadequate reasons, the truth of that conclusion does not by itself establish that the person knows it. This distinction leaves open what further conditions knowledge requires.\n\nAn archive preserves some records and loses others. Because survival is selective, the absence of a record does not by itself prove that an event never occurred; historians must distinguish the surviving evidence from the larger past they seek to understand.\n\nA computer cache stores copies of data so that later requests can be served more quickly. If the original data changes while the stored copy remains unchanged, the cache can return outdated information. Faster access therefore requires a policy for deciding when a copy should be refreshed.",
+  "results": [
+    {
+      "personaId": "oxford_don",
+      "expression": "subtle",
+      "status": 200,
+      "text": "A novel may preserve a person’s memory without thereby rendering its narrator reliable: when the narrator selects one incident and omits another, readers must distinguish the life remembered from the account through which it is presented.\n\nA belief may be true by accident; if someone reaches a conclusion on inadequate grounds, the truth of that conclusion does not, in itself, establish that they know it. What further conditions knowledge requires therefore remains an open question.\n\nAn archive preserves some records while others are lost. Since survival is selective, the absence of a record does not by itself prove that an event never occurred; historians must distinguish the evidence that survives from the larger past they seek to understand.\n\nA computer cache stores copies of data so that later requests can be served more quickly, but if the original data changes while the stored copy remains unchanged, the cache may return outdated information. Faster access therefore depends on a policy for deciding when a copy should be refreshed.",
+      "persona": {
+        "id": "oxford_don",
+        "version": 2,
+        "origin": "builtin",
+        "expression": "subtle"
+      },
+      "modelSettings": {
+        "model": "gpt-6-luna",
+        "reasoningEffort": "none"
+      }
+    },
+    {
+      "personaId": "antiquarian",
+      "expression": "subtle",
+      "status": 200,
+      "text": "A novel may preserve the memory of a person without thereby rendering its narrator reliable; for when one incident is selected and another omitted, readers must distinguish the life remembered from the account through which that life is made accessible.\n\nA belief may be true by accident, though its truth, if reached upon inadequate grounds, does not alone establish that the believer knows it. Thus remains open the further question of what conditions knowledge requires: truth may be attained, yet knowledge not thereby secured.\n\nAn archive, preserving some records whilst others perish, exhibits not the whole past but its surviving fragments; and because that survival is selective, the absence of a record does not, of itself, prove that an event never occurred. Historians must therefore distinguish the evidence that endures from the larger past they seek to comprehend.\n\nA computer cache stores copies of data, that later requests may be answered more rapidly; but if the original data change whilst the stored copy remains unchanged, the cache may return information already out of date. Faster access, then, depends not upon preservation alone, but upon a policy by which the copy is judged fit for renewal.",
+      "persona": {
+        "id": "antiquarian",
+        "version": 2,
+        "origin": "builtin",
+        "expression": "subtle"
+      },
+      "modelSettings": {
+        "model": "gpt-6-luna",
+        "reasoningEffort": "none"
+      }
+    },
+    {
+      "personaId": "oxford_don",
+      "expression": "expressive",
+      "status": 200,
+      "text": "A novel may preserve a person’s memory without thereby establishing the narrator’s reliability: when the narrator selects one incident and omits another, readers must distinguish the life remembered from the account through which that life is encountered.\n\nA belief may be true by accident; if a person reaches a conclusion for inadequate reasons, its truth alone does not establish that the person knows it, although this leaves open what further conditions knowledge requires.\n\nAn archive preserves some records while others are lost. Since survival is selective, the absence of a record does not, by itself, show that an event never occurred; historians must therefore distinguish the evidence that survives from the larger past they seek to understand.\n\nA computer cache stores copies of data so that subsequent requests may be served more quickly. If the original data changes while the stored copy remains unchanged, however, the cache may return outdated information; faster access thus depends on a policy for determining when a copy should be refreshed.",
+      "persona": {
+        "id": "oxford_don",
+        "version": 2,
+        "origin": "builtin",
+        "expression": "expressive"
+      },
+      "modelSettings": {
+        "model": "gpt-6-luna",
+        "reasoningEffort": "none"
+      }
+    },
+    {
+      "personaId": "antiquarian",
+      "expression": "expressive",
+      "status": 200,
+      "text": "A novel may conserve a person’s memory, and yet fail thereby to render its narrator reliable; for when one incident is chosen and another passed over, the reader must distinguish the life remembered from that account through which alone it is encountered, the recollection from its custodian.\n\nA belief, though true, may have arrived at truth by chance. If its possessor has reached a conclusion upon inadequate grounds, the truth of the conclusion, considered by itself, does not establish that he knows it; and thus the distinction, whilst withholding knowledge from mere coincidence, leaves yet unresolved what further conditions its attainment requires.\n\nAn archive, which preserves some records whilst others perish, offers not the whole past but its surviving portion; and because that survival is selective, the absence of a record cannot of itself prove that an event never occurred. The historian must therefore distinguish the evidence that endures from the larger past, only imperfectly disclosed by it, which he seeks to understand.\n\nA computer cache retains copies of data, that later requests may be served with greater speed; but if the original alters whilst the stored copy remains unchanged, the cache may return what is no longer current. Faster access, then, is not secured by preservation alone: it requires also a policy by which the copy is judged, and, when needful, refreshed.",
+      "persona": {
+        "id": "antiquarian",
+        "version": 2,
+        "origin": "builtin",
+        "expression": "expressive"
+      },
+      "modelSettings": {
+        "model": "gpt-6-luna",
+        "reasoningEffort": "none"
+      }
+    },
+    {
+      "personaId": "oxford_don",
+      "expression": "immersive",
+      "status": 200,
+      "text": "A novel may preserve a person’s memory without thereby rendering its narrator reliable, since readers must distinguish the life remembered from the account through which it is made available whenever one incident is selected and another omitted.\n\nA belief may be true by accident; where a person has reached a conclusion on inadequate grounds, its truth alone does not establish that the person knows it, leaving open the question of what further conditions knowledge requires.\n\nAn archive preserves some records while losing others, and, because survival is selective, the absence of a record does not by itself show that an event never occurred. Historians must therefore distinguish the evidence that survives from the larger past they seek to understand.\n\nA computer cache stores copies of data so that later requests can be served more quickly; if the original data changes while the stored copy remains unchanged, however, the cache may return outdated information. Faster access therefore depends on a policy for determining when a copy should be refreshed.",
+      "persona": {
+        "id": "oxford_don",
+        "version": 2,
+        "origin": "builtin",
+        "expression": "immersive"
+      },
+      "modelSettings": {
+        "model": "gpt-6-luna",
+        "reasoningEffort": "none"
+      }
+    },
+    {
+      "personaId": "antiquarian",
+      "expression": "immersive",
+      "status": 200,
+      "text": "A person’s memory may endure within a novel, while the voice that conveys it remains less than assured; for the narrator, selecting one incident and passing over another, presents not the life entire, but an account through which that life must be apprehended, and readers must distinguish the remembered existence from its surviving narration.\n\nA belief, though true, may owe its truth to accident; and if a person arrives at a conclusion by inadequate reasons, the truth of the conclusion does not, of itself, establish that it is known. Thus the distinction preserves, rather than closes, the question of what further conditions knowledge may require.\n\nAn archive, in preserving certain records while others perish, bears witness not to the whole past, but to that portion of it which has survived; and since survival is selective, the absence of a record cannot, by itself, prove that an event never occurred. Historians must therefore distinguish the evidence that remains from the larger past which, through that evidence, they seek to understand.\n\nA computer cache, storing copies of data that later requests may be served with greater speed, offers an advantage whose condition is also its hazard: if the original data changes while the stored copy remains unaltered, the cache may return information already out of date. Faster access, then, requires not speed alone, but a policy by which one determines when the copy must be refreshed.",
+      "persona": {
+        "id": "antiquarian",
+        "version": 2,
+        "origin": "builtin",
+        "expression": "immersive"
+      },
+      "modelSettings": {
+        "model": "gpt-6-luna",
+        "reasoningEffort": "none"
+      }
+    }
+  ],
+  "provider": "OpenAI (configured Noema provider)",
+  "method": "Six explicit requests through the existing Comparison Studio HTTP endpoint, with one identical four-paragraph authored sample per request: literary narration, philosophical knowledge, historical archival evidence, and ordinary cache explanation. Both v2 personas at all three expression levels. Safari validation skipped at user request.",
+  "serverPersonaSourceSha256": "eb2c306a45b892dd99af9d68c97ccdbe0cccf4bac0444de72737dcbca00d0acc",
+  "assessment": {
+    "scope": "One qualitative, unblinded sample per persona/expression; a small diagnostic evaluation, not a statistical reliability benchmark. An earlier diagnostic round prompted a stronger Antiquarian sentence-architecture instruction; the six outputs here all use the final instruction.",
+    "oxford_don": "Generally preserves measured scholarly diction and qualified subordinate clauses at all levels. Some short independent opening or concluding sentences remain. Expression intensity produces modest differences on this input.",
+    "antiquarian": "More ornate than Oxford Don, with antithesis, suspended clauses and learned words such as conserve, custodian and apprehended. Expressive and Immersive show more elaboration, but richly Latinate diction and unmistakably Brownean architecture are still uneven; instruction-level enforcement does not yet establish reliable full conformity.",
+    "fidelity": "No new named authorities, historical parallels or source evidence were introduced. Main claims and qualifications were retained in this manual reading, though rhetorical substitutions still need editorial judgement (for example Immersive changes narrator reliability to a voice that remains less than assured).",
+    "classicalQuotations": "No Greek or Latin quotations were introduced. This is permitted because quotation is optional and the rewrite task forbids adding evidence. The run does not establish quotation authenticity, attribution accuracy or untranslated-quotation behaviour when a quotation is actually generated.",
+    "followup": "No automatic repair pass enabled. A bounded one-pass design is documented in docs/ai-personas.md; it needs further evaluation and fidelity safeguards before implementation."
+  }
+}

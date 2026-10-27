@@ -2,7 +2,14 @@ import {createHash} from 'node:crypto';
 import type {SourceFile} from '../../shared/domain.js';
 import {Store} from '../store.js';
 import {HttpError} from '../validation.js';
+import {sourceProgress} from './source-progress.js';
 const bounded=(value:string|null|undefined,limit:number)=>value==null?null:value.slice(0,limit);
+function processingDetail(id:string){
+ const detail=sourceProgress.get(id);
+ if(!detail||detail.phase!=='math'||![detail.completed,detail.total,detail.startedAt,detail.updatedAt].every(value=>Number.isFinite(value)&&value>=0))return undefined;
+ return {phase:detail.phase,completed:detail.completed,total:detail.total,startedAt:detail.startedAt,updatedAt:detail.updatedAt,
+  ...(Number.isFinite(detail.estimatedRemainingSeconds)&&(detail.estimatedRemainingSeconds??-1)>=0?{estimatedRemainingSeconds:detail.estimatedRemainingSeconds}:{})};
+}
 /** Explicit public scalar projection: internal admission/configuration columns and
  * future database fields must never become part of this response accidentally. */
 export function sourceFileStatus(file:SourceFile){
@@ -16,6 +23,7 @@ export function sourceFileStatus(file:SourceFile){
   enrichment_next_attempt_at:file.enrichment_next_attempt_at.slice(0,80),created_at:file.created_at.slice(0,80),
   contains_math:file.contains_math,pdf_flattened:file.pdf_flattened,import_method:file.import_method,source_url:bounded(file.source_url,4096),
   ingestion_origin:file.ingestion_origin,active_ingestion_run:file.active_ingestion_run,
+  processing_detail:processingDetail(file.id),
   text:'',summary:null,contentVersion,
  };
 }

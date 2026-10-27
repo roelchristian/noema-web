@@ -316,6 +316,82 @@ test('Sources library scope and row position survive a reload in the same tab',a
   assert.deepEqual(state.readLibrarySession('reload-vault',destination),{});
 });
 
+test('sidebar sections preserve collapsed state across remounts while keeping creation actions reachable', async t => {
+  const {setupDOM} = await import('./helpers/dom.mjs'), env = setupDOM(t);
+  const {act} = await import('react'), {createRoot} = await import('react-dom/client');
+  const {saveSidebarExpansion} = await import('../src/client/organization/sidebar-expansion.ts');
+  const vaultId = 'sidebar-section-persistence';
+  saveSidebarExpansion(vaultId, new Set());
+  const props = {vaultId, data: {...data, collections: [{id: 'theme', name: 'Theme'}]}, pages: [],
+    activeFolderPath: [], revealPageId: null, onRevealed: noop, context: {collection: '', folder: ''},
+    active: false, available: true, disabled: false, onOpen: noop, onOpenUnfiled: noop, onOpenPage: noop,
+    onRenamePage: noop, onDeletePage: noop, onMovePage: noop, onChanged: noop, onError: noop};
+  const root = createRoot(document.querySelector('#mount'));
+  env.defer(() => act(async () => root.unmount()));
+  const mount = key => act(async () => root.render(createElement(SidebarOrganization, {...props, key})));
+  const section = name => document.querySelector(`section[aria-label="${name}"]`);
+  const toggle = name => section(name).querySelector('.organization-section-toggle');
+  const content = name => document.getElementById(toggle(name).getAttribute('aria-controls'));
+  await mount('first');
+  assert.equal(toggle('Folders').getAttribute('aria-expanded'), 'true');
+  assert.equal(toggle('Collections').getAttribute('aria-expanded'), 'true');
+  assert.equal(section('Folders').querySelector('.organization-section-count').textContent, '2');
+  assert.equal(section('Collections').querySelector('.organization-section-count').textContent, '1');
+  await act(async () => toggle('Folders').click());
+  assert.equal(content('Folders').hidden, true);
+  assert.equal(content('Collections').hidden, false);
+  await act(async () => toggle('Collections').click());
+  for (const name of ['Folders', 'Collections']) {
+    assert.equal(toggle(name).getAttribute('aria-expanded'), 'false');
+    assert.equal(content(name).hidden, true);
+  }
+  for (const label of ['Folder actions', 'Collection actions']) {
+    const action = document.querySelector(`[aria-label="${label}"]`);
+    assert.ok(action);
+    assert.equal(action.closest('[hidden]'), null);
+    assert.equal(action.disabled, false);
+  }
+  await mount('remounted');
+  for (const name of ['Folders', 'Collections']) {
+    assert.equal(toggle(name).getAttribute('aria-expanded'), 'false');
+    assert.equal(content(name).hidden, true);
+  }
+  await act(async () => toggle('Folders').click());
+  assert.equal(content('Folders').hidden, false);
+  assert.equal(content('Collections').hidden, true);
+});
+
+test('Reveal in sidebar reopens a collapsed Folders section and focuses the canonical page', async t => {
+  const {setupDOM} = await import('./helpers/dom.mjs'), env = setupDOM(t);
+  const {act} = await import('react'), {createRoot} = await import('react-dom/client');
+  const {saveSidebarExpansion} = await import('../src/client/organization/sidebar-expansion.ts');
+  const vaultId = 'sidebar-section-reveal';
+  saveSidebarExpansion(vaultId, new Set(['section:folders:collapsed', 'section:collections:collapsed']));
+  const frames = [], scrolled = [];
+  t.mock.method(globalThis, 'requestAnimationFrame', callback => { frames.push(callback); return frames.length; });
+  t.mock.method(globalThis, 'cancelAnimationFrame', noop);
+  env.dom.window.HTMLElement.prototype.scrollIntoView = function(options) { scrolled.push({element: this, options}); };
+  let revealed = 0;
+  const props = {vaultId, data, pages: [{id: 'filed', title: 'Filed', updated_at: ''}], activePageId: 'filed',
+    activeFolderPath: ['desk'], revealPageId: null, onRevealed: () => revealed++,
+    context: {collection: '', folder: ''}, active: false, available: true, disabled: false,
+    onOpen: noop, onOpenUnfiled: noop, onOpenPage: noop, onRenamePage: noop, onDeletePage: noop,
+    onMovePage: noop, onChanged: noop, onError: noop};
+  const root = createRoot(document.querySelector('#mount'));
+  env.defer(() => act(async () => root.unmount()));
+  await act(async () => root.render(createElement(SidebarOrganization, props)));
+  assert.equal(document.querySelector('section[aria-label="Folders"] .organization-section-toggle').getAttribute('aria-expanded'), 'false');
+  await act(async () => root.render(createElement(SidebarOrganization, {...props, revealPageId: 'filed'})));
+  await act(async () => { for (const callback of frames.splice(0)) callback(0); });
+  const folders = document.querySelector('section[aria-label="Folders"]'), link = folders.querySelector('[data-canonical-page="filed"]');
+  assert.equal(folders.querySelector('.organization-section-toggle').getAttribute('aria-expanded'), 'true');
+  assert.equal(link.closest('[hidden]'), null);
+  assert.equal(document.activeElement, link);
+  assert.deepEqual(scrolled, [{element: link, options: {block: 'nearest'}}]);
+  assert.equal(revealed, 1);
+  assert.equal(document.querySelector('section[aria-label="Collections"] .organization-section-toggle').getAttribute('aria-expanded'), 'false');
+});
+
 test('organization indexes preserve location, collection, favourites and folder-count semantics after inventory replacement',async()=>{
  const {organizationIndex}=await import('../src/client/organization/organization-index.ts');
  const pages=[{id:'a'},{id:'b'}],inventory={collections:[{id:'manual',name:'Manual'}],folders:[{id:'root',name:'Root',parent_id:null},{id:'child',name:'Child',parent_id:'root'}],folderLinks:[{collection_id:'manual',folder_id:'root'}],locations:[{kind:'page',item_id:'a',folder_id:'root'},{kind:'page',item_id:'removed',folder_id:'root'}],memberships:[{kind:'page',item_id:'a',collection_id:'manual',automatic:true},{kind:'entity',item_id:'a',collection_id:'manual'}],favourites:[{kind:'page',item_id:'a'}]};

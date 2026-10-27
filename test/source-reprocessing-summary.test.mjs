@@ -67,3 +67,21 @@ test('compact attachment inventory reads only explicit columns and retains vault
  assert.deepEqual(sourceFileStatuses(store,'vault','source'),[]);assert.equal(reads.length,1);assert.doesNotMatch(reads[0],/SELECT\s+\*|staging|summary/i);
  assert.throws(()=>sourceFileStatuses({...store,get:()=>undefined},'vault','source'),/Source not found/);assert.equal(reads.length,1,'foreign/missing sources never query attachment inventory');
 });
+
+test('compact attachment polling retains scalar math progress without changing readable identity',async()=>{
+ const {sourceFileStatus}=await import('../src/server/modules/source-file-status.ts');
+ const {sourceProgress}=await import('../src/server/modules/source-progress.ts');
+ const file={id:'compact-math-progress',vault_id:'vault',entity_id:'source',name:'math.pdf',original_filename:'math.pdf',generated_name:null,language:null,format:'pdf',size:100,status:'ready',admitted:1,progress:100,pages:1,ocr_pages:0,error:null,enrichment_status:'running',enrichment_error:null,enrichment_attempts:1,enrichment_next_attempt_at:'',created_at:'now',contains_math:1,pdf_flattened:0,import_method:'upload',source_url:null,text:'private canonical math',structural_nodes:'[]',page_start_lines:'[1]'};
+ const before=sourceFileStatus(file);
+ try{
+  sourceProgress.set(file.id,{phase:'math',completed:1,total:3,startedAt:100,updatedAt:200,estimatedRemainingSeconds:20,privateProviderPayload:{text:'secret'}});
+  const during=sourceFileStatus(file);
+  assert.deepEqual(during.processing_detail,{phase:'math',completed:1,total:3,startedAt:100,updatedAt:200,estimatedRemainingSeconds:20});
+  assert.equal(during.contentVersion,before.contentVersion);
+  assert.doesNotMatch(JSON.stringify(during),/private canonical math|privateProviderPayload|secret/);
+  sourceProgress.set(file.id,{phase:'math',completed:2,total:3,startedAt:100,updatedAt:300,estimatedRemainingSeconds:Infinity});
+  assert.equal(sourceFileStatus(file).processing_detail.completed,2);
+  assert.equal(Object.hasOwn(sourceFileStatus(file).processing_detail,'estimatedRemainingSeconds'),false);
+ }finally{sourceProgress.delete(file.id);}
+ assert.equal(sourceFileStatus(file).processing_detail,undefined);
+});

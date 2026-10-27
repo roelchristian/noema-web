@@ -10,6 +10,7 @@ import {sourceEditorialRevisionLimit} from '../../shared/source-reprocessing.js'
 import type {Store} from '../store.js';
 import {HttpError,now} from '../validation.js';
 import type {SourceIngestionAssembly} from './source-ingestion-assembly.js';
+import {SOURCE_INGESTION_REPAIR_CATEGORIES} from './source-ingestion-validation.js';
 import {sourceIngestionPageRecoveryInsertion,sourceIngestionPageRecoveryContent} from './source-ingestion-page-recovery.js';
 import {SourceDocuments} from './source-documents.js';
 import {materializeSourceRevision,sourceRevisionBaseHash} from './source-reprocessing.js';
@@ -17,11 +18,11 @@ import {evaluateV2Acceptance,editorialRiskValidator} from './source-reprocessing
 import {acceptVerifiedFootnoteFormatting,groupApparatusPatches} from './source-reprocessing-apparatus.js';
 import {utf16Boundary,wellFormedUnicode} from './source-reprocessing-patches.js';
 import {Bibliography} from './bibliography.js';
-import {SourceMetadata} from './source-metadata.js';
-import {extractSourceMetadata} from './source-metadata-extraction.js';
+import {SourceMetadata,sourceMetadataCanonicalField} from './source-metadata.js';
+import {extractSourceMetadata,extractModelMetadataCandidates} from './source-metadata-extraction.js';
 
 const digest=(value:string)=>createHash('sha256').update(value).digest('hex');
-const categories=new Set(['ocr','line_breaks','footnote','apparatus','metadata','citation','math','formatting']);
+const categories:ReadonlySet<string>=new Set(SOURCE_INGESTION_REPAIR_CATEGORIES);
 export interface SourceIngestionReconciliationOptions {
  runId:string;documentId:string;reviewPolicy:SourceIngestionOptions['reviewPolicy'];depth:SourceIngestionOptions['depth'];model:string;
 }
@@ -145,14 +146,23 @@ export function reconcileSourceIngestion(store:Store,file:SourceFile,ir:SourceIn
  if(file.entity_id){
   const metadata=new SourceMetadata(store),establishedTitle=new Bibliography(store).get(file.vault_id,file.entity_id)?.fields.title;
   const facts=extractSourceMetadata(file.text,establishedTitle??ir.metadata.title??document.source.title).facts;
+  const evidenceBlocks=assembly.blockRanges.map(block=>({id:block.temporaryId,text:block.text,start:block.range.startOffset,end:block.range.endOffset,page:block.page}));
+  const explicit=ir.metadata.candidates??[];
   const modeled=[...ir.metadata.bibliographic,...ir.metadata.contributors.filter(person=>['author','editor','translator'].includes(person.role.toLowerCase())).map(person=>({field:person.role.toLowerCase(),value:person.name,page:person.page,blockId:person.blockId}))];
-  if(ir.metadata.title&&!modeled.some(candidate=>candidate.field==='title')){const block=assembly.blockRanges.find(block=>block.page<=2&&block.text.trim()===ir.metadata.title);if(block)modeled.push({field:'title',value:ir.metadata.title,page:block.page,blockId:block.temporaryId});}
+  if(ir.metadata.title&&!explicit.some(candidate=>candidate.field==='title')&&!modeled.some(candidate=>candidate.field==='title')){const block=assembly.blockRanges.find(block=>block.page<=2&&block.text.trim()===ir.metadata.title);if(block)modeled.push({field:'title',value:ir.metadata.title,page:block.page,blockId:block.temporaryId});}
+  const fallback=[];
   for(const candidate of modeled){
-   const block=assembly.blockRanges.find(block=>block.temporaryId===candidate.blockId&&block.page===candidate.page);
-   if(!block||!block.text.includes(candidate.value)||file.text.indexOf(block.text)!==block.range.startOffset||file.text.indexOf(block.text,block.range.startOffset+1)!==-1){diagnostics.push('A metadata candidate lacks unique exact publication evidence and requires separate review.');continue;}
-   facts.push({fieldKey:'bibliography:'+candidate.field,value:candidate.value,excerpt:block.text,start:block.range.startOffset,end:block.range.endOffset,validated:false,validationReason:'Provider publication interpretation; compare the credited role and exact PDF evidence.'});
+   const field=sourceMetadataCanonicalField(candidate.field);
+   if(explicit.some(item=>item.field===field&&item.value===candidate.value))continue;
+   const block=evidenceBlocks.find(block=>block.id===candidate.blockId&&block.page===candidate.page);
+   if(!block||!block.text.includes(candidate.value)){diagnostics.push('A legacy metadata candidate lacks exact publication evidence and requires separate review.');metadataPending++;continue;}
+   fallback.push({...candidate,field,blockId:block.id,quote:block.text,reason:'Legacy provider interpretation; compare the credited role and exact PDF evidence.'});
   }
+  const extraction=extractModelMetadataCandidates([...explicit,...fallback],evidenceBlocks,file.text,{interpretation:'PDF enrichment metadata interpretation'});
+  facts.push(...extraction.facts);diagnostics.push(...extraction.diagnostics);metadataPending+=extraction.diagnostics.length;
+  const seen=new Set<string>();
   for(const fact of facts){
+   const key=JSON.stringify([fact.fieldKey,fact.value,fact.excerpt]);if(seen.has(key))continue;seen.add(key);
    try {const result=metadata.registerCandidate(file.vault_id,file.entity_id,{...fact,fileId:file.id,runId:options.runId,version:'canonical',revision:digest(file.text),evidenceHash:digest(fact.excerpt)});if(result.registrationOutcome==='pending')metadataPending++;}
    catch(error){if(!(error instanceof HttpError)||![400,409].includes(error.status))throw error;diagnostics.push(error.message);metadataPending++;}
   }

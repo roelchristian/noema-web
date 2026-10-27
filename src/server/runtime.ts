@@ -1,3 +1,5 @@
+import {SOURCE_INGESTION_ENRICHMENT_SCHEMA,sourceIngestionEnrichmentPrompt} from './modules/source-ingestion-enrichment.js';
+import {prepareSourceIngestionVisualEvidence} from './modules/source-ingestion-visual-evidence.js';
 import {sourceIngestionWithActivity} from './modules/source-ingestion-activity.js';
 import {SOURCE_INGESTION_RELATIONS_SCHEMA,sourceIngestionRelationsPrompt} from './modules/source-ingestion-relations.js';
 import {sourceIngestionContextManifest} from './modules/source-ingestion-planner.js';
@@ -6,7 +8,6 @@ import {SOURCE_INGESTION_TARGETED_REPAIR_SCHEMA,sourceIngestionTargetedRepairPro
 import {SourceIngestion} from './modules/source-ingestion.js';
 import {PdfPlatform} from './modules/pdf-platform.js';
 import {SOURCE_INGESTION_JSON_SCHEMA} from './modules/source-ingestion-validation.js';
-import {documentSystemPrompt} from './modules/document-provider.js';
 import {Chat} from './modules/chat.js';
 import {ChatRetrieval} from './modules/chat-retrieval.js';
 import {SourceMetadata} from './modules/source-metadata.js';
@@ -64,7 +65,7 @@ export function createRuntime(store: Store, intelligence: Intelligence, network:
     extract:async({vaultId,fileId,options,pdf,pageMap,plan,signal,onSubmitted,context})=>{
       if(options.route==='local'||!options.model)throw new HttpError(400,'Choose a document provider and model.');
       const provider=intelligence.documentProvider(options.route);
-      const result=await sourceIngestionWithActivity(activity,store,{vaultId,fileId,phase:sourceFiles.require(vaultId,fileId).status==='ready'?'recover':'extract'},provider,{model:options.model,pdf,pages:pageMap.length,prompt:documentSystemPrompt+'\n'+JSON.stringify({pageMap,ownedPhysicalPages:plan.ownedPages,contextPhysicalPages:plan.contextPages,context,depth:options.depth,containsMath:options.containsMath,guidance:options.guidance}),schema:SOURCE_INGESTION_JSON_SCHEMA as Record<string,unknown>,maxOutputTokens:options.budget.maxOutputTokens,signal,onSubmitted});
+      const result=await sourceIngestionWithActivity(activity,store,{vaultId,fileId,phase:sourceFiles.require(vaultId,fileId).status==='ready'?'recover':'extract'},provider,{model:options.model,pdf,pages:pageMap.length,prompt:JSON.stringify({pageMap,ownedPhysicalPages:plan.ownedPages,contextPhysicalPages:plan.contextPages,context,depth:options.depth,containsMath:options.containsMath,guidance:options.guidance}),schema:SOURCE_INGESTION_JSON_SCHEMA as Record<string,unknown>,maxOutputTokens:options.budget.maxOutputTokens,signal,onSubmitted});
       if(result.status==='completed') {
         let document;try{document=validateSourceIngestionDocument(result.candidate,{ownedPages:plan.ownedPages,pageCount:Math.max(...pageMap)});}catch{return result;}
         try {
@@ -82,14 +83,19 @@ export function createRuntime(store: Store, intelligence: Intelligence, network:
       }
       return result;
     },
+    enrich:async({vaultId,fileId,options,pdf,pageMap,plan,document,signal,onSubmitted})=>{
+      if(options.route==='local'||!options.model)throw new HttpError(400,'Choose a document provider and model.');
+      return sourceIngestionWithActivity(activity,store,{vaultId,fileId,phase:'enrich'},intelligence.documentProvider(options.route),{task:'enrichment',model:options.model,pdf,pages:pageMap.length,prompt:sourceIngestionEnrichmentPrompt(document,{ownedPages:plan.ownedPages,contextPages:plan.contextPages,pageMap,depth:options.depth}),schema:SOURCE_INGESTION_ENRICHMENT_SCHEMA,maxOutputTokens:Math.min(options.budget.maxOutputTokens,16000),signal,onSubmitted});
+    },
     relate:async({vaultId,fileId,options,pdf,pageMap,document,request,signal,onSubmitted})=>{
       if(options.route==='local'||!options.model)throw new HttpError(400,'Choose a document provider and model.');
       return sourceIngestionWithActivity(activity,store,{vaultId,fileId,phase:'relate'},intelligence.documentProvider(options.route),{task:'relations',model:options.model,pdf,pages:pageMap.length,prompt:sourceIngestionRelationsPrompt(document,request)+'\n'+JSON.stringify({pageMap}),schema:SOURCE_INGESTION_RELATIONS_SCHEMA,maxOutputTokens:Math.min(options.budget.maxOutputTokens,6000),signal,onSubmitted});
     },
-    repair:async({vaultId,fileId,options,pdf,pageMap,plan,document,signal,onSubmitted})=>{
+    prepareRepairEvidence:input=>prepareSourceIngestionVisualEvidence(pdfPlatform,input),
+    repair:async({vaultId,fileId,options,pdf,pageMap,plan,document,visualEvidence,signal,onSubmitted})=>{
       if(options.route==='local'||!options.model)throw new HttpError(400,'Choose a document provider and model.');
       const provider=intelligence.documentProvider(options.route);
-      return sourceIngestionWithActivity(activity,store,{vaultId,fileId,phase:'repair'},provider,{model:options.model,pdf,pages:pageMap.length,prompt:sourceIngestionTargetedRepairPrompt(document,{ownedPages:plan.ownedPages,contextPages:plan.contextPages,pageMap,depth:options.depth}),task:'repair',schema:SOURCE_INGESTION_TARGETED_REPAIR_SCHEMA as Record<string,unknown>,maxOutputTokens:Math.min(options.budget.maxOutputTokens,8000),signal,onSubmitted});
+      return sourceIngestionWithActivity(activity,store,{vaultId,fileId,phase:'repair'},provider,{model:options.model,pdf,pages:pageMap.length,prompt:sourceIngestionTargetedRepairPrompt(document,{ownedPages:plan.ownedPages,contextPages:plan.contextPages,pageMap,depth:options.depth,visualEvidence}),task:'repair',schema:SOURCE_INGESTION_TARGETED_REPAIR_SCHEMA as Record<string,unknown>,maxOutputTokens:Math.min(options.budget.maxOutputTokens,8000),signal,onSubmitted});
     },
     reconcile:(file,document,assembly,options)=>sourceFiles.publishProviderEvidence(file.vault_id,file.id,assembly.text,{provider:options.route,model:options.model,coverage:'checked',independentEvidence:'not-checked',document}),
   });

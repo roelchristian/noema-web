@@ -1,7 +1,7 @@
 import type {AIActivityLog} from './ai-activity.js';
 import type {Store} from '../store.js';
 import type {DocumentProvider,DocumentRequest,DocumentResult,DocumentUsage} from './document-provider.js';
-export type SourceIngestionActivityScope={vaultId:string;fileId:string;phase:'extract'|'repair'|'relate'|'recover'};
+export type SourceIngestionActivityScope={vaultId:string;fileId:string;phase:'extract'|'repair'|'relate'|'recover'|'enrich'};
 const count=(value:unknown)=>typeof value==='number'&&Number.isSafeInteger(value)&&value>=0?value:undefined;
 /** Activity's output total includes thinking. Gemini reports thought tokens as a
  * separate count; OpenAI includes them in output_tokens already. */

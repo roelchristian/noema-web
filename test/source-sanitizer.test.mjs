@@ -41,3 +41,48 @@ test('native sanitizer removes active objects and rasterizes visible annotation 
   for(const name of ['/Annots','/OpenAction','/JavaScript','/EmbeddedFiles','/Filespec','/Launch','/URI'])assert.equal(safe.includes(Buffer.from(name)),false,name);
  }finally{e.files.close();e.db.close();rmSync(e.dir,{recursive:true,force:true});}
 });
+
+test('provider admission uses isolated macOS reconstruction for object streams and retains original evidence',{skip:process.platform!=='darwin'?'Requires macOS provider admission route':false},async t=>{
+ const e=setup();t.after(()=>{e.files.close();e.db.close();rmSync(e.dir,{recursive:true,force:true});});
+ const original=Buffer.from('%PDF-1.4\n1 0 obj << /Type /ObjStm >> stream\nopaque\nendstream endobj\n%%EOF');
+ const safe=Buffer.from('%PDF-1.4\n1 0 obj << /Type /Catalog >> endobj\n%%EOF');
+ const file=e.files.add('default','compressed.pdf',original,undefined,undefined,false,true);
+ let flattened=0,counted=0;
+ e.files.flattenPDF=async bytes=>{flattened++;assert.deepEqual(bytes,original);e.files.lastSanitization={method:'passive-rebuild'};return safe;};
+ const platform={admit:async()=>{assert.fail('Darwin reconstruction must use isolated native flattener');},count:async bytes=>{counted++;assert.deepEqual(bytes,safe);return 3;}};
+ const admitted=await e.files.prepareProviderPDF('default',file.id,platform);
+ assert.deepEqual(admitted.bytes,safe);assert.equal(admitted.pageCount,3);
+ assert.equal(admitted.originalHash,sha(original));assert.equal(admitted.admittedHash,sha(safe));
+ const manifest=e.files.evidence('default',file.id);
+ assert.equal(manifest.originalHash,sha(original));assert.equal(manifest.admittedHash,sha(safe));assert.equal(manifest.admissionMethod,'native-passive-rebuild');
+ assert.deepEqual(readFileSync(path.join(e.files.root,'default','source-evidence',file.id,'original')),original);
+ assert.equal(e.files.require('default',file.id).pdf_flattened,1);assert.equal(e.files.require('default',file.id).admitted,1);
+ await e.files.prepareProviderPDF('default',file.id,platform);
+ assert.equal(flattened,1,'resuming reuses admitted bytes');assert.equal(counted,2);
+});
+
+test('provider native reconstruction cannot publish unsafe output or output after cancellation',{skip:process.platform!=='darwin'?'Requires macOS provider admission route':false},async t=>{
+ const e=setup();t.after(()=>{e.files.close();e.db.close();rmSync(e.dir,{recursive:true,force:true});});
+ const original=Buffer.from('%PDF-1.4\n/ObjStm\n%%EOF');
+ const file=e.files.add('default','compressed.pdf',original,undefined,undefined,false,true);
+ let count=0;const platform={admit:async()=>assert.fail('Unexpected portable admission'),count:async()=>{count++;return 3;}};
+ e.files.flattenPDF=async()=>Buffer.from('%PDF-1.4\n/JavaScript\n%%EOF');
+ await assert.rejects(()=>e.files.prepareProviderPDF('default',file.id,platform),/safety screening/);
+ assert.equal(count,0);assert.equal(e.files.require('default',file.id).admitted,0);
+ const controller=new AbortController();
+ e.files.flattenPDF=async()=>{controller.abort();return Buffer.from('%PDF-1.4\n%%EOF');};
+ await assert.rejects(()=>e.files.prepareProviderPDF('default',file.id,platform,controller.signal),/stopped/);
+ assert.equal(count,0);assert.equal(e.files.require('default',file.id).admitted,0);
+ assert.deepEqual(readFileSync(e.files.assetFilename('default',file.id)),original);
+});
+
+test('clean provider PDF keeps portable admission and does not reconstruct',async t=>{
+ const e=setup();t.after(()=>{e.files.close();e.db.close();rmSync(e.dir,{recursive:true,force:true});});
+ const original=Buffer.from('%PDF-1.4\n%%EOF'),file=e.files.add('default','clean.pdf',original,undefined,undefined,false,true);
+ e.files.flattenPDF=async()=>assert.fail('Clean bytes must not be reconstructed');
+ let calls=0;
+ const platform={admit:async bytes=>{calls++;assert.deepEqual(bytes,original);return {bytes,pages:3,flattened:false,method:'screened-original'};},count:async()=>assert.fail('Initial admission counts through portable platform')};
+ await e.files.prepareProviderPDF('default',file.id,platform);
+ assert.equal(calls,1);assert.equal(e.files.require('default',file.id).pdf_flattened,0);
+ assert.equal(e.files.evidence('default',file.id).admissionMethod,'screened-original');
+});

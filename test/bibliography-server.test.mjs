@@ -4,6 +4,8 @@ import {openDatabase} from '../src/server/database.ts';
 import {Store} from '../src/server/store.ts';
 import {setupBibliographySchema} from '../src/server/modules/bibliography.ts';
 import {BibliographicMetadata} from '../src/server/modules/bibliographic-metadata.ts';
+import {SourceMetadata} from '../src/server/modules/source-metadata.ts';
+import {applySourceMetadataBibliographicFields} from '../src/shared/source-metadata.ts';
 function fixture(fetcher) {const db=openDatabase(':memory:');setupBibliographySchema(db);const store=new Store(db);return {db,store,service:new BibliographicMetadata(store,fetcher)};}
 const raw='@article{Test, title={Synthetic study}, author={Doe, Jane}, doi={10.1234/synthetic}, year={2020}, custom={retained}}';
 function imported(service) {return service.import('default',{raw,decisions:[{index:0,action:'create'}]}).sourceIds[0];}
@@ -83,5 +85,38 @@ test('single-Source exports never disclose sibling entries in shared original im
   assert.ok(!JSON.stringify(exported).includes('Private sibling'));assert.ok(!JSON.stringify(exported).includes('Sibling'));
   assert.equal(sidecar.records.length,1);assert.equal(sidecar.importBatches.length,0);assert.deepEqual(sidecar.records[0].rawImportIds,[]);assert.equal(sidecar.omittedOriginalBatchIds.length,1);
   assert.deepEqual(service.get('default',id).rawImports,[batch]);assert.equal(JSON.parse(service.export('default').sidecar).importBatches[0].raw,batch);
+ }finally{db.close();}
+});
+test('scoped imports review aliased publication facts against their existing canonical owner',()=>{
+ const {db,service}=fixture();try {
+  const id=imported(service),original=service.get('default',id),authored={...original.fields,date:'2024-05-01',journaltitle:'Authored journal',issue:'2'};delete authored.year;
+  service.save('default',id,{...original,fields:authored});
+  const incoming='@article{NewAliasKey,year={2025},journal={Imported journal},number={3}}';
+  const preview=service.sourceImportPreview('default',id,incoming);
+  assert.deepEqual(preview.conflicts.map(item=>item.field).sort(),['date','issue','journaltitle']);assert.ok(preview.conflicts.every(item=>item.currentOrigin==='manual'));
+  assert.throws(()=>service.sourceImport('default',id,{raw:incoming,...preview}),/each conflicting field/);
+  const kept=service.sourceImport('default',id,{raw:incoming,...preview,fields:{date:'current',issue:'current',journaltitle:'current'}});
+  assert.equal(kept.fields.date,'2024-05-01');assert.equal(kept.fields.journaltitle,'Authored journal');assert.equal(kept.fields.issue,'2');
+  const accepted=service.sourceImport('default',id,{raw:incoming,...service.sourceImportPreview('default',id,incoming),fields:{date:'incoming',issue:'incoming',journaltitle:'incoming'}});
+  assert.equal(accepted.fields.date,'2025');assert.equal(accepted.fields.journaltitle,'Imported journal');assert.equal(accepted.fields.issue,'3');
+  for(const key of ['year','journal','number'])assert.ok(!Object.hasOwn(accepted.fields,key));assert.equal(accepted.citationKey,'Test');assert.ok(accepted.rawImports.includes(incoming));
+  assert.ok(accepted.provenance.date.history.some(fact=>fact.value==='2024-05-01'&&fact.origin==='manual'));
+  assert.throws(()=>service.sourceImportPreview('default',id,'@article{Divergent,date={2024},year={2025}}'),/Conflicting publication aliases/);
+  assert.throws(()=>service.sourceImport('default',id,{...service.sourceImportPreview('default',id,incoming),raw:'@article{Divergent,date={2024},year={2025}}'}),/import changed/);
+ }finally{db.close();}
+});
+test('selected DOI alias facts update the Metadata canonical owner and retain authored-value history',async()=>{
+ const {db,service,store}=fixture(async()=>Response.json({message:{DOI:'10.1234/synthetic',title:['Unselected provider title'],'container-title':['DOI journal'],issue:'7',published:{'date-parts':[[2025]]}}}));try {
+  const id=imported(service),original=service.get('default',id),authored={...original.fields,date:'2024-05-01',journaltitle:'Authored journal',issue:'2'};delete authored.year;
+  service.save('default',id,{...original,fields:authored});const proposal=await service.verify('default',id,{consent:true});
+  assert.equal(proposal.fields.year,'2025');assert.equal(proposal.fields.number,'7');
+  store.run("INSERT INTO properties(id,entity_id,name,value) VALUES('legacy-date',?,'publication date','2024-05-01')",id);
+  const chosen={year:proposal.fields.year,journal:proposal.fields.journal,number:proposal.fields.number};
+  assert.throws(()=>service.acceptVerification('default',id,{...proposal,fields:chosen}),/authored Source properties/);
+  const review=service.reconcilePreview('default',id,{revision:proposal.revision,fields:applySourceMetadataBibliographicFields(authored,chosen)}).conflicts;assert.equal(review[0].field,'date');
+  const saved=service.acceptVerification('default',id,{...proposal,fields:chosen,reviewedProperties:review.map(conflict=>({propertyId:conflict.property.id,fingerprint:conflict.fingerprint}))});
+  assert.equal(new SourceMetadata(store).snapshot('default',id).fields.find(field=>field.key==='bibliography:date').value,'2025');
+  assert.equal(saved.fields.title,'Synthetic study');assert.equal(saved.fields.date,'2025');assert.equal(saved.fields.journaltitle,'DOI journal');assert.equal(saved.fields.issue,'7');
+  for(const key of ['year','journal','number'])assert.ok(!Object.hasOwn(saved.fields,key));assert.equal(saved.provenance.date.origin,'crossref');assert.ok(saved.provenance.date.history.some(fact=>fact.value==='2024-05-01'&&fact.origin==='manual'));
  }finally{db.close();}
 });

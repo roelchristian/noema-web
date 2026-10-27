@@ -1,3 +1,4 @@
+import {sourceMetadataBibliographicUpdates} from '../../shared/source-metadata.js';
 import {bibliographicLegacyConflicts,assertBibliographicReconciliation} from './bibliographic-property-projection.js';
 import {exportBibliographicBundle} from './bibliographic-export.js';
 import {createHash,randomUUID} from 'node:crypto';
@@ -69,10 +70,11 @@ export class Bibliography {
  id=randomUUID();this.store.run("INSERT INTO entities (id,vault_id,name,type,aliases,mention_case,referent_status,subtypes,description,updated_at) VALUES (?,?,?,'source','[]','canonical','actual','[]','',?)",id,vault,(entry.fields.title||entry.citationKey).slice(0,200),now());this.write(vault,id,entry.citationKey,entry.entryType,entry.fields,'bibtex',[parsed.rawBibtex]);result.created++;
  }else throw new HttpError(400,'Choose create, merge or skip');result.sourceIds.push(id);}return result;});
  }
+ private scopedEntry(entry:BibliographicEntry,current:BibliographyRecord|null):BibliographicEntry {try{return {...entry,fields:sourceMetadataBibliographicUpdates(current?.fields??{},entry.fields)};}catch(error){throw new HttpError(400,error instanceof Error?error.message:'Conflicting publication aliases');}}
  /** A scoped import updates the explicitly selected Source, never creates a match. */
  sourceImportPreview(vault:string,id:string,raw:unknown) {
  this.source(vault,id);const parsed=this.parse(raw);if(parsed.entries.length!==1)throw new HttpError(400,'Choose exactly one BibTeX entry for this Source');
- const entry=parsed.entries[0]!,current=this.get(vault,id);
+ const current=this.get(vault,id),entry=this.scopedEntry(parsed.entries[0]!,current);
  return {sourceId:id,batchId:digest(parsed.rawBibtex),revision:current?.revision??0,entry:{citationKey:entry.citationKey,entryType:entry.entryType,fields:entry.fields},conflicts:this.conflicts(entry,current),propertyConflicts:bibliographicLegacyConflicts(this.store,vault,id,{...current?.fields,...entry.fields},current?.fields),warnings:parsed.warnings};
  }
  sourceImport(vault:string,id:string,body:Record<string,unknown>) {
@@ -80,7 +82,7 @@ export class Bibliography {
  if(body.batchId!==digest(parsed.rawBibtex))throw new HttpError(409,'The import changed. Preview it again.');
  return this.store.transaction(()=>{
  const current=this.get(vault,id);if((current?.revision??0)!==body.revision)throw new HttpError(409,'The source changed. Review the import again.');
- const entry=parsed.entries[0]!,conflicts=this.conflicts(entry,current),choices=body.fields===undefined?{}:object(body.fields);
+ const entry=this.scopedEntry(parsed.entries[0]!,current),conflicts=this.conflicts(entry,current),choices=body.fields===undefined?{}:object(body.fields);
  if(conflicts.some(conflict=>!['current','incoming'].includes(String(choices[conflict.field])))||Object.entries(choices).some(([field,choice])=>!conflicts.some(conflict=>conflict.field===field)||!['current','incoming'].includes(String(choice))))throw new HttpError(400,'Review each conflicting field and choose its current or imported value.');
  const merged={...entry.fields,...current?.fields};for(const conflict of conflicts)if(choices[conflict.field]==='incoming')merged[conflict.field]=conflict.incoming;
  const originals=[...current?.rawImports??[]];if(!originals.includes(parsed.rawBibtex))originals.push(parsed.rawBibtex);

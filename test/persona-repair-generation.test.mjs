@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import {Intelligence} from '../src/server/modules/intelligence.ts';
 import {completedResponse} from './helpers/providers.ts';
 
+// Capture the harness clock before any test freezes the production timers.
+const harnessSetTimeout=setTimeout,harnessClearTimeout=clearTimeout;
+
 const original='An archive preserves some records and loses others. Because survival is selective, the absence of a record does not by itself prove that an event never occurred; historians must distinguish the surviving evidence from the larger past they seek to understand.';
 const repaired='Although an archive preserves some records whilst others perish, the absence of a record, because survival is selective, does not by itself prove that an event never occurred; historians must therefore distinguish the surviving evidence from the larger past which they seek to understand.';
 const modelSettings={model:'gpt-6-luna',reasoningEffort:'none'};
@@ -10,7 +13,24 @@ class Secrets {value=null;read(){return this.value;}write(value){this.value=stru
 function configured(transport,extra={}){
  const ai=new Intelligence(new Secrets(),transport);ai.save({apiKey:'sk-synthetic-persona-repair-key'});ai.savePreferences({...modelSettings,personaId:'antiquarian',personaExpression:'immersive',manualRequestsPerMinute:120,...extra});return ai;
 }
-async function waitForRepair(started){let timer;try{await Promise.race([started,new Promise((_resolve,reject)=>{timer=setTimeout(()=>reject(new Error('Expected repair transport was not entered')),1000);timer.unref();})]);}finally{clearTimeout(timer);}}
+async function waitForRepair(started,pending,timeoutMs=1000){
+ let timer;
+ try{
+  await Promise.race([
+   started,
+   pending.then(()=>{throw new Error('Generation settled before repair transport was entered');},cause=>{throw new Error('Generation rejected before repair transport was entered',{cause});}),
+   new Promise((_resolve,reject)=>{timer=harnessSetTimeout(()=>reject(new Error('Expected repair transport was not entered within '+timeoutMs+'ms')),timeoutMs);})
+  ]);
+ }finally{harnessClearTimeout(timer);}
+}
+async function duringRepair(ai,request,started,release,check,timeoutMs=1000){
+ const controller=new AbortController(),pending=ai.generate({...request,signal:controller.signal});
+ try{await waitForRepair(started,pending,timeoutMs);await check(pending,controller);}
+ finally{
+  // Release even an abort-insensitive fixture, then drain before timers reset or another test starts.
+  controller.abort();release();await pending.catch(()=>{});
+ }
+}
 const preview=(extra={})=>({kind:'personaPreview',input:original,personaId:'antiquarian',personaExpression:'immersive',modelSettings,signal:new AbortController().signal,...extra});
 function withUsage(output,usage){return Response.json({status:'completed',usage,output:[{type:'message',content:[{type:'output_text',text:typeof output==='string'?output:JSON.stringify(output)}]}]});}
 function streamed(output){
@@ -67,26 +87,75 @@ test('repair respects the manual request limit and falls back without bypassing 
 });
 
 test('cancellation during repair discards buffered prose and releases the active slot',async()=>{
- let calls=0,started,finish;const secondStarted=new Promise(resolve=>started=resolve),deltas=[],controller=new AbortController();
+ let calls=0,started,finish;const secondStarted=new Promise(resolve=>started=resolve),deltas=[];
  const ai=configured(async(_url,options)=>{calls++;if(calls===1)return streamed(JSON.stringify({claims:[{text:original,attribution:'supported',citationIds:['E1']}]}));if(calls===2){started();return new Promise((resolve,reject)=>{finish=resolve;options.signal.addEventListener('abort',()=>reject(new DOMException('Aborted','AbortError')),{once:true});});}return completedResponse('OK');});
- const pending=ai.generate({kind:'chat',input:JSON.stringify({question:'What can an archive establish?'}),instructions:'Return claims JSON.',signal:controller.signal,onDelta:delta=>deltas.push(delta)});
- await waitForRepair(secondStarted);controller.abort();await assert.rejects(()=>pending,error=>error.status===409);assert.deepEqual(deltas,[]);
- finish?.(completedResponse({texts:[repaired]}));assert.equal(await ai.generate({kind:'validation'}),'OK');
+ await duringRepair(ai,{kind:'chat',input:JSON.stringify({question:'What can an archive establish?'}),instructions:'Return claims JSON.',onDelta:delta=>deltas.push(delta)},secondStarted,()=>finish?.(completedResponse({texts:[repaired]})),async(pending,controller)=>{
+  controller.abort();await assert.rejects(()=>pending,error=>error.status===409);assert.deepEqual(deltas,[]);
+ });
+ assert.equal(await ai.generate({kind:'validation'}),'OK');
 });
 
 test('a model settings change during repair invalidates the whole answer',async()=>{
  let calls=0,started,finish;const secondStarted=new Promise(resolve=>started=resolve);
  const ai=configured(async()=>{calls++;if(calls===1)return completedResponse(original);started();return new Promise(resolve=>finish=resolve);});
- const pending=ai.generate(preview());await waitForRepair(secondStarted);ai.savePreferences({model:'gpt-5-mini',reasoningEffort:'low'});finish(completedResponse({texts:[repaired]}));
- await assert.rejects(()=>pending,error=>error.status===409);assert.equal(calls,2);
+ await duringRepair(ai,preview(),secondStarted,()=>finish?.(completedResponse({texts:[repaired]})),async pending=>{
+  ai.savePreferences({model:'gpt-5-mini',reasoningEffort:'low'});finish(completedResponse({texts:[repaired]}));
+  await assert.rejects(()=>pending,error=>error.status===409);assert.equal(calls,2);
+ });
 });
 
 test('repair deadline falls back to the completed original and releases the active slot',async t=>{
  t.mock.timers.enable({apis:['setTimeout']});
- let calls=0,started,repairSignal;const secondStarted=new Promise(resolve=>started=resolve);
- const ai=configured(async(_url,options)=>{calls++;if(calls===1)return completedResponse(original);if(calls===2){repairSignal=options.signal;started();return new Promise((_resolve,reject)=>options.signal.addEventListener('abort',()=>reject(new DOMException('Aborted','AbortError')),{once:true}));}return completedResponse('OK');});
- const pending=ai.generate(preview());await waitForRepair(secondStarted);t.mock.timers.tick(15001);
- assert.equal(await pending,original);assert.equal(repairSignal.aborted,true);assert.equal(calls,2);
+ let calls=0,started,finish,repairSignal;const secondStarted=new Promise(resolve=>started=resolve);
+ const ai=configured(async(_url,options)=>{calls++;if(calls===1)return completedResponse(original);if(calls===2){repairSignal=options.signal;started();return new Promise((resolve,reject)=>{finish=resolve;options.signal.addEventListener('abort',()=>reject(new DOMException('Aborted','AbortError')),{once:true});});}return completedResponse('OK');});
+ await duringRepair(ai,preview(),secondStarted,()=>finish?.(completedResponse({texts:[repaired]})),async pending=>{
+  t.mock.timers.tick(15001);
+  assert.equal(await pending,original);assert.equal(repairSignal.aborted,true);assert.equal(calls,2);
+ });
+ assert.equal(await ai.generate({kind:'validation'}),'OK');
+});
+
+// Controlled mutations of the first provider call exercise the same lifecycle as the deadline test.
+for(const mode of ['rejected','settled','never entered']){
+ test('repair harness fails and drains when generation '+mode+' with a frozen clock',async t=>{
+  t.mock.timers.enable({apis:['setTimeout']});
+  let calls=0,finish,signal,checks=0;
+  const ai=configured(async(_url,options)=>{
+   calls++;
+   if(calls>1)return completedResponse('OK');
+   signal=options.signal;
+   if(mode==='rejected')throw new TypeError('Synthetic initial provider rejection');
+   if(mode==='settled')return completedResponse('OK');
+   // Deliberately ignore abort so cleanup must also release the fixture.
+   return new Promise(resolve=>finish=resolve);
+  });
+  await assert.rejects(
+   duringRepair(ai,preview(),new Promise(()=>{}),()=>finish?.(completedResponse(original)),()=>{checks++;},25),
+   error=>{
+    if(mode==='rejected'){assert.match(error.message,/Generation rejected before repair transport was entered/);assert.equal(error.cause.status,502);}
+    else if(mode==='settled')assert.match(error.message,/Generation settled before repair transport was entered/);
+    else assert.match(error.message,/Expected repair transport was not entered within 25ms/);
+    return true;
+   }
+  );
+  assert.equal(checks,0);assert.equal(calls,1);
+  if(mode==='never entered')assert.equal(signal.aborted,true);
+  assert.equal(await ai.generate({kind:'validation'}),'OK','Cleanup releases the active slot before the next request');
+ });
+}
+
+test('repair harness aborts, releases and drains after an assertion fails inside repair',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});
+ let calls=0,started,finish,repairSignal;const secondStarted=new Promise(resolve=>started=resolve);
+ const ai=configured(async(_url,options)=>{
+  calls++;if(calls===1)return completedResponse(original);
+  if(calls>2)return completedResponse('OK');
+  repairSignal=options.signal;started();
+  return new Promise(resolve=>finish=resolve); // Cleanup must release this abort-insensitive repair.
+ });
+ const failure=new Error('Synthetic assertion failure inside repair');
+ await assert.rejects(duringRepair(ai,preview(),secondStarted,()=>finish?.(completedResponse({texts:[repaired]})),()=>{throw failure;}),error=>error===failure);
+ assert.equal(repairSignal.aborted,true);assert.equal(calls,2);
  assert.equal(await ai.generate({kind:'validation'}),'OK');
 });
 
